@@ -1,0 +1,143 @@
+To solve this problem, we need to determine the final score of a game played on a row of cells, where two players take turns moving a token. The first player (maximizer) aims to maximize the score, while the second player (minimizer) aims to minimize it. The game starts with the token placed on each cell from 1 to n, and we need to compute the optimal score for each starting position.
+
+### Approach
+1. **Problem Analysis**:
+   - The game involves moving a token from cell to cell based on multiples of the cell's value \( p_i \).
+   - The score is incremented by \( a_i \) each time the token lands on cell \( i \).
+   - Players alternate turns, with the maximizer moving first and the minimizer next.
+   - The goal is to compute the optimal score for each starting cell \( s \) from 1 to \( n \), assuming both players play optimally.
+
+2. **Dynamic Programming (DP) Setup**:
+   - We use two DP arrays:
+     - `dp0[i]` represents the optimal score when starting at cell \( i \) and it's the maximizer's turn.
+     - `dp1[i]` represents the optimal score when starting at cell \( i \) and it's the minimizer's turn.
+   - The recurrence relations are:
+     - For `dp0[i]` (maximizer's turn): 
+       - The player can either end the game immediately (score = \( a_i \)) or move to a valid cell \( j = i + k \) (where \( k \) is a multiple of \( p_i \)) and continue the game. The score becomes \( a_i + \text{dp1}[j] \).
+       - Thus, `dp0[i] = max(a_i, a_i + max_{j} dp1[j])`.
+     - For `dp1[i]` (minimizer's turn):
+       - Similarly, `dp1[i] = min(a_i, a_i + min_{j} dp0[j])`.
+
+3. **Efficiency Optimization**:
+   - **Small Steps (\( p_i \leq \sqrt{n} \))**: For each modulus \( d \) (where \( d \leq \sqrt{n} \)), we maintain residue classes to store the best values (`max1_val` for `dp1` and `min0_val` for `dp0`). This allows efficient querying of the best values for residues.
+   - **Large Steps (\( p_i > \sqrt{n} \))**: Directly iterate over multiples of \( p_i \) since the number of multiples is \( O(\sqrt{n}) \), making the total cost manageable.
+   - **Lazy Resetting**: For each test case, we lazily reset residue classes using a timestamp to avoid reinitializing large arrays repeatedly.
+
+4. **Complexity Analysis**:
+   - **Time Complexity**: \( O(n \sqrt{n}) \) per test case due to processing each cell and handling small and large steps efficiently.
+   - **Space Complexity**: \( O(n + S^2) \), where \( S = \sqrt{n} \), for storing DP arrays and residue class data.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <climits>
+using namespace std;
+
+const int S = 550;
+const long long NEG_INF = -1e18;
+const long long POS_INF = 1e18;
+
+vector<vector<long long>> max1_val(S+1);
+vector<vector<long long>> min0_val(S+1);
+vector<vector<int>> timestamp_vec(S+1);
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(0);
+    
+    for (int d = 1; d <= S; d++) {
+        max1_val[d].resize(d, NEG_INF);
+        min0_val[d].resize(d, POS_INF);
+        timestamp_vec[d].resize(d, 0);
+    }
+
+    int test_case_id = 0;
+    int C;
+    cin >> C;
+    while (C--) {
+        test_case_id++;
+        int n;
+        cin >> n;
+        vector<int> p(n);
+        vector<long long> a(n);
+        for (int i = 0; i < n; i++) cin >> p[i];
+        for (int i = 0; i < n; i++) cin >> a[i];
+
+        vector<long long> dp0(n+1, 0);
+        vector<long long> dp1(n+1, 0);
+
+        for (int i = n; i >= 1; i--) {
+            int d_val = p[i-1];
+            long long a_i = a[i-1];
+            long long candidate0 = NEG_INF;
+            long long candidate1 = POS_INF;
+
+            if (d_val <= S) {
+                int r = i % d_val;
+                if (timestamp_vec[d_val][r] == test_case_id) {
+                    candidate0 = max1_val[d_val][r];
+                    candidate1 = min0_val[d_val][r];
+                }
+            } else {
+                for (int j = i + d_val; j <= n; j += d_val) {
+                    if (dp1[j] > candidate0) candidate0 = dp1[j];
+                    if (dp0[j] < candidate1) candidate1 = dp0[j];
+                }
+            }
+
+            if (candidate0 == NEG_INF) {
+                dp0[i] = a_i;
+            } else {
+                dp0[i] = max(a_i, a_i + candidate0);
+            }
+
+            if (candidate1 == POS_INF) {
+                dp1[i] = a_i;
+            } else {
+                dp1[i] = min(a_i, a_i + candidate1);
+            }
+
+            for (int d_prime = 1; d_prime <= S; d_prime++) {
+                int r = i % d_prime;
+                if (timestamp_vec[d_prime][r] != test_case_id) {
+                    timestamp_vec[d_prime][r] = test_case_id;
+                    max1_val[d_prime][r] = NEG_INF;
+                    min0_val[d_prime][r] = POS_INF;
+                }
+                if (dp1[i] > max1_val[d_prime][r]) {
+                    max1_val[d_prime][r] = dp1[i];
+                }
+                if (dp0[i] < min0_val[d_prime][r]) {
+                    min0_val[d_prime][r] = dp0[i];
+                }
+            }
+        }
+
+        for (int i = 1; i <= n; i++) {
+            cout << dp0[i];
+            if (i < n) cout << ' ';
+        }
+        cout << '\n';
+    }
+    return 0;
+}
+```
+
+### Explanation
+1. **Initialization**:
+   - Global arrays `max1_val`, `min0_val`, and `timestamp_vec` are initialized for residues of moduli up to \( \sqrt{n} \) (550 for \( n \leq 300,000 \)).
+2. **Processing Each Test Case**:
+   - For each test case, read \( n \), the array \( p \) (cell values), and \( a \) (score values).
+   - Initialize DP arrays `dp0` and `dp1` to store optimal scores for maximizer and minimizer turns.
+3. **DP Calculation**:
+   - For each cell \( i \) from \( n \) down to 1:
+     - **Small Steps (\( p_i \leq \sqrt{n} \))**: Query the best values from residue classes.
+     - **Large Steps (\( p_i > \sqrt{n} \))**: Iterate over multiples of \( p_i \) to find the best values.
+     - Compute `dp0[i]` and `dp1[i]` using the recurrence relations.
+     - Update residue classes for all moduli \( \leq \sqrt{n} \) with the current DP values.
+4. **Output**:
+   - Output `dp0[1..n]` for each test case, representing optimal scores for starting positions 1 to \( n \).
+
+This approach efficiently handles the game's optimal play using dynamic programming and sqrt decomposition, ensuring optimal performance within constraints.

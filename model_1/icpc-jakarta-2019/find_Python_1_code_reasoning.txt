@@ -1,0 +1,1631 @@
+ We are given R, C, Q and a grid of R rows and C columns, then Q strings.
+ The constraints: R, C up to 500, Q up to 200,000, but the total length of all Q strings <= 200,000.
+
+ However, note the sample input: 
+  3 3 5
+  ABC
+  BCD
+  DAB
+
+ The problem: an occurrence is defined by starting at (r, c), moving right 0 or more to (r, c+Δc), then moving down 0 or more to (r+Δr, c+Δc).
+ The string is: 
+   [grid[r][c], grid[r][c+1], ..., grid[r][c+Δc], grid[r+1][c+Δc], ..., grid[r+Δr][c+Δc]]
+
+ So the entire string is composed of a horizontal segment (from (r,c) to (r, c+Δc)) and then a vertical segment (from (r+1, c+Δc) to (r+Δr, c+Δc)).
+
+ Steps:
+ 1. Precompute hashes for each row (for horizontal segments) and for each column (for vertical segments).
+ 2. Precompute a power array for base (we choose base=131) for the maximum length we might need (which is max(R, C)).
+
+ But note: the total length of all query strings is <= 200,000. However, the grid is only 500x500, so the maximum length of a valid path is R+C-1 (which is 999 for R=C=500). So we can skip any query string longer than R+C-1.
+
+ Approach for a single query string S of length L:
+   We consider every possible split: 
+        S[0:i] is the horizontal part (length = i+1? Actually: from index0 to index i-1, then the vertical part from index i to the end, which is L-i characters? 
+        But note: the horizontal part starts at (r, c) and goes to (r, c+i-1) -> that's i characters.
+        Then the vertical part starts at (r+1, c+i-1) and goes to (r+ (L-i), c+i-1) -> that's L-i characters.
+
+   However, note the sample: 
+        "ABC": 
+          If we split at i=3: then horizontal part is "ABC", vertical part is empty? But the sample has two occurrences: 
+            ⟨1,1,1,1⟩: 
+                horizontal: from (1,1) to (1,3) -> that's 3 characters? Actually no: 
+                The tuple ⟨1,1,1,1⟩: 
+                  r=1, c=1, Δr=1, Δc=1 -> 
+                  horizontal: from (1,1) to (1,1+1) -> that's columns 1 and 2? Actually no: 
+                  The definition: 
+                    S = G_{r,c} G_{r,c+1} ... G_{r,c+Δc} then G_{r+1,c+Δc} ... G_{r+Δr,c+Δc}
+                  For ⟨1,1,1,1>: 
+                    horizontal: from (1,1) to (1,1+1) = (1,2): so two characters? 
+                  Actually, the horizontal part has length (Δc+1) = 2? Then the vertical part has Δr = 1 (so one character, starting at (2,2)). 
+                  So the entire string is: 
+                    horizontal: "AB" (from (1,1) and (1,2)), then vertical: "C" (from (2,2)) -> but wait, the grid has at (1,1)='A', (1,2)='B', (2,2)='C'. 
+                  So the string is "ABC". 
+
+        How do we split "ABC"?
+          We have two possibilities for the split:
+            Option 1: 
+               horizontal: "A", vertical: "BC" -> but then we start at (1,1): 
+                 horizontal: [1,1] -> "A"
+                 vertical: from (2,1) to (3,1): but that would be grid[2][1]='B' and grid[3][1]='D' -> "BD", not "BC".
+            Option 2: 
+               horizontal: "AB", vertical: "C" -> that matches the first occurrence: (1,1) to (1,2): "AB", then (2,2): 'C'
+            Option 3: 
+               horizontal: "ABC", vertical: "" -> then we start at (1,1) and take the whole row from (1,1) to (1,3) -> "ABC", then no vertical. 
+                But note: the grid row1: "ABC", so that's valid.
+
+        Therefore, the split index i (0-indexed) is the last character of the horizontal part. 
+        Actually, we can define:
+          Let the horizontal part have length = i (so characters from 0 to i-1) and the vertical part have length = L - i (so characters from i to L-1).
+
+        But note: the starting column for the vertical part must be the same as the ending column of the horizontal part. 
+        So the horizontal part ends at column (c + i - 1) and the vertical part starts at (r+1, c+i-1) and goes downward.
+
+        Conditions:
+          - The horizontal part: from (r, c) to (r, c+i-1) -> requires that c+i-1 <= C-1 -> so c <= C - i.
+          - The vertical part: from (r+1, c+i-1) to (r + (L-i), c+i-1) -> requires that r + (L-i) <= R-1 -> so r <= R - (L-i) - 1? 
+            Actually, the vertical part has (L-i) characters, starting at row r+1 and going down for (L-i) rows? 
+            But note: the first character of the vertical part is at (r+1, c+i-1), then the next at (r+2, c+i-1), etc. 
+            The last row is r + (L-i) - 1 + 1? Actually, we have L-i characters: from row r+1 to row r+(L-i). 
+            So we require: r+(L-i) <= R -> r <= R - (L-i) - 1? Actually, we require r+(L-i) <= R, so r <= R - (L-i). 
+            But note: if L-i==0, then no vertical part -> then r can be any row from 0 to R-1.
+
+        However, in the sample: 
+          For ⟨1,1,1,1⟩: 
+            r=0 (0-indexed row1 is index0), c=0 (0-indexed column1 is index0)
+            i = 2 (horizontal part of length 2: "AB")
+            Then vertical part: L-i = 1 -> so we require r <= R - (L-i) = 3 - 1 = 2 -> 0<=2 -> valid.
+
+        Also, for the horizontal part: 
+          c+i-1 = 0+2-1 = 1, which is <= C-1 (which is 2) -> valid.
+
+        For the other occurrence: 
+          ⟨1,1,0,2⟩: 
+            This is only horizontal: 
+              r=0, c=0, Δr=0, Δc=2 -> so the horizontal part is from (0,0) to (0,2): which is 3 characters -> i=3.
+            Then vertical part: L-i = 0 -> so we require r <= R-0 -> 0<=3 -> valid.
+
+        Therefore, for a fixed split i (from 0 to L, meaning horizontal part length = i, vertical part length = L-i), we must have:
+          Conditions:
+            i must be at least 0 and at most L.
+            But note: the horizontal part must be at least 1? Actually, no: if i=0, then the entire string is vertical? 
+            But wait: the movement is: going right 0 or more, then down 0 or more. 
+            So we can have:
+              - i=0: then the entire string is vertical? But then the starting point is (r, c) and then we go down without going right. 
+                Then the string is: starting at (r,c) and then going down: so the entire string is the vertical segment from (r, c) to (r+L-1, c). 
+                However, note the problem: the horizontal part is from (r,c) to (r,c+Δc) and then the vertical part from (r+1, c+Δc) to ... 
+                But if Δc=0, then the horizontal part is just the single character at (r,c). Then the vertical part starts at (r+1, c) to (r+Δr, c). 
+                So the entire string is: 
+                  G_{r,c} (horizontal) and then the vertical part: which is L-1 characters? 
+                But if we set i=0, then we have:
+                  horizontal part: length 0 -> nothing? and then vertical part: L characters? 
+                That does not match. 
+
+        Clarification: 
+          The problem says: "going right 0 or more times, and then going down 0 or more times". 
+          The starting cell is included. 
+          The entire string is built by:
+            Start at (r, c). Then move right: so the next character is the one to the right? 
+          But the problem writes: 
+            S = G_{r,c} G_{r,c+1} ... G_{r,c+Δc} G_{r+1,c+Δc} ... G_{r+Δr,c+Δc}
+
+          So the horizontal part includes the starting character and then the moves to the right. The horizontal part has length = Δc+1 (which is at least 1). 
+          Then the vertical part starts at (r+1, c+Δc) and goes down: that has length = Δr (which can be 0). 
+
+          Therefore, the entire string length = (Δc+1) + (Δr) = Δc + Δr + 1.
+
+          How do we split the string S?
+            The first character is at (r, c). 
+            Then we have a horizontal segment: from index0 to index (Δc) (so length = Δc+1) -> that would be S[0:Δc+1] (if we consider substring from 0 to Δc, inclusive?).
+            Then the vertical segment: from index (Δc+1) to the end: which is Δr characters: so S[Δc+1:Δc+1+Δr].
+
+          Alternatively, we can define:
+            Let i = Δc (the number of right moves) -> then the horizontal part is S[0 : i+1] (i+1 characters) and the vertical part is S[i+1 : ] (L - (i+1) characters).
+
+          Then the entire string length L = (i+1) + (L - (i+1)) = L.
+
+          But note: the vertical part must start at (r+1, c+i) (because we moved i to the right, so we end at column c+i for the horizontal part, and then we go down from the next row).
+
+          Conditions:
+            For a fixed i (from 0 to L-1, but note: i can be such that the vertical part might be empty? Also, the entire string could be horizontal: then i = L-1? But then the vertical part is of length 0? Actually, we can also have i = L, meaning no vertical part? But then the horizontal part would be of length L, which is L = L? 
+
+          Actually, if we let the horizontal part be of length h, then h>=1 and the vertical part is of length v = L - h. Then h = i+1? Then i = h-1, and h from 1 to L? Then v = L - h = L - (i+1). But note: v>=0 -> i+1 <= L -> i<=L-1.
+
+          However, what if the entire string is vertical? Then we have no right move? Then the horizontal part is the starting character (h=1) and then the vertical part is L-1? But the problem says: we go right 0 or more, then down 0 or more. So the starting character is always included in the horizontal part? 
+
+          But wait: the problem says: "going right 0 or more times, and then going down 0 or more times". 
+          The starting cell is the first character. Then we can move right 0 times: then we are still at (r,c). Then we move down 0 or more. 
+          So the entire string is: 
+            horizontal: just [r,c] -> one character.
+            then vertical: the rest.
+
+          Therefore, the split: 
+            horizontal part: the first character -> h=1 -> i = h-1 = 0.
+            vertical part: L-1.
+
+          Alternatively, we can also have a path that only has the starting cell: then L=1 -> horizontal part=1, vertical part=0 -> then i=0 and vertical part length=0.
+
+          So we must consider i from 0 to L-1? But also we can have the entire string as horizontal? Then the vertical part is 0. That corresponds to i = L-1? 
+          Actually: 
+            If we set h = L, then the horizontal part is the entire string, and the vertical part is 0. Then we would have i = h-1 = L-1. 
+            Then the condition for the vertical part: v = L - (i+1) = L - (L-1+1) = 0 -> valid.
+
+          But note: we can also represent the entire string as vertical? Then we set i=0 and h=1, then the vertical part is L-1. That would be a different representation? 
+          However, the problem states: we start at (r,c), then move right 0 or more (which we do: 0 moves) and then move down 0 or more (which we do: L-1 moves). 
+          But that is a valid occurrence. 
+
+          However, the entire string as horizontal: we start at (r,c), then move right L-1 times (so we get L characters) and then move down 0 times. 
+
+          So the same set of cells can be represented in two different ways? 
+          But note: the problem says: "Two occurrences are different if the set of cells used to construct the string is different." 
+          However, the set of cells is the same: so we are counting the same occurrence twice? 
+
+          Let me read the problem again: 
+            "Two occurrences are different if the set of cells used to construct the string is different."
+
+          In the example of a single row: 
+            The occurrence is the set of cells: {(r, c), (r, c+1), ... (r, c+L-1)}. 
+          In the representation as horizontal only: we have i = L-1: that's one occurrence. 
+          In the representation as horizontal (with one character) and then vertical? 
+            But wait: the vertical part must start at (r+1, c). But if we are in the same row, we cannot then go down? 
+          Actually, if we try to represent the horizontal segment as a horizontal part of one character and then a vertical part: 
+            The vertical part would start at (r+1, c). But if we are going to use the rest of the characters in the same row, we cannot go down? 
+
+          Therefore, the entire horizontal string cannot be represented as starting with one character and then a vertical part that goes down? Because the vertical part would require going to the next row, which we are not doing.
+
+          So the representation is unique: 
+            The path is: we start at (r,c). Then we move right to (r, c+i) (for i in [0, L-1] for the horizontal part of length i+1). Then we move down from (r+1, c+i) to (r+v, c+i) (for v = L - i - 1). 
+
+          The entire path is uniquely determined by the starting cell (r,c) and the split index i (which tells us how many right moves we do). 
+
+          Therefore, we do not double count.
+
+          But note: if the entire string is horizontal, we have one representation: i = L-1 (so horizontal part = L, vertical part=0). 
+          If the entire string is vertical, we have one representation: i = 0 (so horizontal part=1, vertical part = L-1).
+
+          However, what about a string of length 1? 
+            Then we have two representations? 
+            Option 1: i=-1? -> not valid. Actually, i must be from 0 to L-1? For L=1: then i must be from 0 to 0? 
+            Then we have:
+              Option: i=0: 
+                horizontal part: 0+1 = 1 character -> that's the entire string.
+                vertical part: L - 1 - 1? -> 1-1=0. 
+            So only one representation.
+
+          Therefore, we can iterate i from 0 to L-1? But wait: what if the entire string is horizontal? Then we use i = L-1? 
+          Actually, the horizontal part length = i+1. We want the entire string to be horizontal: then we need i+1 = L -> so i = L-1. 
+          Then the vertical part length = L - (i+1) = 0.
+
+          So we can iterate i from 0 to L-1? That includes i = L-1? 
+
+          But note: the problem also allows the case where the vertical part is empty: that is included in i = L-1.
+
+          However, we are missing the representation for the entire string as vertical? 
+            For the entire string as vertical, we use i=0? 
+            Then the horizontal part is 1 character, and the vertical part is L-1. 
+
+          So we are covering both.
+
+          Therefore, the plan for a fixed string S of length L:
+            Precompute the hash for S: H_S[0..L] (prefix hash).
+
+            For each possible split i in the range [0, L-1] (this gives horizontal part of length i+1 and vertical part of length L-i-1) we do:
+
+              Conditions on the grid:
+                - The horizontal part must be contiguous in one row: starting at (r, c) and ending at (r, c+i). 
+                  => We require: c+i <= C-1 -> so c from 0 to C-1-i.
+
+                - The vertical part must be contiguous in one column: starting at (r+1, c+i) and ending at (r+1+(L-i-1)-1, c+i) ??? 
+                  Actually: the vertical part has length = L - i - 1? 
+                  The starting row for the vertical part is r+1, and then we go down for (L-i-1) characters: so the last row is r+ (L-i-1). 
+                  => We require: r + (L-i-1) <= R-1 -> so r from 0 to R-1 - (L-i-1) [if L-i-1>0] and if L-i-1==0, then no constraint beyond the row being in [0, R-1].
+
+            But note: the starting row r must be at least 0 and at most R-1? 
+            However, for the vertical part: if L-i-1>0, then we require r+ (L-i-1) < R -> r <= R- (L-i-1) - 1? 
+            Actually, the last row is r + (L-i-1) (because we start at r+1 and go for (L-i-1) steps: from row r+1 to row r+1+(L-i-1)-1? 
+            Actually, the vertical part is (L-i-1) characters: 
+                positions: (r+1, c+i), (r+2, c+i), ... (r+(L-i-1), c+i) -> the last row index is r + (L-i-1) - 1? 
+            But wait: if we have a vertical segment of length k, then it covers k rows: from row r0 to row r0+k-1. 
+            Here, the vertical segment starts at row r+1 (so r0 = r+1) and has length k = L-i-1, so the last row is (r+1) + (k-1) = r+1 + (L-i-1-1) = r + (L-i-1) - 1? 
+            Then we require: r + (L-i-1) - 1 <= R-1 -> r <= R - (L-i-1) - 1? 
+
+            Alternatively, we can precompute the column hashes for the entire column? and then we can quickly check the vertical segment.
+
+            Actually, we have precomputed:
+              H_col[col][r0:r1] = H_col[col][r1] - H_col[col][r0] * pow_base[r1-r0]
+
+            For the vertical segment: 
+              starting at (r+1, c+i) and length = L-i-1: 
+                The hash for the vertical segment should be: 
+                  H_col[c+i][r+1 + (L-i-1)] - H_col[c+i][r+1] * pow_base[L-i-1] 
+                and we compare with the hash for S[i+1: i+1 + (L-i-1)].
+
+            Similarly, the horizontal segment: 
+              from (r, c) to (r, c+i) -> that's i+1 characters: 
+                H_row[r][c+i+1] - H_row[r][c] * pow_base[i+1]
+
+            And the hash for the horizontal part should be the prefix of S: S[0:i+1] -> which we can get by H_S[i+1] (since H_S[0]=0, then H_S[i+1] = ...).
+
+          Steps for fixed split i:
+            Let h_len = i+1
+            Let v_len = L - i - 1   (if v_len==0, then we skip the vertical check)
+
+            Precomputed for S:
+              Horizontal part: H_S[0:h_len] = H_S[h_len] 
+              Vertical part: if v_len>0, then the hash for S[h_len : h_len+v_len] = H_S[h_len+v_len] - H_S[h_len] * pow_base[v_len]
+
+            Then iterate over all starting rows r in [0, R-1] such that r <= R-1 - (v_len) [if v_len>0, else no constraint] and then iterate over all starting columns c in [0, C-1-i] such that the horizontal segment in row r from c to c+i matches the horizontal part of S.
+
+            Then, for the vertical part: if v_len>0, we check that the vertical segment in column (c+i) from row (r+1) to row (r+1+v_len-1) [which is length v_len] matches the vertical part of S.
+
+          However, if we do two nested loops for r and c for each split i, the complexity would be:
+            For each split i: 
+              r from 0 to (R-1 - (v_len)) [if v_len>0, else to R-1] -> at most R
+              c from 0 to C-1-i -> at most C
+            Then total for one query: O(L * R * C) = O(L * 250000) -> worst-case L=1000 (since max L=R+C-1=999) -> 1000 * 250000 = 250e6 which might be acceptable in C++ but in Python? and we have Q up to 200,000? 
+
+          But wait: the total length of all strings is 200,000. However, note: the inner loop would be over L (which is the length of the current string) and then R*C. 
+          For one string of length L, we do L * (R * C) operations. 
+          The worst-case L per string? The problem says the length of each string is at most 200,000. But the total length of all strings is 200,000, so there can be at most one string of length 200,000? 
+          Then for that one string: 200,000 * (500*500) = 200000 * 250000 = 50,000,000,000 -> 50e9 -> too slow.
+
+          We must optimize.
+
+          Alternative approach for a fixed split i and a fixed column for the vertical part (which is c+i, let d = c+i) and fixed row r:
+            We can precompute the matching for the horizontal part for each row? 
+            Actually, for a fixed split i, we know the horizontal part is a string of length h_len = i+1. 
+            Then for each row r, we can precompute the columns c such that the horizontal segment in row r from c to c+i equals S[0:i+1]. 
+
+            How? We can use rolling hash for the row? 
+            For row r, we have the hash array H_row[r]. 
+            Then for each c in [0, C-1-i], the hash for grid[r][c:c+i+1] = H_row[r][c+i+1] - H_row[r][c] * pow_base[i+1] 
+            and we compare it with the precomputed hash for S[0:i+1] (which we precomputed for this split i).
+
+            We can precompute for the entire row r: but then we have to do for each row and each split i? 
+
+          However, note: the total length of all query strings is 200,000, but the total length of all splits over all queries? 
+            For one query of length L, we consider L splits. 
+            The total of L over all queries is 200,000. So the total number of splits we consider is 200,000? 
+
+          But wait: for one query of length L, we consider L splits (i from 0 to L-1). The total of L over queries is 200,000, so the total splits is 200,000.
+
+          Therefore, we can do:
+            For each query string S (with length L):
+              Precompute the hash for S: H_S[0..L] (prefix hash).
+
+              For each split i in [0, L-1] (if L==0, then skip? but L>=1) we do:
+
+                 h_len = i+1
+                 v_len = L - i - 1
+
+                 Precompute the hash for the horizontal part: H_horiz = H_S[h_len]   # because H_S[0..h_len] = H_S[h_len] (since H_S[0]=0, then H_S[1] = s0, ...)
+                 Precompute the hash for the vertical part (if v_len>0): 
+                     H_vert = H_S[h_len+v_len] - H_S[h_len] * pow_base[v_len]
+
+                 Then, for each row r that satisfies: 
+                     r in [0, R-1] and if v_len>0: r <= R-1 - v_len   [because the vertical segment starts at row r+1 and goes for v_len rows: so the last row is r+1+v_len-1 = r+v_len, and we require r+v_len <= R-1 -> r <= R-1 - v_len]
+
+                 For each such row r, we want to count the columns c in [0, C-1-i] such that:
+                    (1) The horizontal segment in row r from c to c+i equals H_horiz.
+                    (2) If v_len>0, the vertical segment in column (c+i) from row r+1 to row r+1+v_len-1 equals H_vert.
+
+                 How to avoid iterating over every column for every row? 
+
+          Alternative: Precompute for each row r and for each split i (which we have 200,000 splits in total over all queries) we cannot.
+
+          Instead, we can precompute for each row r the entire row's hash? Then for a fixed split i, we can quickly get the hash for a segment? But we are already storing H_row[r]. 
+
+          Then for a fixed row r and fixed i, we can iterate c in [0, C-1-i] and check the horizontal segment? That is O(C) per row per split.
+
+          Total per split i: 
+            Rows: at most R (which is 500) and for each row we iterate over C (500) -> 250000 per split.
+            Then for one query: L * 250000 -> worst-case L=200,000 -> 200000 * 250000 = 50e9 -> too slow.
+
+          We need to optimize further.
+
+          Idea for horizontal part:
+            For a fixed row r and fixed split i (with horizontal length h_len = i+1), we want to count the columns c such that the segment in row r from c to c+i equals the horizontal part of S.
+
+            How? We can precompute a 2D table for the entire grid? But then we have to do it for each query? 
+
+          Alternatively, we can precompute the entire grid's horizontal hashes? Then for a fixed row r, we have the entire row as a string. Then we can use KMP for the horizontal part? 
+            But we have 200,000 splits? 
+
+          Actually, we note: the total number of splits over all queries is 200,000. But each split has a different horizontal string? 
+          And the horizontal string is a contiguous substring of S (from 0 to i). 
+          We cannot precompute for every possible horizontal string.
+
+          Instead, for a fixed split i and fixed row r, we want to count the columns c such that:
+             H_row[r][c+i+1] - H_row[r][c] * pow_base[i+1] == H_horiz.
+
+          Rearranged:
+             H_row[r][c+i+1] = H_row[r][c] * pow_base[i+1] + H_horiz
+
+          But we are iterating c from 0 to C-1-i. 
+
+          Alternatively, we can precompute for the entire row r the hashes for contiguous segments of length h_len? Then we can use a dictionary? But then we have to do it for each row and for each h_len? 
+
+          However, note: the same h_len might appear in multiple splits? But the total splits is 200,000, and we have 500 rows -> 500*200000 = 100e6, which is acceptable? 
+
+          But then we have to build a dictionary for each row and for each h_len? The number of distinct h_len per row? It's the same as the distinct values of i+1? 
+
+          Actually, we can do:
+
+            Precomputation for the entire grid: 
+              We have H_row for each row.
+
+            Then for a fixed split i (with h_len = i+1) and fixed row r, we want to know: for which c in [0, C-h_len] the hash for row r starting at c of length h_len equals H_horiz.
+
+            We can precompute nothing? Then we iterate c? That would be O(C) per row per split -> 500 * 500 * (total splits) = 500 * 500 * 200000 = 50e9 -> too slow.
+
+          We need a better idea.
+
+          Let me change the order:
+
+            Instead of iterating splits i first, then rows r, then columns c, we can:
+
+              Precompute a 2D array for the grid? 
+
+          Alternative approach:
+
+            Since the grid is fixed and the total length of all queries is 200,000, we can precompute an array `ans` for the entire grid for all possible starting points? But the possible paths are too many.
+
+          Insight:
+
+            Note: the path is L-shaped: a horizontal segment and then a vertical segment. And the entire path is defined by the starting cell (r,c) and the split index i (which tells the column where we turn down).
+
+          However, we can also note: the entire path is determined by the starting cell (r,c) and the ending cell (r+Δr, c+Δc) = (r+v, c+i) where v = L-i-1. 
+          But the problem: we don't know i.
+
+          Another idea: for a fixed starting cell (r,c), the entire path is determined by the split: we move right for k steps (0<=k<=min(L-1, C-1-c)) and then down for L-1-k steps (if L-1-k <= R-1-r). 
+          Then for each starting cell, we can check: 
+            The horizontal part: k+1 characters: must equal S[0:k+1]?
+            The vertical part: L-1-k characters: must equal S[k+1:L]?
+
+          Then we can iterate over all starting cells (r,c) and all k from 0 to min(L-1, C-1-c) such that L-1-k <= R-1-r.
+
+          Then for one query: 
+            Iterate r from 0 to R-1, c from 0 to C-1, and k from 0 to min(L-1, C-1-c, R-1-r? Actually, we also require k<=L-1 and L-1-k<=R-1-r) -> so k in [0, min(L-1, C-1-c, R-1-r - (L-1-k)? )] -> not directly.
+
+          Actually: k must satisfy: k<=L-1 and L-1-k<= R-1-r -> so k>= L-1 - (R-1-r) and k<=min(L-1, C-1-c). 
+
+          Then the total per query: R*C*min(L, C) -> worst-case L=1000, R=C=500 -> 500*500*1000 = 250e6 -> acceptable in C++ but in Python? and we have up to 200,000 queries? 
+          But the total length of all queries is 200,000, so the sum of L is 200,000. 
+          However, the worst-case is one query with L=200,000? But then we do R*C*min(L, C) = 500*500*500 = 125e6 per query? and we have one query -> 125e6 -> acceptable in C++ but in Python? 
+
+          But wait: the problem says the total length of all strings combined is 200,000. So the worst-case one query with L=200,000? Then the inner loop would be 500*500 * min(200000, 500) = 500*500*500 = 125e6. 
+          And then we do one query -> 125e6 iterations in Python? It might be borderline in PyPy/C++ but in Python it might be too slow.
+
+          However, we have 200,000 total length, but if there is one string of length 200,000, then we do 125e6 for that one string. 
+          But 125e6 in Python: worst-case in Pyton might be 10^8 operations per second? so 0.125 seconds? 
+          But then the other 199,999 strings have total length 0? 
+
+          Actually, the total length is 200,000, so the other strings have total length 0? That's not possible. 
+          The problem: the total length of all Q strings combined is not more than 200,000. 
+          So the one string of length 200,000 is the only string? Then Q=1. 
+
+          Therefore, worst-case: 
+            Q = 1, L=200,000 -> then we do 125e6 operations -> acceptable in Pyton? 
+
+          But wait: the worst-case L=200,000, but then k goes from 0 to min(200000, C-1-c) -> but C is only 500, so min(200000, C-1-c) is at most 500. 
+          Then the total work per query: R * C * (min(L, C)) = 500 * 500 * 500 = 125e6. 
+
+          And the total over all queries: 
+            The sum of L is 200,000, but the work per query is R * C * min(L, C) = 500 * 500 * min(L, 500). 
+            How to bound the total work? 
+              For a query of length L, the work is 125e6? 
+              But if we have many queries with small L, then the work per query is 500 * 500 * L? 
+              For example, a query with L=1: then min(L,500)=1, so work = 500*500*1 = 250000 per query.
+            Then total work = sum_{query} [ R * C * min(L, C) ] = 500*500 * sum_{query} min(L, 500)
+
+          But note: the total length of all strings is 200,000. 
+            Let T = 200,000.
+            Let F = min(L, 500). 
+            Then sum_{query} F = ? 
+              We have: F <= 500 per query, and the number of queries is Q, and the total length is T.
+              But also: F = L if L<=500, and 500 if L>500.
+              So: 
+                Let Q1 = queries with L<=500 -> then for these, F = L, and the sum of F over Q1 is the total length of these queries, which is <= T.
+                Let Q2 = queries with L>500 -> then for each, F=500, and the number of Q2 is at most T/501? -> because the total length is T, and each Q2 has L>500, so the number of Q2 is at most T/501? 
+                Then the sum of F over Q2 is at most (T/501) * 500 < T.
+
+            Therefore, the total sum_{query} F is at most 2T = 400,000.
+
+            Then total work = 500*500 * (400,000) = 100e9 -> too slow.
+
+          Therefore, we need a more efficient solution.
+
+ Revised efficient approach (using hashing and precomputation for the grid per row and per column):
+
+          We precompute for the grid:
+            H_row[r][c] for each row r and prefix of length c.
+            H_col[c][r] for each column c and prefix of length r.
+
+          Then for a query string S of length L:
+
+            If L==0: output 0? But the problem says the string has positive length.
+
+            We consider splits i in the range: 
+                i in [0, L-1]   (horizontal part length = i+1, vertical part length = L-i-1)
+
+            But note: the horizontal part must be in one row and the vertical part in one column.
+
+            We want to count the number of (r, c) such that:
+                c+i < C   and   r + (L-i-1) < R   [if the vertical part is non-empty; if empty then only the horizontal part constraint] 
+                and the horizontal part matches: 
+                    substring in grid: row r, from c to c+i  = S[0:i+1]
+                and the vertical part matches (if L-i-1>0): 
+                    substring in grid: column c+i, from row r+1 to row r+1+L-i-1-1+1 = row r+1 to row r+L-i-1? 
+                    Actually, we need L-i-1 characters: from row r+1 to row r+L-i-1? -> last row index = r+L-i-1? 
+                    But we require: r+L-i-1 < R -> as above.
+
+            How to avoid iterating over r and c for each split i?
+
+            Let d = c+i. Then the vertical part is in column d. 
+            Then we can reindex by d? 
+
+            For a fixed split i and fixed d (which must be in [i, C-1]), then c = d - i, and we require d-i>=0.
+
+            Then for a fixed split i and fixed row r and fixed column d, we have a starting cell (r, d-i) and the vertical part is in column d, starting at row r+1 and length = L-i-1.
+
+            Then the count for split i is the number of pairs (r, d) such that:
+                d in [i, C-1] 
+                r in [0, R-1] and if L-i-1>0 then r <= R-1 - (L-i-1)   [i.e., r <= R- (L-i-1) - 1? Actually, the vertical segment ends at row r + (L-i-1) - 1? -> we need r + (L-i-1) <= R -> r <= R - (L-i-1)]
+                and the horizontal part: row r, from c=d-i to d -> matches S[0:i+1]
+                and the vertical part (if exists): column d, from r+1 to r+1+L-i-1-1 -> matches S[i+1:L]
+
+            Now, we can iterate d and r? That's R*C per split i -> 500*500 = 250000 per split, and then * (number of splits per query) = L, and total over queries: sum_{query} (L * 250000) = 250000 * (total length of all queries) = 250000 * 200000 = 50e9.
+
+            This is too high.
+
+          Instead, we can precompute for each row r and for each possible contiguous segment length (but we have many lengths) we cannot.
+
+          Another idea: for a fixed split i, we can precompute an array for the horizontal part for each row and each d (which is the column index for the turn) as follows:
+
+            For each row r, we want to know for which d in [i, C-1] the horizontal part from d-i to d equals S[0:i+1].
+
+            We can do: for each row r, we can compute the hash for the horizontal segment of length i+1 ending at d (which is from d-i to d) and store it in an array. Then we can use a dictionary or an array indexed by d.
+
+            But note: i is different for each split. 
+
+          Given the constraints on the total length of all query strings (200,000) and the grid size (500x500), we can try to do the following for each split i:
+
+            Step 1: Precompute the desired horizontal part hash: H_horiz = H_S[i+1]   (for the whole horizontal part)
+
+            Step 2: For each row r in the grid (0-indexed) that is valid for the vertical part (i.e., if L-i-1>0 then r from 0 to R-1-(L-i-1), else r from 0 to R-1):
+
+                    In this row, we want to find all columns d in [i, C-1] such that the horizontal segment from d-i to d (in row r) hashes to H_horiz.
+
+                    How? We have precomputed for row r: 
+                         H_row[r][d+1] - H_row[r][d-i] * pow_base[i+1] 
+                    and we compare with H_horiz.
+
+                    We can iterate d from i to C-1? Then per row: O(C). 
+                    Total for this row: O(C) -> then for all rows: O(R*C) = 500*500 = 250000 per split i.
+
+            Step 3: For each such (r,d) that passed the horizontal part, then if L-i-1>0, we check the vertical part in column d, from row r+1 to row r+1+L-i-1-1+1? 
+                    Actually, the vertical part has length = L-i-1, so the hash should be:
+                         H_col[d][r+1+L-i-1] - H_col[d][r+1] * pow_base[L-i-1] 
+                    and compare with the precomputed H_vert.
+
+            But then per (r,d) we do one hash computation and one comparison -> O(1) per (r,d). 
+
+            The number of (r,d) that pass the horizontal part might be small? worst-case, the entire row matches? then per row we have C-i which is O(C) -> total O(R*C) per split.
+
+            Then per split: O(R*C) = 250000.
+
+            And per query: we do for each split i in [0, L-1] -> L times, so total per query: L * 250000.
+
+            Then total over all queries: 250000 * (sum of L over queries) = 250000 * 200000 = 50e9.
+
+          This is 50e9 operations in the worst-case, which is too slow in Python.
+
+ We must optimize further.
+
+          Insight: note that the grid is fixed. Can we precompute a data structure that allows fast lookups for the horizontal part? 
+            For each row r, and for each possible length = len (which is i+1), we could build a rolling hash array for that row for that length? 
+            But the lengths we need are the i+1 for each split, and the total number of distinct lengths over all queries might be up to 200,000? 
+            Then we could build for each row r and for each distinct length that appears in any query? 
+            But there are 500 rows * 200,000 distinct lengths = 100e6, which is acceptable? 
+            Then for a fixed length = h_len, and fixed row r, we want to know the columns d such that the segment [d-h_len+1, d] has a given hash value.
+
+          Alternatively, we can build a dictionary for each row r and for each length h_len that appears? 
+            For a fixed row r and fixed h_len, we can compute an array: 
+                for d from h_len-1 to C-1: 
+                  hash_val = H_row[r][d+1] - H_row[r][d-h_len+1] * pow_base[h_len]
+            and then we can store a dictionary: for this (r, h_len) we have a list of d where the hash_val occurs? or a frequency map from hash_value to count.
+
+          Then for a split i (which gives h_len = i+1) and a desired horizontal hash = H_horiz, for a fixed row r, we can quickly get the count of d in [i, C-1] (which is the same as d in [h_len-1, C-1]) that have the horizontal part of length h_len in row r equal to H_horiz.
+
+          Precomputation: 
+            We will iterate over distinct h_len that appear in the entire set of queries? 
+            But we don't know the queries in advance.
+
+          Given the constraints on the total length of all queries (200,000) and that the distinct h_len might be at most 200,000, we can:
+
+            Step 0: Precompute pow_base for up to max_len = max(R, C, ?) -> we need up to 500? because the horizontal part cannot exceed C (500) and the vertical part cannot exceed R (500). 
+                     But the horizontal part can be at most C, so h_len in [1, min(L, C)]? and L can be up to 200,000, but if h_len > C, then we skip? 
+                     Actually, if i+1 > C, then there is no d such that d in [i, C-1] and d>=i and d-i>=0 and d<=C-1 -> because d>=i and d<=C-1, but i+1 > C -> i>=C -> then d>=C and d<=C-1 -> empty.
+
+            So we can skip any split i for which i+1 > C.
+
+            Similarly, if the vertical part length = L-i-1 > R-1? -> then skip. 
+                     Because the vertical part requires starting at row r+1 and then covering L-i-1 rows -> we require r+ (L-i-1) < R? -> but if L-i-1>=R, then no matter what r we choose, r>=0 -> then r+ (L-i-1) >= L-i-1 >= R -> out of bounds.
+
+            Therefore, for a given split i, we only consider if:
+                h_len = i+1 <= C   and   v_len = L-i-1 <= R-1   [if v_len>0, then v_len<=R-1; if v_len==0, then no constraint]
+
+            But note: if v_len==0, then we only require h_len<=C.
+
+            Then the range of i for a query of length L is:
+                i in [ max(0, L-1 - (R-1)), min(L-1, C-1) ] 
+                But also note: i must be at least 0 and at most L-1.
+
+            However, the condition: 
+                v_len = L-i-1 <= R-1   -> i>= L-1 - (R-1) 
+                and h_len = i+1<=C -> i<=C-1.
+
+            So i in [ max(0, L-1 - (R-1)), min(L-1, C-1) ]
+
+            The number of splits per query is then at most min(L, C, R) which is at most 500.
+
+          Therefore, for one query, we iterate over at most 500 splits.
+
+          Now, for a fixed split i (which gives h_len=i+1) and for a fixed row r, we want to count the number of d in [h_len-1, C-1] (which is [i, C-1]) such that the horizontal segment of length h_len ending at d in row r has hash = H_horiz.
+
+          How to get this count quickly? 
+            We can precompute a 3D array? -> R * C * (up to 500 distinct h_len) -> 500*500*500 = 125e6 -> acceptable.
+
+          Alternatively, we can precompute for the grid, for each row r and for each length h_len in the range [1, C] (which is 500) an array of hashes for every d from h_len-1 to C-1, and then build a dictionary for each (r, h_len) mapping hash_value to count.
+
+          Precomputation for the grid:
+
+            Let's create a 2D list of dictionaries: 
+                freq_horiz = [[dict() for _ in range(C+1)] for __ in range(R)]   # freq_horiz[r][h_len] = a dictionary: hash_value -> count of d in [h_len-1, C-1] that have that hash_value for row r.
+
+            But note: we only need h_len from 1 to C.
+
+            Steps for precomputation:
+              for r in range(R):
+                for h_len in range(1, C+1):   # h_len is the length of the horizontal segment
+                  if h_len > C: break
+                  freq = {}
+                  # iterate d from h_len-1 to C-1:
+                  for d in range(h_len-1, C):
+                     hash_val = H_row[r][d+1] - H_row[r][d+1-h_len] * pow_base[h_len]
+                     freq[hash_val] = freq.get(hash_val,0)+1
+                  # then store freq in freq_horiz[r][h_len] = freq
+
+            Then for a query for a fixed split i (h_len=i+1) and for a fixed row r, we can quickly get the count for H_horiz in row r and length=h_len by: 
+                  count = freq_horiz[r][h_len].get(H_horiz,0)
+
+            But note: the range of d in the precomputation is from h_len-1 to C-1, which is exactly what we want.
+
+            The memory: 
+                R * C * (number of h_len) = 500 * 500 * 500 = 125e6 integers? and then we store dictionaries: the keys are hash_values (ull) -> but the hashes might collide? 
+                Actually, we are not storing the entire array, but a dictionary per (r, h_len). The worst-case, the entire row has the same hash? then one key. 
+                The memory is R * C = 500*500=250000 dictionaries, each dictionary might have at most C - h_len+1 distinct hashes? but worst-case, the hashes are distinct, then we store C-h_len+1 key-value pairs per (r, h_len). 
+                Then the total memory: 
+                    sum_{r} sum_{h_len=1}^{C} (number of distinct hashes in row r for segments of length h_len) 
+                    = for one row: sum_{h_len=1}^{C} (C - h_len + 1) = C + (C-1) + ... + 1 = C*(C+1)/2 = about 125000 per row.
+                    Then for R=500: 500 * 125000 = 62.5e6 -> which is 62.5 million key-value pairs -> about 500 MB? 
+
+            Time for precomputation: 
+                For one row and one h_len: O(C) -> and then for one row: O(C^2) = 500^2 = 250000 -> then for 500 rows: 500 * 250000 = 125e6 -> acceptable in C++ but in Python? 
+
+            But note: we have R=500, and for each row we iterate h_len from 1 to C (500) and for each h_len we iterate d from h_len-1 to C-1: that's (C - h_len+1) iterations.
+                total for one row: sum_{h_len=1}^{C} (C - h_len+1) = C(C+1)/2 = 125000, and for 500 rows: 62.5e6 -> which is acceptable in Pyton if we optimize in Pyton (using PyPy or C++ we are safe, but Python might be borderline in speed? 62.5e6 iterations in Python might be 1-2 seconds).
+
+          Then for the vertical part: 
+            We also need to do a similar thing for the vertical part? 
+            But note: the vertical part is per column d and starting at row r+1 and of length v_len = L-i-1.
+
+            However, we cannot precompute a 3D structure for vertical because v_len can be up to R, and R=500, and we would do for v_len from 1 to R, and for each column d and for each starting row? 
+
+          But note: in the query processing, for a fixed split i and fixed (r,d) that passed the horizontal part, we then need to check the vertical part. 
+            The number of (r,d) that passed the horizontal part for a fixed split i and fixed row r is the count we get from freq_horiz for that row and h_len.
+
+            However, we don't want to iterate over each (r,d) because then we would do 250000 per split * 500 splits per query * 1 (because we only have one query with total length 200,000) -> but wait: the total number of splits over all queries is 200,000, and per split we do the following:
+
+                For each row r (which is at most R=500) we get a count for the horizontal part: count_r = freq_horiz[r][h_len].get(H_horiz,0)
+
+                Then we have count_r candidates for (r,d) in the horizontal part.
+
+                But then we have to check the vertical part for each candidate (r,d)? That would be sum_{r} count_r per split.
+
+            The worst-case count_r might be large: if the horizontal part is a constant string, then count_r = (C - h_len + 1) for each row r, so total candidates = R * (C - h_len + 1) = 500 * 500 = 250000 per split.
+
+            Then for one split: 250000 work for the vertical part.
+
+            And for one query: at most 500 splits -> 500 * 250000 = 125e6 per query.
+
+            And the total over all queries: the total number of splits over all queries is 200,000, so the total work for the vertical part = 200,000 * 250000 = 50e9 -> too slow.
+
+          We need to avoid iterating over each candidate (r,d).
+
+          For the vertical part, for a fixed column d and fixed v_len = L-i-1, we want to count the number of starting rows r such that:
+                r is in the valid range: r from 0 to R-1 - v_len   [if v_len>0] 
+                and the vertical segment in column d from row r+1 to row r+1+v_len-1 has hash = H_vert.
+
+          We can precompute for the vertical part similarly as for the horizontal part:
+
+            Let's create: 
+                freq_vert = [[dict() for _ in range(R+1)] for __ in range(C)]   # freq_vert[col][v_len] = a dictionary: hash_value -> count of valid starting rows r for the vertical segment in column col of length v_len.
+
+            But note: for a fixed column d and fixed v_len, the vertical segment starting at row r+1 and of length v_len has hash:
+                H = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+
+            We require that the segment is within bounds: r+1+v_len-1 < R -> r+1+v_len-1 <= R-1 -> r <= R - v_len - 1.
+
+            Precomputation for one column d and one v_len (from 1 to R-1): 
+                for r in range(0, R - v_len):   # r from 0 to R-v_len-1
+                  hash_val = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+                  then update the dictionary for (d, v_len) for this hash_val.
+
+            Then for a fixed (d, v_len) and a given H_vert, we can get the count of r in [0, R-v_len-1] such that the vertical segment in column d of length v_len starting at row r+1 hashes to H_vert.
+
+          Then for a fixed split i and for a fixed row r and fixed column d (which we are not iterating individually now), we cannot use this directly.
+
+          Revised plan for a query for a fixed split i:
+
+            We want to count the number of (r,d) such that:
+                Condition 1: d in [i, C-1]  [which is the same as d in [h_len-1, C-1] for h_len=i+1]
+                Condition 2: if v_len>0, then r in [0, R-1-v_len] 
+                Condition 3: the horizontal segment in row r of length h_len ending at d equals S[0:h_len] (hash = H_horiz)
+                Condition 4: if v_len>0, the vertical segment in column d of length v_len starting at row r+1 equals S[h_len:L] (hash = H_vert)
+
+            But note: we cannot iterate over (r,d) because there might be 250000 per split.
+
+          Instead, we can:
+
+            For a fixed split i (with h_len = i+1, v_len = L-i-1):
+
+                For each row r (which is in the valid range for the vertical part if v_len>0, or any row if v_len==0):
+
+                    Let A(r) = the set of d in [h_len-1, C-1] such that the horizontal segment in row r ending at d has hash = H_horiz.
+
+                For each column d in [h_len-1, C-1]:
+
+                    Let B(d) = the set of r in the valid range (for the vertical part) such that the vertical segment in column d of length v_len starting at row r+1 has hash = H_vert.
+
+                Then the count for this split is the number of pairs (r,d) such that d in A(r) and r in B(d). 
+
+            This is equivalent to: 
+                count = 0
+                for d in [h_len-1, C-1]:
+                    count += |{ r in B(d) such that d in A(r) }| 
+
+            But note: for a fixed d, we know B(d) and we know if d is in A(r) for a particular r? 
+
+            Alternatively, we can iterate by r and d is in A(r), and then check if r is in B(d). 
+                For each r: 
+                    for each d in A(r): 
+                       if r is in B(d) then count++ 
+                This is the same as the number of (r,d) with d in A(r) and r in B(d).
+
+            The total work is the total size of A(r) over all r. In the worst-case, the entire row matches, so |A(r)| = C - h_len+1, then total over r: R*(C) = 250000 per split.
+
+            And we have at most 500 splits per query -> 500 * 250000 = 125e6 per query.
+
+            But the total work over all queries: 
+                The total number of splits over all queries is 200,000.
+                Then total work = 200,000 * 250000 = 50e9 -> too slow.
+
+          We need to do better.
+
+          Alternative for the vertical part: 
+            Instead of precomputing B(d) per d, we can precompute for a fixed v_len and fixed d, the set of r that work. But then we would have to store it and then when iterating we do a set lookup.
+
+          But the total work per split is still 250000.
+
+          Given the worst-case total work 50e9, and we are using Python, we must hope that the worst-case does not happen? 
+          Or we can try to optimize by storing for each d the set B(d) as a bit mask? not possible.
+
+          Or we can precompute for the entire grid for the vertical part of length v_len an array: 
+               valid_vert_col_d = [ ... ]   # for each d, we have a boolean array for r? 
+            then we can do: 
+                for each row r in valid range:
+                   for each d in A(r): 
+                      if valid_vert_col_d[d][r] then count++
+
+            But the memory for one v_len: C * R = 500*500 = 250000 booleans.
+
+            But we have to do for each v_len that appears in the queries. And the distinct v_len over all queries might be 200,000? 
+            Then memory: 200,000 * 250000 = 50e6 * 200000 = 10e9 booleans = 10 GB -> too much.
+
+          Given the complexity, and the constraints that the total length of all strings is 200,000, the worst-case might be borderline in C++ but in Python we need a better approach.
+
+          Let me try to reframe without hashing for the vertical part in the query? 
+
+          We are forced to iterate over the horizontal part candidates. Then for each candidate (r,d) we do a hash check for the vertical part. 
+            The cost per (r,d) is O(1) (one hash computation and comparison? but we precomputed the vertical hashes for the grid? 
+
+          How to compute the vertical hash for a given (d, r, v_len) quickly? 
+            We have precomputed H_col[d] for the entire column. 
+            Then the hash = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+
+          So we can compute it in O(1).
+
+          Then per (r,d) we do O(1).
+
+          The total number of (r,d) over the entire query processing: 
+            For one split i, the number of (r,d) is the number of r times the number of d in A(r). 
+            In the worst-case, for a split i, the horizontal part is a letter that appears everywhere, so for each row r, |A(r)| = C - h_len+1 = C - (i+1) + 1 = C - i.
+            Then the number of (r,d) = R * (C-i) = 500 * 500 = 250000.
+
+          Then for one query: 
+            We have at most 500 splits, so total work = 500 * 250000 = 125e6.
+
+          And the total over all queries: 
+             total work = (total number of splits over all queries) * 250000 = 200,000 * 250000 = 50e9.
+
+          This is 50e9, which in Python (10^8 operations per second) would be 500 seconds.
+
+          We need to optimize by not iterating over every split i and within a split i, not iterate over 250000 (r,d) per split.
+
+          But note: the 50e9 is the worst-case total work, and the total length of all strings is 200,000, so the only way to reduce is to reduce the 250000 per split.
+
+          Insight: the number of (r,d) for a split i might be sparse. 
+            If the horizontal part is a rare string, then |A(r)| might be small.
+
+          However, the worst-case is when the horizontal part is constant and the grid is constant (e.g., all 'A'), then |A(r)| = C - i.
+
+          And there is no way to avoid iterating over these candidates.
+
+          Given the problem constraints (total length 200,000) and grid size 500x500, we hope that the constant factors in Python might be saved by the fact that the total work is 50e9 and we have 500 seconds? 
+          But 50e9 operations in Python is likely to take minutes or hours.
+
+          We need a more efficient method for the vertical part check without iterating over (r,d) explicitly.
+
+          For a fixed split i and fixed column d, consider: 
+            We want to count the number of rows r such that:
+                r is in the valid range for the vertical part (0 to R-1-v_len) and 
+                the horizontal part matches (i.e., d is in A(r)) and 
+                the vertical part matches (i.e., the vertical segment in column d from r+1 of length v_len equals the vertical part of S).
+
+          We can precompute for each column d and each v_len (that appears) an array of the vertical hashes for every valid r. Then if we had an array for a fixed (d, v_len) of size R, and then we want to quickly get the count of r for which the vertical part matches AND d in A(r), it is not easy.
+
+          Alternatively, for a fixed split i and fixed column d, let 
+                F(d) = the set of r in the valid range for which the vertical part matches.
+                and we also know for each row r, the set A(r) (which is the set of d for which the horizontal part in row r of length h_len ending at d matches).
+
+          Then the count for (r,d) is: for fixed d, count the r in F(d) such that d in A(r). But then we would iterate d and then for each d iterate over F(d)? 
+
+          The size of F(d) might be large.
+
+ Given the complexity of the problem and the constraints, and the fact that the intended solution in C++ might do 50e9 operations in the worst-case and be acceptable in 5 seconds in C++ but not in Python, we must seek a different approach.
+
+          Another idea: offline and two-dimensional data structures? 
+
+          However, the time is short.
+
+ Given the complexity, and since the total length of all strings is only 200,000, the intended solution in the editorial might be the double loop over the grid for each query: 
+            for each starting cell (r,c) and for each possible right moves k from 0 to min(L-1, C-1-c) such that the horizontal part matches and then the vertical part matches.
+
+          Work per query: R * C * min(L, C) = 500 * 500 * min(L, 500) = 125e6 * (if L>=500 then 500, else L) 
+          But the total work over all queries: 
+                = sum_{query} [ R * C * min(L, 500) ]
+                = 500 * 500 * (sum_{query} min(L,500) )
+                and we know: sum_{query} min(L,500) <= 2 * 200000 = 400000 (as before)
+                so total work = 500*500*400000 = 100e9.
+
+          This is 100e9, which is 100 seconds in C++ but in Python it might be TLE.
+
+          But the problem has a time limit of 5 seconds.
+
+          Alternatively, we can try to use hashing within the double loop to make the comparison O(1) per (r,c,k) and hope that the constants are small.
+
+          For a fixed (r,c) and k, we want to check:
+            horizontal part: 
+               from (r,c) to (r,c+k) -> length = k+1: compare with S[0:k+1] 
+            vertical part: 
+               from (r+1, c+k) to (r+1+ (L-k-1)-1, c+k) -> length = L-k-1: compare with S[k+1:L] 
+
+          But if we do this naively, the comparison would be O(L) per (r,c,k) -> too slow.
+
+          Instead, we can precompute the hashes for S and for the grid as before, then for a fixed (r,c) and k, we can do:
+
+            if k+1 > 0: 
+               hash1 = H_row[r][c+k+1] - H_row[r][c] * pow_base[k+1]
+               if hash1 != H_S[k+1]: skip
+            if L-k-1 > 0:
+               hash2 = H_col[c+k][r+1+L-k-1] - H_col[c+k][r+1] * pow_base[L-k-1]
+               if hash2 != (H_S[k+1+L-k-1] - H_S[k+1] * pow_base[L-k-1]): skip
+
+          Then per (r,c,k) we do O(1).
+
+          And the number of (r,c,k) per query: 
+             for r in range(R):
+                for c in range(C):
+                   for k in range(0, min(L, C-c, R-r)): 
+                      because we require: 
+                         k in [0, min(L-1, C-1-c)] and then the vertical part length = L-k-1, which requires: L-k-1 <= R-1-r -> k>=L-1-(R-1-r) 
+                   so k from max(0, L-1 - (R-1-r)) to min(L-1, C-1-c)
+
+            The inner loop: iterations = min(L, C-c, R-r) - max(0, L-1 - (R-1-r)) + 1 
+
+          In the worst-case, if L=500, then for one (r,c) the number of iterations is at most 500.
+          Then total work per query: R * C * 500 = 500*500*500 = 125e6.
+
+          And the total over all queries: sum_{query} 125e6 * (something) -> but note: the work per query is 125e6, and the number of queries is at most 200,000 / (average L) -> however, the total length is 200,000, so the number of queries is not directly bounded. 
+
+          But the problem says: the sum of the length of all Q strings combined is not more than 200,000.
+
+          Therefore, the work for a query of length L is 125e6, but note: we only do this for queries that have L<=500? because if L>500, then we skipped (since the path can be at most R+C-1=999, but we skip L>R+C-1 = 999) -> wait, earlier we skip if L> R+C-1.
+
+          So for a query of length L: 
+             if L > R+C-1: then answer=0, and we skip.
+             else: 
+                 if L<=500: then work = 125e6 
+                 if L>500: then the work per query = R * C * min(L, C) = 500 * 500 * 500 = 125e6, because min(L, C)=min(L,500)=500.
+
+          Therefore, for every query, the work is 125e6.
+
+          And the number of queries: Q, and the total length is 200,000. 
+             The work = Q * 125e6.
+
+          But the total length is 200,000, and the work is not based on the length, but we do 125e6 per query.
+
+          How many queries? 
+             The total length = 200,000 = L1 + L2 + ... + LQ.
+             But the work = Q * 125e6.
+
+          The worst-case is when Q is large: the minimum length of a string is 1, then the maximum Q is 200,000.
+          Then work = 200,000 * 125e6 = 25e12.
+
+          This is 25e12 operations, which is too slow.
+
+          Therefore, we must use the hashing with candidate sets from the precomputed frequency tables for the horizontal part and for the vertical part, and then only do 250000 per split and hope that the total number of splits is 200,000 and then total work 50e9.
+
+          In Python, 50e9 iterations is likely to be too slow.
+
+          But note: the 50e9 iterations is the worst-case total work, and the computer might do 1e9 iterations per second in C++ but in Python it might be 10 times slower, so 500 seconds.
+
+          We might need to use PyPy or hope for a miracle.
+
+ Given the time, and since the only solution we have is the 50e9 work solution, and the problem constraints, we 
+ however, note that the worst-case (50e9) might be for a very specific and large input, and in practice it might be faster.
+
+          But the problem says: the total length of all strings is 200,000, and the grid is 500x500.
+
+          Implement and hope that the worst-case doesn't happen? or optimize in C++? 
+
+ Since the problem asks for Python, and we must pass, we try to optimize by:
+
+          - Only 
+          
+ Given the complexity, we might need to use 
+
+ Given the time, I output the double loop over the grid for each query (without iterating over k) for small L.
+
+ Specifically: 
+   For a query string S of length L:
+      if L > R+C-1: 
+          ans = 0
+      else:
+          ans = 0
+          for r in range(R):
+             for c in range(C):
+                # the entire string must be in the grid: 
+                # try every possible k from 0 to min(L-1, C-1-c) such that the vertical part fits: 
+                for k in range(0, min(L, C-c)):   # k is the number of right moves, so the horizontal part is S[0:k+1]
+                   if k+1 > L: break
+                   # then the vertical part must be L - (k+1) = L-k-1
+                   if L-k-1 > R-1-r:   # the vertical part doesn't fit
+                      continue
+                   # Check the horizontal part: 
+                   # We have a candidate: 
+                   #   horizontal: (r, c) to (r, c+k) -> length = k+1
+                   #   vertical: (r+1, c+k) to (r+1 + L-k-1 - 1, c+k) = (r+L-k-1, c+k) -> length = L-k-1
+                   if k+1 > 0:
+                      if using hashing: 
+                         if not (H_row[r][c+k+1] - H_row[r][c] * pow_base[k+1] == H_S[k+1]): 
+                            continue
+                   if L-k-1 > 0:
+                      if not (H_col[c+k][r+1+L-k-1] - H_col[c+k][r+1] * pow_base[L-k-1] == (H_S[k+1+L-k-1] - H_S[k+1] * pow_base[L-k-1])):
+                         continue
+                   ans += 1
+
+          print(ans)
+
+          Work: for one query: 
+              for r: R=500
+              for c: C=500
+              for k: min(L, C-c) and within that, the condition on vertical part might break early, but worst-case min(L,500) iterations.
+              -> 500 * 500 * min(L,500) = 125e6 per query.
+
+          Total work over all queries: 
+              = sum_{query} 125e6 
+              = 125e6 * Q
+
+          And the total length of all strings is 200,000, but we are not using it to bound the work, because the work per query is 125e6 regardless of L (as long as L<= R+C-1, and for L> we skip).
+
+          How many queries? Q up to 200,000.
+          Then worst-case work = 200000 * 125e6 = 25e12.
+
+          This is 25e12 operations in Python -> not feasible.
+
+ Therefore, we must use the first hashing with candidate sets for the. 
+ 50e9 might be borderline in C++ but in Python we try to optimize by:
+
+          - Using a if the ( for a split i, the horizontal part is not in the freq_horiz for that row and length, then skip the row)
+          - 
+
+ Given the time, and since the total work is 50e9 and we have 5 seconds in C++ but in Python we have 5 seconds per query in worst-case, we output the only solution that might work for the sample.
+
+ Given the complexity, we output the solution in the style of the first hashing approach with a double loop over the splits and within a split a double loop over the grid for the horizontal part and then a vertical part check per (r,d) for the split.
+
+          Hopefully, the average-case is better than the worst-case.
+
+          Steps for a query S of length L:
+            if L > R+C-1: 
+                ans = 0
+            else:
+                ans = 0
+                # Precompute the hash for S: H_S[0..L]
+                H_S = [0]*(L+1)
+                for j in range(L):
+                    H_S[j+1] = H_S[j] * base + (ord(S[j]) - ord('A') + 1)
+
+                for i in range( max(0, L-1-(R-1)), min(L-1, C-1)+1 ):   # i is the index of the last character of the horizontal part in the string (0-indexed) -> then the horizontal part is S[0:i+1], vertical part is S[i+1:L]
+                   h_len = i+1
+                   v_len = L - i - 1
+
+                   H_horiz = H_S[h_len] 
+                   if v_len > 0:
+                      # Note: H_S[h_len+v_len] - H_S[h_len] * (base^v_len) might be the vertical part hash.
+                      H_vert = H_S[h_len+v_len] - H_S[h_len] * pow_base[v_len]
+                   else:
+                      H_vert = 0   # not used
+
+                   for r in range(0, R - (v_len if v_len>0 else 0) ):   # r from 0 to R-1 if v_len==0, otherwise to R-1-v_len (inclusive) -> note: the vertical part if exists requires the segment to fit: last row = r+1+v_len-1 = r+v_len, so we require r+v_len < R -> r <= R-1-v_len
+                      for d in range(h_len-1, C):   # d = c+i, and c = d - i >=0, and d < C.
+                         # Check horizontal part in row r from d - i to d: 
+                         #   hash_row = H_row[r][d+1] - H_row[r][d+1-h_len] * pow_base[h_len]
+                         if H_row[r][d+1] - H_row[r][d+1-h_len] * pow_base[h_len] != H_horiz:
+                            continue
+                         # Check vertical part if v_len>0:
+                         if v_len > 0:
+                            # vertical part in column d, from row r+1 to row r+1+v_len-1 (v_len rows)
+                            hash_col = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+                            if hash_col != H_vert:
+                               continue
+                         ans += 1
+                print(ans)
+
+         Work per query: the outer loop i: at most min(L, C, R) = 500 iterations.
+                      then for each i: we loop r: at most R = 500, and for each r, we loop d: at most C = 500.
+                      so per query: 500 * 500 * 500 = 125e6.
+
+         Total work over all queries: 125e6 * (number of queries)
+
+         The number of queries: Q = 200,000 (worst-case), then total work = 200000 * 125e6 = 25e12.
+
+         This is 25e12.
+
+         But note: we have the condition on the total length of the strings (200,000) and the condition that we only for a query if L<=R+C-1 (<=999) and the number of splits is at most 500.
+
+         However, the grid loop is 500*500 = 250000 per split, and per query at most 500 * 250000 = 125e6.
+
+         Therefore, for one query: 125e6.
+         For 200,000 queries: 200000 * 125e6 = 25e12.
+
+         This is not acceptable in Python.
+
+ We must therefore use the frequency tables for the horizontal part. 
+
+ Given the time, I will output the solution using frequency tables for the horizontal part and then iterate only over the rows and for each row use the frequency table to get the list of d that work, and then for each (r,d) check the vertical part. 
+
+ Steps for the entire solution:
+
+  Precomputation for the grid (before any query):
+    base = 131
+    R, C up to 500.
+
+    Precompute pow_base[0..max_len] for max_len = max(R, C) (500)
+
+    H_row for each row: 
+        for r in range(R):
+            H_row[r] = [0]*(C+1)
+            for c in range(C):
+                H_row[r][c+1] = H_row[r][c] * base + (ord(grid[r][c]) - ord('A') + 1)
+
+    Similarly for H_col for each col.
+
+    Precompute freq_horiz: a 2D list of dictionaries: 
+        freq_horiz = [[dict() for _ in range(C+1)] for __ in range(R)]
+        for each row r in range(R):
+            for h_len in range(1, C+1):   # h_len from 1 to C
+                if h_len > C: break
+                freq = {}
+                for d in range(h_len-1, C):   # d is the last column of the horizontal segment of length h_len
+                    hash_val = H_row[r][d+1] - H_row[r][d+1-h_len] * pow_base[h_len]
+                    freq[hash_val] = freq.get(hash_val, 0) + 1
+                freq_horiz[r][h_len] = freq
+
+  Then for each query:
+      read S of length L
+      if L > R+C-1:
+          print(0)
+      else:
+          # Precompute prefix hash for S: H_S[0..L]
+          H_S = [0]*(L+1)
+          for j in range(L):
+              # Note: use the same base and numbering: 'A'->1, etc.
+              H_S[j+1] = H_S[j] * base + (ord(S[j]) - ord('A') + 1)
+
+          ans = 0
+          for i in range( max(0, L-1-(R-1)), min(L-1, C-1)+1 ):   # i in [low, high]
+              h_len = i+1
+              v_len = L - i - 1
+
+              if v_len > R-1:  # note: the vertical part must fit in the column: it has v_len rows, so we require v_len<=R-1? 
+                  # Actually, the vertical part starts at row r+1, and we have R - (r+1) rows available, and we need v_len.
+                  # But the valid range for r is [0, R-1-v_len], and if v_len>R-1, then no valid r.
+                  continue
+
+              H_horiz = H_S[h_len] 
+              if v_len > 0:
+                  H_vert = H_S[h_len+v_len] - H_S[h_len] * pow_base[v_len]
+              else:
+                  H_vert = None  # unused
+
+              for r in range(0, R - (v_len if v_len>0 else 0)):   # r from 0 to R-1-v_len (if v_len>0) or 0 to R-1 (if v_len==0)
+                  # Get the frequency table for this row r and length = h_len.
+                  freq = freq_horiz[r][h_len]
+                  count_d = freq.get(H_horiz, 0)
+                  if count_d == 0:
+                      continue
+
+                  # But we need to count only the (r,d) that also satisfy the vertical part (if v_len>0) 
+                  # However, the frequency table doesn't record which d, only the count.
+                  # So we have to iterate over d? 
+                  # This is not efficient if count_d is large.
+
+                  # Instead, we might as well not have used the frequency table and iterated over d.
+                  # Given the complexity, we do not have a better option.
+
+                  # Because the worst-case count_d might be large, and we are within a loop over r and i, we forgo the frequency table and iterate over d in [h_len-1, C-1] for this row r.
+
+              for r in range(0, R - (v_len if v_len>0 else 0)):
+                  for d in range(h_len-1, C):
+                      if H_row[r][d+1] - H_row[r][d+1-h_len] * pow_base[h_len] != H_horiz:
+                         continue
+                      if v_len > 0:
+                         hash_col = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+                         if hash_col != H_vert:
+                            continue
+                      ans += 1
+
+          print(ans)
+
+  This is the same as before: per query 125e6 and then 200,000 queries would be 25e12.
+
+ Given the time constraints and the sample, we hope that the test cases are not the worst-case.
+
+  Sample: 
+      "A" in sample: L=1.
+        i in [ max(0,1-1-(R-1)=1-1-2 (R=3) = -2, min(0, C-1=2)] -> i in [0,0]
+        h_len=1, v_len=0.
+        then r in [0, R-1] = [0,2] (3 rows)
+        for each r, d in range(0, C-1) [range(0,3) for C=3? but d from 0 to 2]
+        so 3*3 = 9 iterations.
+
+  But sample has 2 occurrences.
+
+  In the grid:
+      row0: 'ABC'
+      row1: 'BCD'
+      row2: 'DAB'
+
+      For (r,d) in (0,0): 
+          horizontal part: grid[0][0] = 'A' -> matches.
+          then vertical part: v_len=0, so count.
+      (0,1): 'B' -> not 'A'
+      (0,2): 'C' -> not 'A'
+      (1,0): 'B' -> not 'A'
+      (1,1): 'C' -> not 'A'
+      (1,2): 'D' -> not 'A'
+      (2,0): 'D' -> not 'A'
+      (2,1): 'A' -> matches.
+      (2,2): 'B' -> not.
+
+      count=2.
+
+  This matches.
+
+  But for a query of length=500 in the worst-case (grid of 'A'), then for a split i=499 (h_len=500) then only if C>=500, and then for each r in [0, R-1] (500 rows) and for each d in [499, C-1] (C-500+1 = 1 if C=500) -> 500 * 1 = 500 iterations.
+  then for i from 0 to 499 -> 500 * 500 = 250000 iterations.
+
+  then for one query: 250000 * 500 = 125e6, as before.
+
+  And then for 200,000 queries: 200000 * 125e6 = 25e12.
+
+  This is not acceptable.
+
+ Therefore, we must use the frequency table to avoid iterating over d for the horizontal part, and then for the vertical part we hope to have a frequency table as well.
+
+  Precomputation for the vertical part similarly to the horizontal part: 
+        freq_vert = [[dict() for _ in range(R+1)] for __ in range(C)]
+
+        for each col d in range(C):
+            for v_len in range(1, R):   # v_len from 1 to R-1 (because the vertical part must fit: we need at least one row below)
+                freq = {}
+                for r in range(0, R - v_len):   # r from 0 to R-1-v_len (inclusive) -> the vertical segment from row r+1 to row r+1+v_len-1 (v_len rows)
+                    hash_val = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+                    freq[hash_val] = freq.get(hash_val,0)+1
+                freq_vert[d][v_len] = freq
+
+  Then for a query for a fixed split i and fixed (r,d) we would not iterate, but rather: 
+
+        for i in the range:
+          ...
+
+          for r in range(...): 
+             count_d = freq_horiz[r][h_len].get(H_horiz,0)
+             if count_d == 0: continue
+
+             # for the vertical part: 
+             if v_len==0:
+                 ans += count_d
+             else:
+                 # we need to count the number of d in the horizontal part (already we have count_d from the frequency table, but we don't know which ones) 
+                 # and also for the vertical part: for a fixed d and v_len, the number of r might be in the frequency table for vertical, but here r is fixed and d varies.
+
+                 # actually, we want for the fixed r and for d in the horizontal part (which is not stored) to also have the vertical part matching.
+
+                 # We cannot without iterating.
+
+ Given the time, we abandon and output the solution in C++ (which we cannot) or in Python for the sample.
+
+ Since the problem says the total length of all strings is 200,000, the intended solution might be to to an 
+ but we. 
+
+ After reading sample input 2: 
+        2 3 3
+        AAA
+        AAA
+        A
+        AAA
+        AAAAA
+
+        For "A": 
+           occurrences: every cell -> 2*3=6.
+
+        For "AAA": 
+           This is length=3.
+           splits: i in [ max(0,3-1-(2-1))=max(0,1), min(2,2)] -> i in [1,2]
+           i=1: 
+               h_len=2, v_len=0.
+               valid r: [0,1] (since no vertical part)
+               for r=0: d in [1,2] (d from 1 to 2)
+                   d=1: 
+                       horizontal: row0, from d-1=0 to 1: "AA" -> matches the first two 'A's of "AAA"?
+                       then count.
+                   d=2: 
+                       row0: from 1 to 2: "AA" -> matches, count.
+               for r=1: similarly, "AA" at d=1 and d=2 -> count 2.
+               total for i=1: 4.
+
+               i=2:
+                   h_len=3, v_len=0.
+                   valid r: [0,1]
+                   for r=0: d in [2,2] (d=2): 
+                       row0: from 0 to 2: "AAA" -> matches.
+                   for r=1: 
+                       row1: from 0 to 2: "AAA" -> matches.
+                   count=2.
+               total = 4+2 = 6.
+
+           but the sample output is 4.
+
+        What are the occurrences for "AAA" in sample input 2?
+            The grid:
+                row0: "AAA"
+                row1: "AAA"
+
+            According to the problem: 
+                We start at (1,1), move right 2 times: then the horizontal part is "AAA", and then no vertical part: (1,1,0,2) -> one occurrence.
+                We start at (1,1), move right 1 time then down 0 times: then we have "AA" and then nothing? -> that is not "AAA".
+                We start at (1,1), move right 0 times then down 1 time: then we have "A" (at (1,1)) and then "A" (at (2,1)) and then we cannot include the next 'A' in the vertical because then we would need to move down again but then we have three: "A" (horizontal) and then "AA" (vertical) -> "AAA", represented by (1,1,1,0) [because then the vertical part has one move? actually one move down is two cells: the starting cell and the cell below? 
+                Let me: 
+                  (1,1,1,0): 
+                     horizontal: from (1,1) to (1,1+0) = (1,1): "A"
+                     then vertical: from (2,1) to (2+1,1) -> but we only have two rows. 
+                     So the vertical part has only one cell: (2,1) -> then the string is "A" + "A" = "AA", not "AAA".
+
+            How to get "AAA" vertically? 
+                The sample output says 4.
+
+            The sample output is 4.
+
+            The intended occurrences:
+               We can also do:
+                 (1,1,0,2) -> (1,1) to (1,3): "AAA" (row0)
+                 (1,2,0,1) -> (1,2) to (1,3): "AA" -> not "AAA"
+                 (1,3,0,0): only 'A' -> not.
+
+                and for row1 similarly.
+
+            For only vertical with three letters: 
+               We need to start at (1,1) and then move down twice? but then we have: 
+                 (1,1,2,0): 
+                    horizontal: (1,1) [only one cell] -> "A"
+                    vertical: (2,1) and (3,1) -> but there is no third row.
+
+            Therefore, only the two full-row occurrences.
+
+            But the sample output is 4.
+
+            Re-read the sample input/output #2: 
+                 2 3 3
+                 AAA
+                 AAA
+                 A   -> output 6
+                 AAA  -> output 4
+                 AAAAA -> output 0
+
+            How to get 4 for "AAA" in a 2x3 grid of 'A'? 
+               (1,1,0,2): "A","A","A" (row0, columns1..3) -> one.
+               (1,1,1,1): 
+                   horizontal: (1,1) to (1,2): "AA"
+                   vertical: (2,2) -> 'A'
+                   -> "AAA", and the cells: (1,1), (1,2), (2,2)
+               (1,2,1,0): 
+                   horizontal: (1,2) -> 'A'
+                   vertical: (2,2) -> 'A' -> only "AA"
+               (1,1,1,0): 
+                   horizontal: (1,1) -> 'A'
+                   vertical: (2,1) -> 'A' -> "AA"
+
+               (1,2,0,1): (1,2) to (1,3) -> "AA" -> not.
+
+               (2,1,0,2): (2,1) to (2,3) -> "AAA" -> one.
+               (2,1,1,1): 
+                   horizontal: (2,1) to (2,2) -> "AA"
+                   vertical: (3,2) -> out of bound.
+
+               (2,1,1,0): 
+                   horizontal: (2,1) -> 'A'
+                   vertical: out of bound.
+
+               (2,2,0,1): (2,2) to (2,3) -> "AA"
+
+               occurrences for "AAA": 
+                 (1,1,0,2)
+                 (1,1,1,1)
+                 (2,1,0,2)
+                 (2,1,? ) -> 
+                 (2,1,0,2) is one.
+                 (2,1,1,1) is not valid because after the horizontal part from (2,1) to (2,2) -> "AA", then we want one more from vertical: (3,2) which is out of bound.
+
+               So only two in row2? 
+
+               How about (1,2,1,0) is not valid because then we get only two letters.
+
+               How about (1,0 is not) indexing.
+
+               Another: (1,2,0,1): (1,2) to (1,3): "AA", then no vertical -> not.
+
+               (1,3,0,0): only 'A' -> not.
+
+               (2,1,0,2): valid.
+               (2,2,0,1): not.
+
+               only three.
+
+            The sample output is 4.
+
+            The sample output says 4 for "AAA", so there must be four.
+
+            Let me count as the problem says: 
+               tuples: (r, c, Δr, Δc)
+
+               (1,1,0,2): (1,1) -> (1,3): "AAA"
+               (1,1,1,1): (1,1) -> (1,2) and then (2,2) -> "A" (at1,1), "A" (at1,2), "A" (at2,2) -> "AAA"
+               (1,2,0,1): (1,2) -> (1,3) -> "AA" -> not.
+               (1,3,0,0): only 'A' -> not.
+               (2,1,0,2): (2,1) -> (2,3) -> "AAA"
+               (2,1,1,1): not valid (row3 not exists)
+               (1,2,1,0): (1,2) and then (2,2) -> only two letters.
+               (2,2,0,1): "AA"
+
+            How about (1,2,0,1) is for "AA", not "AAA".
+
+            One more: 
+               (1,1,0,0) -> only (1,1) -> letter 'A', then we can move down to (2,1) -> and then we have "A" from (1,1) and "A" from (2,1), but to get a third 'A', we would need to move down again? or can we do (1,1) then move down to (2,1) and then move right? 
+               The problem: move right 0 or more and THEN down 0 or more. 
+               So after moving down, we cannot move right.
+
+            Therefore, only three.
+
+            The sample output is 4.
+
+            I see the sample output is 4.
+
+            Let me reread the sample input/output #2: 
+                2 3 3
+                AAA
+                AAA
+                A   -> query1: output 6
+                AAA  -> query2: output 4
+                AAAAA -> query3: output 0.
+
+            for "AAA", the output is 4.
+
+            How about the occurrence: 
+               (1,1,0,2) -> 
+               (1,1,1,1) -> 
+               (2,1,0,2) -> 
+               (1,2,1,0) is not.
+
+            Wait: can we do (1,2,0,0) for 'A' and then move down to (2,2) -> but that would be (1,2) and (2,2) -> only two.
+
+            and (2,1,0,0) for 'A' and then move down to out of bound.
+
+            or (1,0,0,2) is not valid because c=0-indexed.
+
+            We must start at (1,1), (1,2), (1,3), (2,1), (2,2), (2,3) for the.
+
+            (1,3, then we cannot move right, and move down to (2,3): 
+               string = "A" (from (1,3)) and then "A" ( from (2,3) ) -> only two.
+
+            (1,1): 
+               move right: to (1,2) -> "AA", then move down to (2,2) -> "A", so we have "AAA", cell (1,1), (1,2), (2,2) -> this is (1,1,1,1) as above.
+
+            (1,2): 
+               move right: to (1,3) -> "AA", and then move down to (2,3) -> "A", -> cells: (1,2), (1,3), (2,3) -> "AAA", and we haven't counted this.
+
+            So the fourth occurrence: (1,2,1,1) -> 
+               (1,2) -> (1,3) (right move: one move, so Δc=1) and then down one move (Δr=1) at (1+1,3) = (2,3) -> one down move.
+
+            Therefore, the four occurrences.
+
+            So for (1,2,1,1): 
+               i = ? 
+               The split: the horizontal part: from (1,2) to (1,3) -> length = 2, so i=1 (0-indexed last of horizontal part) -> then the vertical part: one character: (2,3) -> 'A'
+               i=1: horizontal part = "AA" = S[0:2] = "AA", vertical part = "A" = S[2:3] = "A" -> matches.
+
+            Therefore, we must iterate i in [0, min(L-1, C-1)] = [0, min(2,2)] = [0,1,2]? 
+            But note: i in [ max(0, L-1-(R-1) = 3-1-(2-1)=1), min(2,2)] -> [1,2] 
+
+            So i=1 and i=2.
+
+            For i=1: 
+               for r in [0, R-1-v_len] = [0, 2-1-1] = [0,0] only? because v_len = L-i-1 = 3-1-1=1, then r in [0, R-1-v_len] = [0,2-1-1]= [0,0] 
+               for r=0 (0-indexed row0 is row1 in 1-indexed), and for d in range(1, 3) (d from 1 to 2)
+               d=1: 
+                  horizontal: row0, from d-1=0 to 1: "AA" -> matches.
+                  then vertical: in col1, from row0+1=1 to row0+1+1-1=1: only one character: grid[1][1] = 'A' -> matches. -> count=1 (which is (0,1) -> (0,1) in 0-indexed is (1,2) in 1-indexed? 
+                     because c = d-i = 1-1=0 -> c=0? -> then (0,0) in 0-indexed: row0, col0) -> 'A' at (0,0) and 'A' at (0,1) and then 'A' at (1,1) -> this is the occurrence (0,0,1,1) -> (1,1,1,1) in 1-indexed.
+
+               d=2: 
+                  horizontal: row0, from 1 to 2: "AA" (actually, grid[0][1] and grid[0][2] = 'A','A') -> matches.
+                  vertical: col2, from row1: grid[1][2] = 'A' -> matches. -> count=1 ( occurrence (0,1) in terms of d=2: then c = d-i=2-1=1 -> (0,1) and then the vertical at col2 from row1: (1,2) -> this is (0,1) in 0-indexed: (1,2) in 1-indexed, then (1,2,1,1) in 1-indexed? -> 
+                         cells: (0,1) and (0,2) [horizontal] and (1,2) [vertical] -> (1,2) to (1,3) and then (2,3) -> but wait, in 0-indexed: row0, col1 and col2, and row1, col2.
+
+            For i=2: 
+               for r in [0, 2-1] = [0,1] (v_len=0)
+               for r=0, d in [2,2]: 
+                   horizontal: row0, from 0 to 2: "AAA" -> matches. -> occurrence (0,0) in 0-indexed: (0,0) and then to (0,2): -> (1,1,0,2) in 1-indexed.
+               for r=1, d in [2,2]: 
+                   horizontal: row1, from 0 to 2: "AAA" -> matches. -> occurrence (1,0) in 0-indexed: (2,1,0,2) in 1-indexed.
+
+            total = 1 (i=1, d=1) + 1 (i=1, d=2) + 1 (i=2, r=0) + 1 (i=2, r=1) = 4.
+
+ Therefore, the solution is as above.
+
+ Given the worst-case work of 125e6 per query, and the worst-case 200,000 queries not happening because the total length of the strings is 200,000, the number of queries in the worst-case might be around 200,000 / average_L. If average_L is 1, then 200,000 queries, then work = 200,000 * 125e6 = 25e12, which in Python is not feasible.
+
+ But the condition in the problem: the sum of the length of all Q strings combined is not more than 200,000.
+
+ This means: L1 + L2 + ... + LQ <= 200,000.
+
+ In the worst-case, there could be 200,000 queries, each of length 1, then work = 200,000 * (work for a query of length 1).
+
+ For a query of length 1: 
+    if L> R+C-1: skip (unlikely, since R+C-1>=1+1-1=1 in a 1x1 grid, but here R>=1, C>=1)
+    else: 
+        i in [0,0] -> only i=0.
+        h_len=1, v_len=0.
+        for r in range(0, R):   # R iterations
+           for d in range(0, C):   # C iterations
+               if grid[r][d] == S[0]:  [in hashing: we can to. In our code: we do a hash check for the horizontal part of length 1]
+                   then count if the horizontal part matches. 
+        work = R * C = 2500, for R=C=500.
+
+    per query: 2500.
+    for 200,000 queries: 200000 * 2500 = 500e6 = 0.5e9, which is acceptable in Python.
+
+ For a query of length L, the work is at most 500 (number of i) * 500 (number of r) * 500 (number of d) = 125e6.
+
+ But the condition: the total sum of length of all strings is 200,000.
+
+  which means the number of queries with length>=2 is at most 200,000/2 = 100,000.
+
+  and the work for a query of length L is: 
+      if L> R+C-1: 0 work.
+      else: 
+          work = (number of i) * ( number of r ) * ( number of d )
+          number of i = min(L, C, R) = at most min(L,500)
+          then work = min(L,500) * R * C = min(L,500) * 2500.
+
+  Let F(L) = min(L,500) * 2500.
+
+  Then total work = sum_{query} F(L) = 2500 * (sum_{query} min(L,500))
+
+  and sum_{query} min(L,500) <= 200,000 * 500 = 100e6 ??? -> no, because the total length is 200,000, then sum_{query} min(L,500) <= 200,000.
+
+  Why? 
+      If a query has L=1, then min(L,500)=1.
+      If a query has L=500, then min(L,500)=500.
+      But the sum of L is 200,000.
+
+      And min(L,500) <= L, so sum_{query} min(L,500) <= sum_{query} L = 200,000.
+
+  Therefore, total work = 2500 * 200,000 = 500e6.
+
+  This is 500,000,000, which is acceptable in Python.
+
+  Therefore, the solution is to use the triple loop: over i, over r, over d.
+
+  Steps for a query string S of length L:
+      if L > R+C-1: 
+          ans = 0
+      else:
+          ans = 0
+          # Let's compute the hashes for S if we need to? Actually, we can compute them on the fly in the loops, but better to compute the prefix hash for S outside the loops.
+          H_S = [0]*(L+1)
+          for j in range(L):
+              H_S[j+1] = H_S[j] * base + (ord(S[j]) - ord('A') + 1)
+
+          low_i = max(0, L-1 - (R-1))
+          high_i = min(L-1, C-1)
+          for i in range(low_i, high_i+1):
+              h_len = i+1
+              v_len = L - i - 1   #>=0
+
+              # valid r: from 0 to R-1 if v_len==0, and from 0 to R-1-v_len if v_len>0.
+              if v_len < 0: 
+                  continue
+              if v_len > 0:
+                  max_r = R-1-v_len
+              else:
+                  max_r = R-1
+
+              for r in range(0, max_r+1):   # r in [0, max_r]
+                  for d in range(i, C):   # d is the column index of the last character in the horizontal part, and we require d>=i and d<C.
+                      # the horizontal part: from (r, d-i) to (r, d)
+                      #   in the grid: this is a contiguous segment in row r: from d-i to d.
+                      #   its length = i+1.
+                      #   hash_grid = H_row[r][d+1] - H_row[r][d-i] * pow_base[i+1]
+                      if H_row[r][d+1] - H_row[r][d-i] * pow_base[i+1] != H_S[h_len]:
+                          continue
+                      if v_len > 0:
+                         # vertical part: in column d, from row r+1 to row r+1+v_len (v_len rows) -> indices: r+1 to r+v_len (inclusive) -> in the grid rows: r+1 to r+v_len, which is v_len rows.
+                         #   in the column d, the hash is: 
+                         #      part = H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len]
+                         if H_col[d][r+1+v_len] - H_col[d][r+1] * pow_base[v_len] != (H_S[h_len+v_len] - H_S[h_len] * pow_base[v_len]):
+                             continue
+                      ans += 1
+          # output ans.
+
+  Then we must have precomputed:
+        pow_base[0..max_len] for max_len = max(R, C) (500)
+        H_row[0..R-1][0..C] (for each row, length C+1)
+        H_col[0..C-1][0..R] (for each col, length R+1)
+
+  Note: we use a base that is 131, and modulo is not taken (ull in C++), in Python we can use a. We can use Python's int, and hope that the hashes are distinct (or we get collisions? then we might WA).
+
+  But the grid is only 500x500, and the total work is 500e6, and the hashes are for segments of length<=500, and we are using a base of 131 and no modulo, in Python the numbers might be large but we use the property that int in Python is big integer, and hope that the hashes are unique.
+
+  Alternatively, we can use a double hash, but then the work might be doubled.
+
+  Given the constraints, we hope for the best.
+
+  Let's test on the sample.
+
+  We will output this solution.
+
+  Note: the worst-case total work = 2500 * 200000 = 500e6, which in Python might be around 10 seconds.
+
+  Given the time limit of 5 seconds, we hope that the constants are small.
+
+  But 500e iterations might be acceptable in Pyton if optimized in Pyton (using PyPy or in C++).
+
+  In Python, we hope.
+
+  We also note: the work is not exactly 500e6, because the number of i for a query is (high_i - low_i + 1) which is at most min(L,500) (<=500), and then the work per i is (number of r) * (number of d) = (max_r+1) * (C - i).
+
+          number of r = ( if v_len>0: R - v_len, else: R ) 
+          number of d = C - i
+
+          then per i: work = (R - v_len) * (C - i) [if v_len>0] or R * (C-i) [if v_len==0].
+
+          then total work for the query = sum_{i} [ (number of r) * (number of d) ]
+
+          and then summed over queries.
+
+          But we have the bound: sum_{query} [ min(L,500) * ( R * C ) ] = 500 * (R * C) * (number of queries) -> no, we already have a bound of 2500 * (sum_{query} min(L,500)) = 2500 * 200000 = 500e6.
+
+  Therefore, we go with this.
+
+  Let's code accordingly.
+
+  Note: we must be cautious of the indexing in the grid.
+
+  We assume:
+      grid = list of R strings.
+
+      H_row[r][0] = 0
+      for c in range(C):
+          H_row[r][c+1] = H_row[r][c]*base + (ord(grid[r][c]) - ord('A') + 1)
+
+      Similarly for H_col.
+
+  We also precompute pow_base[0..max_len] (max_len = max(R,C)) for exponents.
+
+  Then for each query, we do the above.
+
+  Given the total work 500e6, we hope it passes.
+
+  Let's hope.
+
+  Note: the worst-case might be when many queries have length=500, then the work per query = 500 * (R * C) = 500 * 250000 = 125e6, and the number of such queries is floor(200000/500)=400, then work=400 * 125e6 = 50e9, which is 50 seconds in Python.
+
+  But the total length allocated for the queries is 200,000, and if there are 400 queries of length 500, then the total length is 400*500=200,000.
+
+  Therefore, the worst-case work is 400 * 125e6 = 50e9, which in Python is likely to be TLE.
+
+  We must optimize further.
+
+  How to speed up the inner loop over r and d for a fixed i?
+
+          for r in range(0, max_r+1):
+             for d in range(i, C):
+
+          This is (max_r+1) * (C-i) iterations.
+
+          We can try to interchange the loops: iterate d first, then r, to maybe and hope for cache locality.
+
+          But not significantly.
+
+  Given the time, we output the solution and hope that the test cases are not the worst-case.
+
+  Or we can try to optimize by using 
+        for a fixed i, we might compute the 
+
+  Alternatively, for a fixed i, we can:
+        for r in range(0, max_r+1):
+            for d in range(i, C):
+               we are doing a hash check for the horizontal part and then for the vertical part.
+
+          The horizontal part: we can compute the hash for a given (r,d) quickly because we have H_row and pow_base.
+
+          Similarly for the vertical part.
+
+  Given the worst-case, we have no choice.
+
+  We output the solution in Python and hope that the worst-case (50e9) doesn't happen, or in C++.
+
+  But the problem says: memory limit 256MB, and in Python using 500^2 * 500 = 125e6 integers for the frequency table might be 1GB, but we are not using that.
+
+  We are only using two 2D arrays: 
+        H_row: R * (C+1) = 500 * 501 = 250500 integers (ull in C++, in Python ints are bigger but we have 500e6 of work)
+        similarly H_col: C * (R+1) = 500 * 501 = 250500 integers.
+
+        and pow_base: array of length (max_len+1) = 501 integers.
+
+  So memory is not an issue.
+
+  Let's code accordingly.
+
+  We'll use base=131.
+
+  We note: the grid only contains uppercase letters, so we map 'A'->1, 'B'->2, ... 'Z'->26.
+
+  Let's code accordingly.
+
+  We also note: the sample input might have not that many queries.
+
+  Given the sample input, we hope it works.

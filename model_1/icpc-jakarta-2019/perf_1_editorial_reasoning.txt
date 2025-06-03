@@ -1,0 +1,1479 @@
+We are given:
+  N, M, Q
+  Array A of N integers (initial employees), with A[0] = Randall's performance (employee 1)
+  Then M lines: for each year i (from 1 to M), we have:
+      R_i, followed by R_i integers: the new employees for that year
+
+  Then Q lines: each is (X_i, Y_i, Z_i) meaning: in the B array for year X_i, the Y_i-th element is changed to Z_i.
+
+Important: the changes in the scenarios are cumulative (each scenario builds on the previous changes).
+
+We are to determine, for each scenario, whether Randall (with performance = A[0]) is still in the company after M years.
+
+Note: Each year, the company replaces the R_i worst-performing employees (the R_i smallest in the current set) with R_i new employees.
+
+The challenge:
+  - We have up to 100,000 years and 100,000 queries, but note: the total sum of R_i (over M years) is at most 1,000,000.
+
+Key observations:
+
+1. The entire process is deterministic: we start with a set of employees, and each year we remove the R_i smallest and add R_i new ones.
+
+2. We are only concerned about whether Randall (with value = A0) remains.
+
+3. Since the changes in the new employee arrays are cumulative and we have Q scenarios, we cannot simulate M years for each scenario (because Q and M are large).
+
+Alternative Insight:
+
+  We note that Randall is removed if at some year his value is among the R_i smallest in that year.
+
+  Therefore, we can think backwards: we start from the final set (after M years) and then reverse the process? But note: the new employees in each year are arbitrary and we have changes.
+
+Another idea:
+
+  Instead of simulating forward for each scenario, we can precompute the "threshold" for each year that determines the smallest value that survives that year.
+
+  However, note that the changes in the new employees in the future years can affect the set in previous years? Actually, no: the process is sequential. But the changes are in the new employees for specific years.
+
+  How about we try to compute the minimum value that survives all years? Actually, we are only concerned about Randall. We can ask: what is the condition for Randall to survive?
+
+  Randall survives if and only if in every year, there are at least R_i employees whose performance is strictly worse than Randall? Actually, no: because in a given year, if there are at least R_i employees with performance less than Randall, then Randall is not among the R_i worst and survives. But note: if there are exactly R_i employees worse than Randall, then Randall is the next one and survives. So the condition for a year is: the number of employees in the current set with performance less than Randall must be at least R_i? Actually, no: we need that Randall is not among the R_i smallest. So we require that the number of employees with performance strictly less than Randall is at least R_i? Actually, no: if there are exactly k employees with performance less than Randall, then Randall is the (k+1)-th smallest. So if k >= R_i, then Randall is not in the smallest R_i and survives. But if k < R_i, then Randall is removed.
+
+  Therefore, the condition for Randall to survive a particular year is that the number of employees in the current set that have performance strictly less than Randall must be >= R_i? Actually, that condition is equivalent to: the R_i-th smallest employee in the current set is strictly less than Randall? Not exactly: if the R_i-th smallest is less than Randall, then Randall is above the R_i-th smallest and survives. But if the R_i-th smallest is equal to Randall? But the problem states that all integers are distinct. So we can say: Randall survives the year if and only if the R_i-th smallest employee in the current set is strictly less than Randall.
+
+  However, note: we are removing the R_i smallest. So if the R_i-th smallest is strictly less than Randall, then Randall is above that threshold and survives. But if the R_i-th smallest is greater than Randall, then Randall is among the R_i smallest and is removed. And if the R_i-th smallest is exactly Randall? But distinct values, so that doesn't happen.
+
+  So condition for year i: let T_i = the R_i-th smallest value in the current set at the beginning of the year. Then Randall survives the year if and only if Randall's value > T_i.
+
+  But note: the current set changes every year. So we have to simulate the years? However, we have Q scenarios and M years, and we cannot simulate each scenario independently because Q can be 100,000 and M 100,000.
+
+Alternative Insight: Offline and Persistence?
+
+  However, note the constraint: the total R_i (over all years) is only 1,000,000. That means that the total number of new employees is 1,000,000. This is small.
+
+  Also, the initial set has 100,000 employees.
+
+  How can we simulate the entire process for the base case (without any scenario changes) quickly?
+
+  We note that each year we remove R_i smallest and add R_i new employees. We can use a min-heap? But we need to know the entire set? The set can have up to 100,000 + 1,000,000 = 1.1e6 employees? Actually, the set size is always N. But note: we remove R_i and add R_i, so the set size remains N.
+
+  However, we are only interested in the fate of Randall. But the condition for each year depends on the entire set.
+
+  We can note: Randall's survival is determined solely by the count of employees with value less than Randall in the current set? Actually, no: because the removals might remove some employees above Randall? But the removals only remove the smallest R_i. So if in a year the number of employees with value less than Randall is L, then:
+
+      - If L >= R_i, then we remove R_i employees that are all less than Randall, so after removal, the number of employees less than Randall becomes L - R_i, and then we add R_i new employees. Then the next year we have (L - R_i) plus the number of new employees that are less than Randall? 
+
+  But we are not tracking the entire set, only the count of employees below Randall? Actually, that might be sufficient.
+
+  Let F(t) = the number of employees in the set at the beginning of year t that have performance strictly less than Randall.
+
+  How does F(t) change?
+
+      - At the beginning of year t, we have F(t) employees less than Randall.
+      - We remove the R_t smallest employees. Since the R_t smallest employees are all the ones below a certain threshold, and we know that if F(t) >= R_t, then we remove R_t employees that are all below Randall. Then the new count becomes F(t) - R_t.
+      - Then we add the new employees for year t. Let G(t) be the number of new employees in year t that are less than Randall. Then the count for the next year becomes: F(t) - R_t + G(t).
+
+      - But if F(t) < R_t, then we remove all F(t) employees that are below Randall and also remove R_t - F(t) employees that are above or equal to Randall? But note: Randall might be removed? Actually, if F(t) < R_t, then Randall is among the R_t smallest? Because there are only F(t) employees worse than Randall, so Randall is the (F(t)+1)-th smallest. Since R_t >= F(t)+1 (because F(t) < R_t), then Randall is removed. So in that case, we stop: Randall is gone.
+
+  Therefore, we can simulate the entire M years by tracking:
+
+      F(1) = count of initial employees with value < A0.
+
+      Then for year t from 1 to M:
+
+          if F(t) < R_t: then Randall is removed in year t -> so he doesn't survive to the end.
+
+          else:
+              F(t+1) = F(t) - R_t + G(t)
+
+          where G(t) = number of new employees in year t that are < A0.
+
+  Then Randall survives if he survives every year.
+
+  But note: the new employees in year t are given by the array B_t. And in the scenarios, we are changing one element of one of these arrays.
+
+  How does a change in one new employee affect G(t)? 
+
+      Initially, for a fixed year t, we precompute the base value of G(t) (without any scenario changes) as the count of values in B_t that are less than A0.
+
+      Then, when we have a scenario: change (X_i, Y_i) to Z_i, we are updating one element in the array for year X_i.
+
+      We need to update G(X_i) accordingly.
+
+      Specifically, let the old value at (X_i, Y_i) be v_old (which we must remember) and the new value is Z_i.
+
+      Then the change in G(X_i) is:
+
+          If v_old < A0 and Z_i >= A0: then we lose one count in G(X_i).
+          If v_old >= A0 and Z_i < A0: then we gain one count in G(X_i).
+          Otherwise, no change.
+
+  Then, we can simulate the entire M years using the recurrence above. But note: if in a year t, we have F(t) < R_t, then Randall is removed in that year and we break early. However, the change in a later year might affect an earlier year? Actually, no: the recurrence is sequential. But note: the recurrence for year t depends on the previous state and the new employees for that year. However, the state F(t) for year t is computed from F(t-1) and the previous years.
+
+  Therefore, if we update G(t) for a year t, then we must update the entire chain from year t to M? 
+
+      We have:
+
+          F(1) = fixed (from initial set)
+          F(2) = F(1) - R_1 + G(1)
+          F(3) = F(2) - R_2 + G(2) = F(1) - R_1 + G(1) - R_2 + G(2)
+
+          and so on.
+
+      So F(t) for t>=2 depends on F(1) and G(1) ... G(t-1).
+
+      And if we change G(k) for a particular year k, then all F(t) for t>k will be affected.
+
+  How can we update the entire chain quickly? 
+
+      We note that we have Q scenarios (up to 100,000) and each change might require updating O(M) years? That would be 100,000 * 100,000 = 10e9, too slow.
+
+  We need a data structure to update the entire chain quickly. Note the recurrence:
+
+      F(1) = constant
+      F(2) = F(1) - R_1 + G(1)
+      F(3) = F(1) - R_1 + G(1) - R_2 + G(2)
+      ...
+
+      F(t) = F(1) - (R_1 + R_2 + ... + R_{t-1}) + (G(1) + G(2) + ... + G(t-1))
+
+      Then the condition for year t is: F(t) >= R_t? 
+
+      Actually, the condition for year t is: F(t) >= R_t? But note: if at any year k (k < t) we had F(k) < R_k, then we break and Randall is gone. However, if we are updating a year that is early, then we have to check the entire chain again.
+
+  Alternatively, we can precompute the entire base chain (without any scenario changes) and then for each scenario update the G values and then update the chain.
+
+  But note: the recurrence is linear and additive. Let:
+
+      S_R(t) = R_1 + R_2 + ... + R_t   (prefix sum of R_i)
+      S_G(t) = G(1) + G(2) + ... + G(t)
+
+      Then F(t+1) = F(1) - S_R(t) + S_G(t)
+
+      And the condition for year t (at the beginning of year t, we have F(t)) is:
+
+          F(t) >= R_t   -->   [ F(1) - S_R(t-1) + S_G(t-1) ] >= R_t
+
+      But note: the recurrence for F(t) is defined at the beginning of year t. Then at year t, we remove R_t employees and add G(t) new ones to get F(t+1).
+
+      So the condition for year t is: 
+          F(t) >= R_t   -->   [ F(1) - S_R(t-1) + S_G(t-1) ] >= R_t
+
+      Rearranged: 
+          F(1) + S_G(t-1) - S_R(t-1) >= R_t
+
+      Then we can write for each year t:
+
+          Condition_t: F(1) + S_G(t-1) - S_R(t-1) >= R_t
+
+      And if this condition fails for any t in [1, M], then Randall is fired in year t.
+
+      But note: for t=1, then S_G(0)=0, S_R(0)=0, so condition: F(1) >= R_1.
+
+      For t=2: F(1) + G(1) - R_1 >= R_2.
+
+  Therefore, we can define:
+
+      H(t) = F(1) + S_G(t-1) - S_R(t-1)   [for t from 1 to M]
+
+      Then we require that for every year t (from 1 to M): H(t) >= R_t.
+
+      Also, note that if at any year t we have H(t) < R_t, then Randall is fired and we don't care about the rest.
+
+  Now, the entire problem reduces to:
+
+      We have an array H for t=1..M defined by:
+          H(1) = F(1)
+          H(2) = F(1) + G(1) - R_1
+          H(3) = F(1) + G(1) + G(2) - (R_1+R_2)
+          ...
+
+      And we require that for every t from 1 to M: H(t) >= R_t.
+
+      How does a change in G(k) (for year k) affect H(t)?
+
+          For t <= k: no effect? Actually, note: 
+            H(t) = F(1) + [G(1)+...+G(t-1)] - [R_1+...+R_{t-1}]
+
+          So if we change G(k) (which is the new employees for year k), then it appears in H(t) for all t > k.
+
+          Specifically, if we change G(k) by a delta (say, d), then:
+
+              For t = 1 to k: H(t) unchanged.
+              For t = k+1 to M: H(t) increases by d.
+
+      Therefore, if we change G(k) by d, then we add d to H(k+1), H(k+2), ... , H(M).
+
+  Now, we have to check: for each scenario, after updating the array H (by adding d to a suffix), are all conditions H(t) >= R_t satisfied?
+
+  How can we quickly check the minimum condition over t? 
+
+      We are updating one element in the G array (so one suffix update on H). Then we want to know: what is the minimum value of H(t) - R_t for t in [1, M]? Actually, we care about the first t for which H(t) < R_t? But we can precompute the base H array (without scenarios) and then maintain a data structure that supports:
+
+          - Suffix updates (adding a constant to a contiguous suffix of H)
+          - Query: find the minimum value of (H(t) - R_t) for t from 1 to M? Actually, we care about the condition H(t) >= R_t, which is equivalent to (H(t) - R_t) >= 0.
+
+      Alternatively, we can store:
+
+          Let D(t) = H(t) - R_t.
+
+          Then we require that min_{t=1}^{M} D(t) >= 0.
+
+      How do we update D(t) when we update H(t) for a suffix?
+
+          If we update H(t) for t from k+1 to M by adding d, then D(t) for t from k+1 to M also increases by d.
+
+      So we need a data structure that:
+
+          - supports range add (on a contiguous segment) and then query the global minimum.
+
+      And we have Q up to 100,000, and M up to 100,000.
+
+      We can use a Fenwick tree or segment tree with lazy propagation for range updates and range minimum query? 
+
+      But note: we are updating a suffix (from k+1 to M) and we are only interested in the global minimum.
+
+      Alternatively, we can store the entire D array and also a Fenwick tree for the minimum? However, Fenwick tree typically supports point updates and range queries. Here we have range updates (adding a constant to a suffix) and we want the minimum.
+
+      We can use a segment tree with lazy propagation for range add and query min. That would be O(log M) per update and query.
+
+      Steps:
+
+          Precomputation (base case without any scenario changes):
+
+            Step 1: Compute F(1) = count of values in the initial array A that are strictly less than A0 (Randall's value). Note: Randall is the first employee, so we have to be careful: we count the others that are less than A0.
+
+            Step 2: Precompute the base H array for t=1..M:
+
+                H(1) = F(1)
+
+                For t from 2 to M+1: 
+                    H(t) = H(t-1) + G(t-1) - R_{t-1}
+
+                But note: the condition for year t is defined at the beginning of the year, and we have:
+
+                    Condition for year t: H(t) >= R_t   for t=1..M.
+
+                Actually, we don't need H(M+1). We only need H(1) to H(M).
+
+            Step 3: Precompute D(t) = H(t) - R_t for t in [1, M].
+
+            Step 4: Build a segment tree (or Fenwick tree? but we need range add and query min) over the array D of size M.
+
+          Then, for each scenario:
+
+            We are given (X, Y, Z): meaning we update the year X, the Y-th element in the array B_X.
+
+            Let the old value at (X, Y) be old_val, and we are changing it to Z.
+
+            How does this affect G(X)? 
+
+                Let g_old = (1 if old_val < A0 else 0)
+                Let g_new = (1 if Z < A0 else 0)
+                Then the change in G(X) is: delta = g_new - g_old.
+
+            Then, we update the segment tree: we add delta to the suffix of D starting at index = X+1? 
+
+                Why X+1? 
+
+                    Remember: G(X) appears in H(t) for t >= X+1.
+
+                Therefore, we update the segment tree for indices from X+1 to M: add delta.
+
+            Then, we update the stored G(X) for future changes: we set the element (X,Y) to Z and update the count for G(X) (so we know the base for the next scenario).
+
+            Then, we query the segment tree for the global minimum of D (over the entire array of M elements). 
+
+            If the global minimum is >= 0, then Randall survives (output 1). Otherwise, output 0.
+
+          But note: what if the change in G(X) causes an update that makes an early year (say, year t < X) become negative? Actually, no: the update only affects H(t) for t>=X+1. So the conditions for years 1 to X are unchanged.
+
+          However, we must remember: if in the base chain without scenarios, we already had a negative condition at an early year, then we break. But note: we are updating the chain for the entire M years. The segment tree holds the current D(t) for all t. So if any D(t) becomes negative, then the minimum will be negative.
+
+          Therefore, we can simply query the global min of D(t) for t in [1, M]. If min >= 0, then yes, else no.
+
+  However, there is a catch: if during the base computation we found that without any changes the chain already had a negative condition, then our segment tree base is built with that negative. Then when we update a suffix, we might make a later condition better, but an early condition remains negative.
+
+  This is correct: because if in the base chain, year 1 fails, then even after updating a future year, the year 1 condition remains the same and Randall is still fired.
+
+  But note: the recurrence is linear and we are updating the entire chain correctly.
+
+  However, we must note: the condition for year t is independent? Actually, the entire chain must be nonnegative. So we are storing the entire array D and updating a suffix.
+
+  Implementation:
+
+      We need:
+
+          - An array `G_base` of length M+1 (indexed 1..M): for each year i, we store the count of new employees in B_i that are < A0.
+
+          - We also need to store the original B arrays? Actually, we don't need to store the entire arrays, but we do need to update the counts when a value changes. So we store:
+
+                - A 2D structure for the B arrays? But note: the total R_i is 10^6, so we can store the entire B arrays.
+
+                - Alternatively, we can store for each year i, an array for B_i, and also we precomputed an array `G_base[i]` for each year.
+
+          - Also, for each element that is updated, we need to know the old value? So we store the current value for each new employee? But note: the total new employees is 10^6, so we can store an array for each year.
+
+      Steps for precomputation:
+
+          Step 0: Read N, M, Q, then array A.
+
+          Step 1: F1 = count of A_i (i from 0 to N-1) such that A_i < A[0]. Note: A[0] is Randall's value. But note: we must not count Randall? Actually, the initial set has all employees. So we count the other employees that are less than A[0]. 
+
+          Step 2: Precompute the base H:
+
+                H[1] = F1   (for t=1)
+
+                Then we read the M years:
+
+                    For i from 1 to M:
+                        Read R_i, then R_i integers: the new employees for year i.
+
+                    Then we compute G_base[i] = count of the R_i integers that are < A0.
+
+                Then we can compute:
+
+                    H[1] = F1
+                    For t from 2 to M: 
+                         H[t] = H[t-1] + G_base[t-1] - R_{t-1}
+
+          Step 3: Precompute D[t] = H[t] - R_t for t in [1, M]. But note: R_t is the R for year t? Yes.
+
+          Step 4: Build a segment tree (or Fenwick tree for min? but range update) for the array D. However, we need to support:
+
+                - Range add (add a constant to a contiguous segment) 
+                - Query global min
+
+          We choose a segment tree with lazy propagation.
+
+          Step 5: Also, we store the current state of the new employee arrays: we use an array `B` such that B[i] is the list for year i? But we also need to update the counts G_base[i] when a value changes. 
+
+          Alternatively, we can store:
+
+                - An array `current_B` for each year i and for each employee j in that year, the current value.
+
+                - And an array `G_current` for each year i, the current count of new employees in year i that are < A0.
+
+          Initially, `G_current[i] = G_base[i]` (the base count).
+
+          Then, for each scenario:
+
+                Read X, Y, Z.
+
+                Let i = X, j = Y.
+
+                Let old_val = the current value at B[X][Y] (we store this).
+
+                Then:
+
+                    if old_val < A0: then it contributed 1 to G_current[X]
+                    if Z < A0: then the new value will contribute 1.
+
+                So:
+
+                    delta = 0
+                    if old_val < A0 and Z >= A0: then we decrease G_current[X] by 1 -> delta = -1
+                    if old_val >= A0 and Z < A0: then we increase G_current[X] by 1 -> delta = +1
+                    else: delta = 0
+
+                Then we update the segment tree: we add delta to the segment [X+1, M] (if X+1 <= M).
+
+                Then we update the stored value: set B[X][Y] = Z, and update G_current[X] by adding delta (if applicable).
+
+                Then we query the segment tree for the global minimum value (min over t from 1 to M of D[t]).
+
+                If min_value >= 0, output 1; else, output 0.
+
+  But note: what if the update is for a year X that is the last year? Then the suffix update is from X+1 to M, which is an empty set? Then we do nothing.
+
+  Also note: the segment tree is built for the base D. Then we update by adding a constant to a suffix. So we maintain the entire D array in the segment tree with lazy propagation.
+
+  However, note: the base H and D are computed without any scenario changes. Then we do Q scenarios, and each scenario updates the segment tree. The segment tree then holds the current D (with all the previous scenario updates).
+
+  How do we build the segment tree? 
+
+        We build the segment tree for the base D (without any scenario changes). Then each scenario update is a range update (adding a delta to a suffix) and then we query the min.
+
+  But note: the segment tree must support lazy propagation for range add and then query min.
+
+  Complexity: O(M) for building the segment tree, and each update and query is O(log M). Total operations: Q * O(log M) = 100,000 * 17 ~ 1.7e6, which is acceptable.
+
+  However, we must store the entire new employee arrays. The total size of the new employee arrays is <= 10^6, so we can store them.
+
+  Steps in code (pseudocode):
+
+      Read N, M, Q.
+      Read A (list of N integers)
+
+      A0 = A[0]   # Randall's performance
+
+      F1 = 0
+      for i in range(N):
+          if A[i] < A0:
+              F1 += 1
+
+      # Precomputation for the M years
+      R = [0] * (M+1)   # R[0] unused, index from 1 to M
+      B_arr = [None] * (M+1)   # B_arr[i] will be the list of new employees for year i
+      G_current = [0] * (M+1)   # G_current[i] = current count of new employees in year i that are < A0
+
+      for i in range(1, M+1):
+          data = list of integers from input
+          R_i = data[0]
+          R[i] = R_i
+          B_i = data[1:1+R_i]   # the next R_i integers
+          B_arr[i] = B_i
+          # Count the base G for this year
+          cnt = 0
+          for val in B_i:
+              if val < A0:
+                  cnt += 1
+          G_current[i] = cnt
+
+      # Precompute base H[1..M] and D[1..M]
+      # H[1] = F1
+      # For t from 2 to M: H[t] = H[t-1] + G_current[t-1] - R[t-1]
+      H = [0] * (M+1)
+      H[1] = F1
+      # Note: we only need H for indices 1 to M
+      for t in range(2, M+1):
+          H[t] = H[t-1] + G_current[t-1] - R[t-1]
+
+      D = [0] * (M+1)   # D[1..M]
+      for t in range(1, M+1):
+          D[t] = H[t] - R[t]   # condition for year t: D[t] >= 0
+
+      # Build a segment tree (with lazy propagation) for the array D (from index 1 to M) that supports:
+      #   - range add (add a value to [l, r])
+      #   - query min over [1, M]
+
+      seg_tree = SegmentTree(D, M)   # we build it for the base D
+
+      # We also need to store the current value for each new employee? Actually, we have stored B_arr and we also have G_current for each year.
+      # We will update the segment tree and also update G_current and B_arr as we process scenarios.
+
+      for each scenario in Q:
+
+          Read X, Y, Z.
+
+          # Note: Y is 1-indexed; so the element in the array for year X at position Y-1.
+
+          old_val = B_arr[X][Y-1]   # if we store the list as 0-indexed
+
+          # Check the change in G_current[X]:
+          delta_G = 0
+          if old_val < A0:
+              if Z >= A0:
+                  delta_G = -1
+          else: # old_val >= A0
+              if Z < A0:
+                  delta_G = 1
+
+          # Update the segment tree: we add delta_G to the range [X+1, M] (if any)
+          if delta_G != 0:
+              l = X+1
+              r = M
+              if l <= M:
+                  seg_tree.range_add(l, r, delta_G)
+
+          # Then update the array and the count:
+          B_arr[X][Y-1] = Z
+          G_current[X] += delta_G
+
+          # Then query the segment tree for the minimum value in [1, M]
+          min_val = seg_tree.query(1, M)
+
+          if min_val >= 0:
+              print(1)
+          else:
+              print(0)
+
+  However, note: the condition for year t is D[t] = H[t] - R[t] >= 0. But our segment tree stores the current D (with all updates). So if the min_val is >=0, then all conditions hold.
+
+  But what if we update the same element twice? We stored the current B_arr and we update the segment tree appropriately.
+
+  But note: the base D was built with the base counts. Then each update we add a delta to a suffix. So the segment tree holds the current state.
+
+  However, we must note: the update to G_current[X] might come from a previous scenario? Then when we update, we use the old_val as the current stored value. So we are storing the current state.
+
+  But what if we update an element that has been updated before? Then the old_val is the value from the last update.
+
+  Therefore, the algorithm is:
+
+      Precompute base counts and build the segment tree for D.
+
+      Then for each scenario:
+
+          - Update the new employee array at the given position and compute the change in the count for that year (G_current[X]).
+          - Update the segment tree for the suffix (if the count changed).
+          - Update the stored value in the array and the count.
+          - Query the global min in the segment tree: if min>=0, output 1; else, 0.
+
+  But note: the base H and D were computed without any scenarios? Then we start with the base. Then we update the segment tree for each scenario. The segment tree then reflects the cumulative effect of all scenario changes.
+
+  However, the recurrence for D(t) is linear and additive, so the suffix update is additive. Therefore, it is correct.
+
+  One more issue: the initial base chain might have a negative D[t]? Then the segment tree min is negative. Then we output 0 for the first scenario? Then we update and if we fix a later year, the min might become nonnegative? But note: we update a suffix (so we only add to D[t] for t>=X+1). The negative condition at an early year remains. So we output 0 until we fix that early year? Actually, we cannot fix an early year by updating a later year. Therefore, if the base chain fails at an early year, then all scenarios will output 0? 
+
+      Example: if in the base chain, year 1: D[1] = H[1] - R_1 = F1 - R_1 < 0, then the segment tree min is negative. Then we output 0 for the first scenario. Then we update a year 2? We add to D[2] and beyond. But D[1] remains negative. So we output 0 for every scenario? 
+
+      This is correct: because Randall is fired in year 1 and no update to the new employees of year 1 or beyond can save him? Actually, the update to the new employees of year 1 can change G_current[1] and then affect H[2] and beyond, but not H[1]. Therefore, the condition for year 1 is fixed and independent of any updates to future years.
+
+      However, note: if we update the new employees for year 1, then we update G_current[1]. How does that affect the chain?
+
+          H[1] = F1   --> not affected by G_current[1] (because it is defined without G_current[1])
+          H[2] = F1 + G_current[1] - R_1
+          H[3] = F1 + G_current[1] - R_1 + G_current[2] - R_2
+
+          So updating G_current[1] affects H[2] and beyond.
+
+          But D[1] = H[1] - R_1 = F1 - R_1: not affected.
+
+          Therefore, if year 1 condition fails (F1 < R_1), then no update to any year can fix it.
+
+      Similarly, if we update the new employees for year 1, we update the segment tree for indices [2, M] (because we add to the suffix starting at 2). So D[1] remains the same.
+
+  Therefore, the segment tree update is only for the suffix. The condition for the year that we update and the years before are not changed by the update? Actually, the update to G_current[X] only affects H[t] for t>=X+1. So D[t] for t<=X are unchanged.
+
+  So if in the base chain, year 1 fails, then we output 0 for every scenario? 
+
+      This is correct.
+
+  But note: we might update the new employees for year 1? Then we update the segment tree for indices from 2 to M. Then we query the min and we get min = min( D[1], D[2] (updated), D[3] (updated), ... ). But D[1] is negative, so min is negative.
+
+  Therefore, we don't need to worry: the segment tree holds the entire array D, and we update only the suffix. The early years remain.
+
+  However, we must note: the update to a year might fix a negative that was caused by a previous scenario? Actually, we are updating the segment tree by adding a delta to a suffix. If we update a year twice, then we use the current stored value to compute the old_val? And then we compute the delta_G. Then we update the segment tree by the net change from the previous value to the new value.
+
+  Therefore, we must remember the current value of each new employee. We do store that in B_arr.
+
+  Let's test with the sample:
+
+      Sample Input: 
+          5 3 3
+          50 40 30 20 10
+          4 1 2 3 100
+          1 4
+          2 6 7
+          1 3 300
+          2 1 400
+          2 1 5
+
+      We are only going to do the first two scenarios? The sample output is two lines: 1 and then 0.
+
+      Step 1: 
+          A0 = 50
+          Initial set: [50,40,30,20,10] -> F1 = count of values <50: 4 (all others).
+
+      Step 2: Read the M=3 years.
+
+          Year1: R1=4, B1 = [1,2,3,100] -> G1 = count of values in B1 < 50: 4? because 1,2,3,100: but 100>=50 -> so only 3? 
+                Actually: 1,2,3,100: 
+                  1<50 -> yes, 2<50 -> yes, 3<50 -> yes, 100<50 -> no -> so G1=3.
+
+          Year2: R2=1, B2=[4] -> G2=1 (because 4<50)
+          Year3: R3=2, B3=[6,7] -> G3=2 (both 6 and 7 are <50)
+
+      Then compute H:
+
+          H[1] = F1 = 4
+          H[2] = H[1] + G1 - R1 = 4 + 3 - 4 = 3
+          H[3] = H[2] + G2 - R2 = 3 + 1 - 1 = 3
+
+      Then D:
+          D[1] = H[1] - R1 = 4 - 4 = 0
+          D[2] = H[2] - R2 = 3 - 1 = 2
+          D[3] = H[3] - R3 = 3 - 2 = 1
+
+      So the base chain is all nonnegative. Then we build the segment tree with D = [0,2,1] (for t=1,2,3) -> min=0.
+
+      Then we process the first scenario:
+
+          X1=1, Y1=3, Z1=300   # meaning: change the 3rd element in B1 to 300.
+
+          Currently, B1 = [1,2,3,100] -> the 3rd element is 3 (0-indexed index 2). We change it to 300.
+
+          old_val = 3 -> which is <50 -> so it was counted in G1.
+          new_val = 300 -> >=50 -> so it is not counted.
+
+          Therefore, delta_G = -1 for year1.
+
+          Then we update the segment tree: add -1 to the suffix [1+1, 3] = [2,3] (i.e., years 2 and 3).
+
+          Then update:
+              G_current[1] = 3 - 1 = 2
+              B1[2] = 300   -> now B1 = [1,2,300,100]
+
+          Now the segment tree: 
+              D[1] = 0 (unchanged)
+              D[2] = 2 + (-1) = 1
+              D[3] = 1 + (-1) = 0
+
+          Then query min: min(0,1,0)=0 -> so output 1.
+
+      Then the second scenario:
+
+          X2=2, Y2=1, Z2=400   # change the 1st element in B2 to 400.
+
+          Currently, B2 = [4] -> the 1st element is 4. We change to 400.
+
+          old_val=4 (which is <50) -> counted.
+          new_val=400 (>=50) -> not counted.
+
+          delta_G = -1 for year2.
+
+          Then update the segment tree: add -1 to the suffix [2+1, 3] = [3,3] (only year3).
+
+          Now the segment tree:
+              D[1] = 0
+              D[2] = 1 (unchanged because we update only from index 3)
+              D[3] = 0 + (-1) = -1
+
+          Query min: min(0,1,-1) = -1 -> output 0.
+
+      Then the third scenario? The sample output only has two outputs? Actually the sample output is:
+          1
+          0
+
+      But the input has 3 scenarios? The sample input says:
+
+          5 3 3
+          ... 
+          1 3 300
+          2 1 400
+          2 1 5
+
+      Then the third scenario: 
+          X3=2, Y3=1, Z3=5   # change the 1st element in B2 to 5.
+
+          Currently, B2[0] is 400 (from the last scenario). We change to 5.
+
+          old_val=400 (>=50) -> not counted in G2? Actually, we updated G2 in the previous scenario: 
+              After the second scenario: we set G2 = 1 (base) - 1 (from the update) = 0? 
+          Then we change to 5: which is <50 -> so we need to add 1.
+
+          Therefore, delta_G = +1.
+
+          Then update the segment tree: add +1 to the suffix [2+1,3] = [3,3].
+
+          Then D[3] becomes -1 + 1 = 0.
+
+          Then query min: min(0,1,0)=0 -> output 1.
+
+      But the sample output is only two lines? Actually the problem says: "For the sample input/output #1" and then shows:
+
+          Sample Output #1
+          1
+          0
+
+      So they only show two scenarios? But the input says Q=3. 
+
+      However, the problem says: "For each scenario in the same order as input, output in a line ..."
+
+      So we output 3 lines? But the sample output has two? Actually, the sample input has:
+
+          "5 3 3"
+          then the initial array
+          then 3 lines for the years
+          then 3 lines for the scenarios.
+
+      Then the sample output is:
+
+          1
+          0
+
+      But they only show two? Actually, the problem says: "Sample Output #1" and then two lines. 
+
+      This is a discrepancy. But the problem statement says: "The next Q lines each ...", so Q=3 and we output 3 lines. However, the sample output shows two. 
+
+      Looking at the sample input: 
+          "1 3 300" -> first scenario: output 1
+          "2 1 400" -> second scenario: output 0
+          "2 1 5" -> third scenario: output 1? 
+
+      But the problem says: "Sample Output #1" is:
+
+          1
+          0
+
+      So they only show two? Or maybe the sample input has two scenarios? Actually the problem states:
+
+          "The next Q lines each contains three integers: ..."
+
+          and then: 
+             1 3 300
+             2 1 400
+             2 1 5
+
+          so three scenarios.
+
+      However, the sample output is:
+
+             1
+             0
+
+      and then the explanation only explains the first two.
+
+      But note: the problem says: "For the sample input/output #1", and then the sample input has Q=3? 
+
+      Actually, the sample input says: "5 3 3", so Q=3.
+
+      But the sample output shows two lines? This might be an error.
+
+      However, the problem statement for the output says: "For each scenario in the same order as input, output in a line ...", so we output 3 lines.
+
+      But the problem sample output only has two? 
+
+      Let me check the sample input again: 
+
+          "5 3 3"
+          "50 40 30 20 10"
+          "4 1 2 3 100"   -> year1
+          "1 4"           -> year2
+          "2 6 7"         -> year3
+          "1 3 300"       -> scenario1: change B1[3] to 300 -> but note: the array B1 has 4 elements, so Y_i=3 is the 3rd element? Actually, indexing: the first element is index1? The problem says: "the value of (B_{X_i})_{Y_i}".
+
+          But the input for B1: "4 1 2 3 100" -> so the new employees are [1,2,3,100]. Then the third element is 3? So we change the third element to 300 -> becomes [1,2,300,100].
+
+          Then scenario2: "2 1 400" -> change the first element of B2 to 400. B2 was [4] -> becomes [400].
+          Then scenario3: "2 1 5" -> change the first element of B2 to 5.
+
+          Then we output:
+
+              scenario1: min becomes 0 -> output 1
+              scenario2: min becomes -1 -> output 0
+              scenario3: min becomes 0? -> output 1.
+
+          But the problem sample output is:
+
+                1
+                0
+
+          So they output two? Or maybe the problem intended Q=2? 
+
+      I see: the problem says: "Sample Output #1" is:
+
+                1
+                0
+
+      and then the explanation says:
+
+            Therefore, Randall will still be in the company after 3 years.   (for the first scenario)
+            Therefore, Randall will not be in the company after 3 years.   (for the second scenario)
+
+      So they are only showing two scenarios? But the input has three. 
+
+      This might be a mistake in the problem statement. However, we are to output for each of the Q scenarios.
+
+  Therefore, we output for each scenario.
+
+  But the problem sample output has two? Then we must output two? Actually, the sample input has Q=3, but the sample output has two? This is confusing.
+
+  However, the problem says: "Sample Input #1" and then the entire block. And then "Sample Output #1" and then two lines.
+
+  Since the problem says "For the sample input/output #1", and the input has Q=3, but the output has two, there might be a typo. But the problem states:
+
+        "Output: For each scenario in the same order as input, output in a line ..."
+
+      So we output Q lines.
+
+  Therefore, for the sample, we would output:
+
+        1
+        0
+        1
+
+  But the problem sample output is:
+
+        1
+        0
+
+  So we must double-check the problem statement.
+
+  The problem says: "Sample Input #1" is:
+
+        5 3 3
+        50 40 30 20 10
+        4 1 2 3 100
+        1 4
+        2 6 7
+        1 3 300
+        2 1 400
+        2 1 5
+
+      Then the scenarios are:
+
+          Scenario1: (1,3,300) -> output 1
+          Scenario2: (2,1,400) -> output 0
+          Scenario3: (2,1,5)   -> output ?
+
+      But the problem says: "Sample Output #1" is:
+
+          1
+          0
+
+      So they only show two? 
+
+      After reading the problem statement: "For the sample input/output #1", and then the explanation only explains two scenarios. 
+
+      Therefore, we assume the sample input has two scenarios? But the input says Q=3 and then has three lines for scenarios.
+
+      This is a discrepancy. But we'll design the solution for Q scenarios.
+
+  Implementation of the segment tree:
+
+      We need a segment tree that supports:
+
+          - Build an array of size M.
+          - Range add: add a value to [l, r] (l and r inclusive)
+          - Query: min in [1, M]
+
+      We can use a standard segment tree for range add and range min query.
+
+  Summary:
+
+      Steps:
+
+          Precomputation:
+            F1 = count of initial employees < A0
+            Read M years: for each year i (1-indexed from 1 to M):
+                R_i = first integer
+                Read R_i integers -> store in B_arr[i]
+                G_current[i] = count of values in B_arr[i] that are < A0
+
+            H[1] = F1
+            For i from 2 to M:
+                H[i] = H[i-1] + G_current[i-1] - R[i-1]
+
+            For i from 1 to M:
+                D[i] = H[i] - R_i
+
+            Build a segment tree T for the array D (size M) that supports range add and query min.
+
+          Then, for each of Q scenarios:
+
+            Read (X, Y, Z)
+
+            Let idx = Y-1 (because the list for year X is 0-indexed)
+
+            old_val = B_arr[X][idx]
+
+            if old_val < A0: 
+                old_contrib = 1
+            else:
+                old_contrib = 0
+
+            new_contrib = 1 if Z < A0 else 0
+
+            delta = new_contrib - old_contrib
+
+            if delta != 0:
+                l = X+1, r = M
+                if l <= M:
+                    T.range_add(l, r, delta)   # update the segment tree
+
+                # Update the stored array and the count:
+                B_arr[X][idx] = Z
+                G_current[X] += delta   # because we are changing one element: we remove old_contrib and add new_contrib
+
+            min_val = T.query(1, M)
+
+            if min_val >= 0:
+                print(1)
+            else:
+                print(0)
+
+  Note: we do not update the base H and D arrays explicitly after the initial computation. The segment tree holds the current state.
+
+  We assume the segment tree is built to hold the base D, and then we update it with the cumulative deltas.
+
+  We'll code the segment tree with lazy propagation for range add and range min.
+
+  Time complexity: O(M) for building, and each update and query O(log M). Since total Q is 100,000, and each update and query is O(log M) (about 17 operations), total operations ~ 100,000 * (log M) ~ 1.7e6, which is acceptable.
+
+  Also, the initial precomputation: 
+
+        The initial set: F1: O(N) -> 100,000.
+
+        The M years: total R_i <= 10^6, so we do 10^6 comparisons for the new employees.
+
+        Then building the segment tree: O(M) = 100,000.
+
+  Therefore, total precomputation: O(N + total_R + M) = O(100,000 + 1e6 + 100,000) ~ 1.2e6.
+
+  Then Q scenarios: 100,000 * O(log M) ~ 1.7e6.
+
+  Total operations ~ 3e6, which is acceptable in 2 seconds.
+
+  Let's code accordingly.
+
+  One more corner: if M=0? But M>=1.
+
+  Also, note: when updating, if X+1 > M, then we do nothing in the segment tree.
+
+  We'll implement the segment tree as follows:
+
+      class SegmentTree:
+          def __init__(self, data, n):   # data[1..n] for D[1..n]
+          def range_add(self, l, r, delta):   # update [l, r] by adding delta
+          def query(self, l, r):   # query min in [l, r] (we always query [1,M])
+
+      However, we only need the entire segment [1,M] for the min, so we can also store a global min? But we have range updates, so we need a tree.
+
+  Standard segment tree with lazy for range add and range min:
+
+      Tree structure:
+
+          tree: size 4*M
+          lazy: size 4*M
+
+      build: 
+          void build(int node, int start, int end)
+
+      update:
+          void update(int node, int start, int end, int l, int r, int delta)
+
+      query:
+          int query(int node, int start, int end, int l, int r)
+
+  But we only need the entire segment [1, M] for the query? Then we can write a specific query for the entire segment? But we'll write a general one.
+
+  Alternatively, we can store the entire min at the root? Then we can get the global min by querying the root.
+
+      We can design:
+
+          self.min_val[1] (root) is the min for the entire array.
+
+      But with lazy propagation, we must propagate. So we do:
+
+          We write the segment tree that supports arbitrary range queries, but we will always query the entire array.
+
+      However, we might as well write a general segment tree.
+
+  Implementation of the segment tree is standard.
+
+  Summary of the solution:
+
+      Precompute F1, R[1..M], G_current[1..M] (base), H[1..M], D[1..M].
+      Build a segment tree T for D[1..M] (size M) that supports range add and query min for the entire array.
+
+      For each scenario:
+          Read X, Y, Z.
+          Let i = X, j = Y (1-indexed).
+          Let idx = j-1 for the list B_arr[X].
+          old_val = B_arr[X][idx]
+          Compute old_contrib = (1 if old_val < A0 else 0)
+          new_contrib = (1 if Z < A0 else 0)
+          delta = new_contrib - old_contrib
+
+          If delta != 0:
+              Update T: T.range_add(X+1, M, delta)   # if X+1 <= M, else skip.
+              Update B_arr[X][idx] = Z
+              Update G_current[X] += delta
+
+          min_val = T.query(1, M)   # min over the entire array of D[1..M]
+          if min_val >= 0: output 1
+          else: output 0
+
+  This solution should work.
+
+  Let me test with the sample without the third scenario: 
+
+      Scenario1: (1,3,300): 
+          old_val=3 -> old_contrib=1
+          new_val=300 -> new_contrib=0
+          delta = -1
+          Update: T.range_add(2,3,-1)   -> D[1] remains 0, D[2] becomes 1, D[3] becomes 0? 
+          Then min_val = min(0,1,0)=0 -> output 1.
+
+      Scenario2: (2,1,400):
+          old_val=4 -> old_contrib=1
+          new_val=400 -> new_contrib=0
+          delta = -1
+          Update: T.range_add(3,3,-1)   -> D[1]=0, D[2]=1, D[3]=0-1 = -1
+          min_val = min(0,1,-1) = -1 -> output 0.
+
+      Then Scenario3: (2,1,5):
+          old_val=400 -> old_contrib=0
+          new_val=5 -> new_contrib=1
+          delta = 1
+          Update: T.range_add(3,3,1)   -> D[3] becomes -1+1=0
+          min_val = min(0,1,0)=0 -> output 1.
+
+  Therefore, the output for the three scenarios: 1, 0, 1.
+
+  But the sample output only has 1 and 0? 
+
+  The problem says: "Sample Output #1" is:
+
+        1
+        0
+
+  So if the problem intended only two scenarios, then we output two.
+
+  However, the input says Q=3, so we output three.
+
+  We'll write the solution accordingly.
+
+  We assume the segment tree is implemented correctly.
+
+  Let's code accordingly.
+
+  Note: The segment tree must be built for the base D array. Then we update it.
+
+  We'll now write the segment tree in pseudocode:
+
+      class SegmentTree:
+          def __init__(self, data, n):
+              self.n = n
+              self.size = 1
+              while self.size < n:
+                  self.size *= 2
+              self.tree = [0] * (2*self.size)
+              self.lazy = [0] * (2*self.size)
+              # build the leaves: data[0] is D[1]? We assume data is 0-indexed for indices 0..n-1 representing D[1..n]
+              for i in range(n):
+                  self.tree[self.size+i] = data[i]   # data[i] = D[i+1]
+              for i in range(n, self.size):
+                  self.tree[self.size+i] = 10**18   # a big number for the unused leaves
+              for i in range(self.size-1,0,-1):
+                  self.tree[i] = min(self.tree[2*i], self.tree[2*i+1])
+
+          def apply(self, node, delta):
+              self.tree[node] += delta
+              if node < self.size:
+                  self.lazy[node] += delta
+
+          def push(self, node):
+              # push lazy value to children
+              if self.lazy[node] != 0:
+                  self.apply(2*node, self.lazy[node])
+                  self.apply(2*node+1, self.lazy[node])
+                  self.lazy[node] = 0
+
+          def update_range(self, l, r, delta, node, segL, segR):
+              if r < segL or segR < l:
+                  return
+              if l<=segL and segR<=r:
+                  self.apply(node, delta)
+                  return
+              self.push(node)
+              mid = (segL+segR)//2
+              self.update_range(l, r, delta, 2*node, segL, mid)
+              self.update_range(l, r, delta, 2*node+1, mid+1, segR)
+              self.tree[node] = min(self.tree[2*node], self.tree[2*node+1])
+
+          def update(self, l, r, delta):   # update [l, r] (1-indexed indices) by adding delta
+              # convert to 0-indexed? Actually our segment tree is built for 0-indexed base array of size n, representing indices 0..n-1 for D[1..n].
+              # But the update range: l to r (1-indexed) -> we update indices [l-1, r-1] in the base array.
+              # However, we built the tree for base array of size n (for D[1..n] at indices 0..n-1).
+              # So we update from l0 = l-1 to r0 = r-1? 
+              # But our segment tree node [0, size-1] corresponds to base array indices 0..n-1.
+              # Actually, we can do:
+
+              # We map: 
+              #   D[1] is at index0, D[2] at index1, ... D[n] at index n-1.
+
+              # Therefore, the update [l, r] (1-indexed) in D -> base array indices [l-1, r-1].
+              self.update_range(l-1, r-1, delta, 1, 0, self.size-1)
+
+          def query_range(self, l, r, node, segL, segR):
+              if r < segL or segR < l:
+                  return 10**18
+              if l<=segL and segR<=r:
+                  return self.tree[node]
+              self.push(node)
+              mid = (segL+segR)//2
+              left_val = self.query_range(l, r, 2*node, segL, mid)
+              right_val = self.query_range(l, r, 2*node+1, mid+1, segR)
+              return min(left_val, right_val)
+
+          def query(self, l, r):   # query [l, r] (1-indexed)
+              return self.query_range(l-1, r-1, 1, 0, self.size-1)
+
+      However, note: we only need to query the entire array? Then we can have a separate function for global min? 
+
+          def global_min(self):
+              return self.tree[1]   # but we have lazy propagation? We cannot do that without propagating.
+
+      Actually, we must propagate to get the correct min? 
+
+      Alternatively, we can write a function that queries the entire array:
+
+          return self.query(1, self.n)
+
+      But we have built the tree for the entire array of size n (which is M). Then we can do:
+
+          min_val = T.query(1, M)
+
+      But if we always query the entire array, we can write:
+
+          def global_min(self):
+              # we do a query on [0, n-1] (0-indexed) for the base array?
+              return self.query_range(0, self.n-1, 1, 0, self.size-1)
+
+      But note: our base array has size n = M, so the entire array is [0, M-1] (0-indexed).
+
+      Actually, we can design the segment tree to only support the entire array? But we do range updates (on a suffix) and we only need the entire min? 
+
+      Then we can maintain a global min? But the lazy propagation for the entire min is not trivial? 
+
+      Alternatively, we can use a Fenwick tree? But range add and global min is not standard.
+
+      We'll stick to the segment tree with lazy propagation.
+
+  However, note: the updates are only on suffixes? Then we can use a Fenwick tree for range add and then store the array and then the min? But then we need to update a suffix and then compute the min over the entire array. The min over the entire array after a suffix update? 
+
+      The min = min( min_prefix, min_suffix_updated )? 
+
+      But we updated a suffix by a constant. Then the min of the entire array is the min of the unchanged prefix and the updated suffix.
+
+      How to update a suffix quickly and then get the global min? 
+
+      We can store:
+
+          base_D: the base D array (without any scenario updates) for indices 1..M.
+
+          Then we have a variable "total_delta" that we have added to the entire array? But the updates are additive and independent per scenario? Actually, each scenario update adds a delta to a suffix that starts at a particular index.
+
+      Alternatively, we can use a segment tree that only supports suffix updates? But the segment tree above is standard and efficient.
+
+  We'll implement the segment tree as described.
+
+  Note: the segment tree uses O(M) memory and O(log M) per update and query.
+
+  Given M up to 100,000, the segment tree will have about 200,000 nodes (since we use an array of size 2 * 2^k, where 2^k >= M).
+
+  This is acceptable.
+
+  Final note: the problem states that all integers (in A, B, and Z) are distinct. So no duplicates.
+
+  We'll code accordingly.
+
+  Let's code the solution.
+
+  However, note: the problem says the memory limit is 256MB, and we have:
+
+        Arrays: 
+          A: 100,000 integers -> 100,000 * 4 bytes? ~ 400KB
+          R: M integers -> 100,000 * 4 = 400KB
+          B_arr: total 10^6 integers -> 10^6 * 4 = 4MB
+          G_current: 100,000 integers -> 400KB
+          H: 100,000 integers -> 400KB
+          D: 100,000 integers -> 400KB
+
+        Segment tree: 
+          tree: 2 * size (where size is about 2^17 = 131072) -> 2 * 131072 * 4 bytes per integer? for tree and lazy: 
+                tree: 262144 * 4 = 1.05MB
+                lazy: same -> total 2.1MB
+
+        Total memory: < 10MB, which is acceptable.
+
+  Therefore, we proceed.
+
+  Steps:
+
+      import sys? for speed.
+
+      Read input.
+
+      Precompute F1.
+
+      Precomputation for M years.
+
+      Precompute H and D.
+
+      Build segment tree for D.
+
+      Process Q scenarios.
+
+  Let's code accordingly.
+
+  But note: the segment tree we described updates the base array of D. Then we update by adding a delta to a suffix. Then we query the entire array.
+
+  We output 1 if the min >=0, else 0.
+
+  We'll run the sample: two scenarios: output 1 and 0.
+
+  We hope it passes.
+
+  However, the problem has a third scenario? But the sample output only has two. 
+
+  We output for each scenario.
+
+  If the problem sample input has Q=3, we output three numbers.
+
+  But the problem sample output only has two? 
+
+  I see: the problem says "Sample Output #1" is two lines. 
+
+  Therefore, if the judge expects two outputs for the sample, then the sample input might have two scenarios? 
+
+  Actually, the sample input says:
+
+        "5 3 3"
+        ... 
+        then the three years
+        then three scenarios.
+
+  But the problem statement says: "Sample Input #1" and then the block. Then "Sample Output #1" and then two lines.
+
+  This is confusing. But we output as many as Q.
+
+  We hope the judge input has the Q as given.
+
+  We'll submit.
+
+  Note: the problem says: "the changes in each scenario are kept for the subsequent scenarios". So we update the B_arr and the segment tree.
+
+  We are updating the segment tree: the segment tree holds the current state of the D array (with all the scenario updates).
+
+  This is correct.
+
+  We'll now write the code accordingly.
+
+  IMPORTANT: We must use 0-indexing for the segment tree base array? 
+
+      We built the segment tree for an array of length M: 
+          base_D[0] = D1 = D[1]
+          base_D[1] = D[2]
+          ...
+
+      Then an update for the suffix starting at year X+1: that corresponds to the segment in the base array from index (X) to (M-1) (0-indexed).
+
+      So in the segment tree update: we call update_range(l0, r0, delta) with l0 = X, r0 = M-1.
+
+      But our segment tree update function as written above:
+
+          def update(self, l, r, delta):   # [l, r] 1-indexed: so if we want to update years [X+1, M] (1-indexed), then l = X+1, r = M.
+          then it converts to 0-indexed: l0 = l-1, r0 = r-1.
+
+          So for [X+1, M] (1-indexed): 
+              l0 = (X+1)-1 = X
+              r0 = M-1
+
+      Therefore, we do:
+
+          T.update(X+1, M, delta)   # if we have the update function that takes 1-indexed indices.
+
+      But we can also write the segment tree to take 0-indexed indices? 
+
+      Alternatively, we can change the update_range to take 0-indexed indices? 
+
+      We'll design the segment tree to use 0-indexed indices for the base array.
+
+      Then we can have:
+
+          def update_range(self, l, r, delta):   # update the segment [l, r] in the base array (0-indexed) by adding delta.
+
+      Then we call:
+
+          T.update_range(X, M-1, delta)   # for updating from year X+1 to M: because D[X+1] is at index X (0-indexed) and D[M] is at index M-1.
+
+      This is simpler.
+
+  We'll change the segment tree to use 0-indexed indices for the base array.
+
+  Let me rewrite the segment tree to use 0-indexed indices for the base array, and then the update_range and query_range functions take 0-indexed indices.
+
+  Then in the main:
+
+      When we update for a scenario: 
+          We update the base array from index = X to M-1? 
+          Because: 
+             The year t is represented by index = t-1 in the base array.
+             We want to update years from X+1 to M: 
+                 X+1 -> index = (X+1)-1 = X
+                 M -> index = M-1
+
+          So we call T.update_range(X, M-1, delta)
+
+      Then we query the entire array: 
+          T.query_range(0, M-1)
+
+  But note: the segment tree is built for the base array of size M (0-indexed indices 0 to M-1).
+
+  We'll implement the segment tree accordingly.
+
+  We write:
+
+      class SegmentTree:
+          def __init__(self, data, n):   # data: list of n elements (0-indexed indices 0 to n-1)
+              self.n = n
+              self.size = 1
+              while self.size < n:
+                  self.size *= 2
+              self.tree = [10**18] * (2 * self.size)
+              self.lazy = [0] * (2 * self.size)
+              # build leaves
+              for i in range(n):
+                  self.tree[self.size + i] = data[i]
+              for i in range(self.size-1, 0, -1):
+                  self.tree[i] = min(self.tree[2*i], self.tree[2*i+1])
+
+          def apply(self, node, delta):
+              self.tree[node] += delta
+              if node < self.size:
+                  self.lazy[node] += delta
+
+          def push(self, node):
+              if self.lazy[node] != 0:
+                  self.apply(2*node, self.lazy[node])
+                  self.apply(2*node+1, self.lazy[node])
+                  self.lazy[node] = 0
+
+          def update_range(self, l, r, delta, node, segL, segR):
+              if r < segL or segR < l:
+                  return
+              if l <= segL and segR <= r:
+                  self.apply(node, delta)
+                  return
+              self.push(node)
+              mid = (segL + segR) // 2
+              self.update_range(l, r, delta, 2*node, segL, mid)
+              self.update_range(l, r, delta, 2*node+1, mid+1, segR)
+              self.tree[node] = min(self.tree[2*node], self.tree[2*node+1])
+
+          def update(self, l, r, delta):   # update the base array from index l to r (0-indexed, inclusive)
+              self.update_range(l, r, delta, 1, 0, self.size-1)
+
+          def query_range(self, l, r, node, segL, segR):
+              if r < segL or segR < l:
+                  return 10**18
+              if l <= segL and segR <= r:
+                  return self.tree[node]
+              self.push(node)
+              mid = (segL+segR)//2
+              left_val = self.query_range(l, r, 2*node, segL, mid)
+              right_val = self.query_range(l, r, 2*node+1, mid+1, segR)
+              return min(left_val, right_val)
+
+          def query(self, l, r):   # query the base array from index l to r (0-indexed, inclusive)
+              return self.query_range(l, r, 1, 0, self.size-1)
+
+          # For convenience, we can add:
+          def global_min(self):
+              return self.query(0, self.n-1)
+
+  Then in the main:
+
+      # Build the segment tree with base_D = [D1, D2, ..., DM] -> which is an array of length M (0-indexed: index0 = D1, index1=D2, ... index(M-1)=DM)
+      T = SegmentTree(base_D, M)
+
+      For each scenario:
+          ... 
+          if delta != 0:
+              if X < M:   # because if X>=M, then the suffix is empty? 
+                  T.update(X, M-1, delta)   # update indices from X to M-1 (0-indexed) by adding delta.
+
+          min_val = T.global_min()
+
+          if min_val >= 0: output 1
+          else: output 0
+
+  Note: when X = M, we update from index M (which is beyond the array, since the array is 0 to M-1) -> so we do nothing? 
+
+      Actually, our update for l = M, but the array only has indices 0 to M-1. So if X = M, then the update is for the suffix starting at M+1, which is beyond the last element -> so we do nothing.
+
+      Therefore, we can check: if X < M, then update indices [X, M-1]. If X==M, skip.
+
+  Alternatively, we can write:
+
+          if X < M:
+              T.update(X, M-1, delta)
+
+  This matches.
+
+  We'll run the sample:
+
+      M=3, base_D = [D1, D2, D3] = [0,2,1] (for the base chain) -> stored as base_D[0]=0, base_D[1]=2, base_D[2]=1.
+
+      Scenario1: X=1 -> update index1: which is base_D[1] and base_D[2]? 
+          But note: our update is for the suffix starting at year X+1 = 2. 
+          In the base array: year2 -> index1, year3 -> index2.
+
+          So we update indices 1 to 2 (0-indexed) by -1.
+
+          Then base_D becomes: 
+              index0: 0
+              index1: 2-1 = 1
+              index2: 1-1 = 0
+
+          Then global_min = min(0,1,0)=0 -> output 1.
+
+      Scenario2: X=2 -> update index2: 
+          We update from index = 2 to 2? 
+          base_D[2] becomes 0-1 = -1.
+          Then global_min = min(0,1,-1) = -1 -> output 0.
+
+      Scenario3: X=2 -> update index2: 
+          base_D[2] becomes -1+1 = 0.
+          Then global_min = min(0,1,0)=0 -> output 1.
+
+  It matches.
+
+  Therefore, we write the solution accordingly.
+
+  Let's code.
+
+  Note: We assume the segment tree is built for the base_D array (which is 0-indexed of length M).
+
+  One more corner: if M=0? But M>=1.
+
+  We'll code.
+
+  Due to the constraints, we hope it runs within 2 seconds.
+
+  Let me write the entire code in Python. But note: the constraints are high (M, Q up to 100,000) and the segment tree might be heavy in Python? 
+
+  However, the total operations in the segment tree is O(Q * log M) ~ 100,000 * 17 = 1.7e6 operations, which is acceptable in Pyton in 2 seconds? 
+
+  But the initial building of the segment tree: O(M) = 100,000, which is acceptable.
+
+  We'll hope.
+
+  We must be cautious: the segment tree update_range and query_range are recursive? We can use iterative if needed, but the depth is only 17.
+
+  We'll write the segment tree as above.
+
+  We'll now write the code.
+
+  However, the problem says: avoid writing actual code? But the editorial is for explanation.
+
+  But the problem says: "Please generate a detailed editorial."
+
+  Therefore, we have provided the detailed solution.
+
+  We summarize:
+
+      The key insight is that Randall is fired in year t if and only if at the beginning of year t, the number of employees with performance strictly less than his (which we denote F(t)) is less than R_t.
+
+      We derived a recurrence:
+
+          F(1) = count of initial employees (other than Randall) that are < A0.
+          For t>=1: 
+              F(t+1) = F(t) - R_t + G(t)
+
+          where G(t) = number of new employees added in year t that are < A0.
+
+      Then the condition for year t is F(t) >= R_t.
+
+      And we expressed F(t) as:
+
+          F(t) = F(1) - (R_1 + ... + R_{t-1}) + (G(1) + ... + G_{t-1})
+
+      Then we defined:
+
+          H(t) = F(1) + (G(1)+...+G_{t-1}) - (R_1+...+R_{t-1})   [for t from 1 to M]
+
+      and the condition for year t: H(t) >= R_t  --> D(t) = H(t) - R_t >= 0.
+
+      We then note that each scenario updates one element in a new employee array for a particular year X. This changes G(X) by a delta (which is either -1, 0, or 1). Then we update the D array for t from X+1 to M: we add the same delta to D(t) for t>=X+1.
+
+      We use a segment tree with lazy propagation to support range add and global min query.
+
+      Then for each scenario, we update the segment tree and then check if the global min of D[1..M] is nonnegative.
+
+  This solution runs in O(N + total_R + Q * log M), which is efficient.
+
+  End of editorial.

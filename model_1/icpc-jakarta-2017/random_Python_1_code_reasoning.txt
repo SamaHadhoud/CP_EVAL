@@ -1,0 +1,1431 @@
+ We are guaranteed that T (number of test cases) is up to 100,000, but the sum of K is only 100,000.
+ However, note that N is up to 3000, and we cannot precompute for every distinct N from 1 to 3000 for all states (which would be O(N^3)) without grouping by same N and avoiding redundant computation.
+
+ But note: T can be up to 100,000, but the distinct values of N might be at most 3000? Actually, the input says: "It is guaranteed that the sum of the value of K on all testcases is not more than 100,000." and also N in [1,3000]. However, T up to 100,000 and N only 3000 distinct values? Actually, N can repeat.
+
+ We'll do:
+   - Precompute the DP for each distinct N that appears. But note: worst-case distinct N is 3000, and for each N we do O(N^2) states. The total states over all distinct N would be about: sum_{n=1}^{3000} (n+1)*(n+2)/2 ~ (3000^3)/6 = 13.5e9, which is too heavy in Python.
+
+ Therefore, we need to optimize:
+
+ Alternative Insight: 
+   There is a known solution using linearity of expectation and states (a,b) as above. However, we note that the recurrence is:
+
+   E(a,b) = 1 + (a * E(a-1, b+1) + b * E(a, b-1) + (N - a - b) * E(a, b)) / N
+
+   Rearranged:
+
+   E(a,b) * (a+b) = N + a * E(a-1,b+1) + b * E(a, b-1)
+
+   So: E(a,b) = (N + a * E(a-1,b+1) + b * E(a, b-1)) / (a+b)
+
+   We can iterate by s = a+b (which goes from 0 to N). For each s from 0 to N, and for each a from 0 to s, then b = s - a.
+
+   Steps for fixed N:
+      s = 0: E(0,0) = 0.
+      s from 1 to N:
+        for a from max(0, s - (N - ???)) ... actually, we can iterate a from 0 to s (with b = s - a) as long as a+b <= N and a<=N, b<=N.
+
+   But note: a cannot exceed N and b cannot exceed N. However, we start from a=0 to s (and s<=N).
+
+   However, the problem: the recurrence for E(a,b) depends on:
+        E(a-1, b+1)  [if a>=1] and E(a, b-1) [if b>=1].
+
+   We can iterate by increasing s (which is a+b). Then for each state (a,b) with s = a+b, the states we depend on are:
+        (a-1, b+1): then (a-1)+(b+1) = a+b = s -> same s? 
+        Actually: (a-1, b+1): a-1+b+1 = a+b = s -> same s? That doesn't help.
+
+   Let me check the dependencies:
+
+        E(a,b) = [N + a * E(a-1, b+1) + b * E(a, b-1)] / (a+b)
+
+        Note: state (a-1, b+1): s' = (a-1) + (b+1) = a+b = s -> same s.
+        state (a, b-1): s' = a + (b-1) = a+b - 1 = s-1.
+
+   So we have two dependencies: one at the same s (for the a part) and one at s-1 (for the b part).
+
+   Therefore, we cannot iterate by increasing s only? Because the same s state depends on another state in the same s? 
+
+   Actually, when a>=1, we need E(a-1, b+1) which is at the same s. But note: in the state (a-1, b+1), we are decreasing a by 1 and increasing b by 1. How do we order the states in the same s?
+
+   We can iterate over a in increasing order? Then when computing state (a,b) we would have already computed state (a-1, b+1) only if a-1 is computed? But note: when we are at a, then (a-1, b+1) has a'=a-1 and b'=b+1. Since we are iterating a from 0 to s, then when we are at a, we have already computed a'=0,1,...,a-1. So we have computed (a-1, b+1) because a'=a-1 is less than a? But note: for a fixed s, we have a from 0 to s. For a given a, we have b = s - a. Then the state (a-1, b+1) is (a-1, s - a + 1). Since a-1 is less than a, and we are iterating a from 0 to s, then when we are at a, we have already computed a'=a-1. So we can do:
+
+        for s from 1 to N:
+            for a from 0 to s:
+                b = s - a
+                if a == 0 and b == 0: skip (but s>=1 so not both zero)
+                if a==0:
+                    # then we have no unseen, only b numbers that are seen once.
+                    # recurrence: E(0, b) = (N + b * E(0, b-1)) / b   [because the a term is 0]
+                if b==0:
+                    # then we have no numbers that have been seen once? only unseen numbers.
+                    # E(a,0) = (N + a * E(a-1,1)) / a
+                else:
+                    E(a,b) = (N + a * E(a-1, b+1) + b * E(a, b-1)) / s
+
+        But note: in the case a==0, we have:
+            E(0,b) = (N + b * E(0, b-1)) / b   -> because the term with a is 0 and the denominator is a+b = b.
+
+        However, we see that for a fixed s (which is b when a=0), we need E(0, b-1) which is at s'= (0 + (b-1)) = b-1 = s-1 -> already computed.
+
+        Similarly, when b==0, we need E(a-1,1) which is state (a-1,1) -> s' = (a-1)+1 = a = s? But note: we are iterating s from 1 to N. For a fixed s, we are iterating a from 0 to s. When we get to state (a,0) (so a=s), then we need state (a-1,1) -> which has s' = (a-1)+1 = a = s. But we are in the same s? And we are iterating a from 0 to s. So when we are at a, we have computed states with a' from 0 to a-1? Then (a-1,1) has a'=a-1 which is less than a, so we have computed it.
+
+        So the order for fixed s: iterate a from 0 to s.
+
+   But note: when a=0, we don't have the term with a, and we only need E(0, b-1) which is from s-1 -> already computed.
+
+        When a>=1 and b>=1, we need E(a-1, b+1) and E(a, b-1). 
+            E(a, b-1): state (a, b-1) has s' = a + (b-1) = s-1 -> computed in a previous s.
+            E(a-1, b+1): state (a-1, b+1) has s' = (a-1)+(b+1)=a+b = s -> same s, but we are iterating a from 0 to s. Since we are at a, we have already computed a-1 (because we go from a=0 to a=s). So we have computed (a-1, b+1) because a-1 < a.
+
+   Therefore, the recurrence is safe.
+
+   However, note: for state (a, b) we require that (a-1, b+1) must be computed. Since we are iterating a from 0 to s, then for a given s we start at a=0. Then when we get to a, we have computed all states with lower a in the same s. Also, note that (a-1, b+1) is in the same s? But what if b+1 becomes too large? Actually, we must have b+1 <= N? 
+
+        Conditions: 
+            a>=1 -> a-1>=0, and b+1 = s - a + 1. Since a>=1, then b+1 = s - a + 1 <= s. But note: we require that b+1 <= N? Since s = a+b <= N, then b+1 <= s+1 <= N+1? But actually s <= N, so b+1 <= s+1 <= N+1 -> but we are storing for states up to N, so we need to make sure that b+1 does not exceed N. However, note that in state (a-1, b+1): we have a-1+b+1 = s = a+b. So the state (a-1, b+1) is valid as long as a-1>=0 and b+1<=N? But in our state, we have a>=1 and b = s - a. Then b+1 = s - a + 1. Since a>=1, then s - a + 1 <= s. And we have s<=N, so b+1 <= N. Similarly, a-1 is at least 0.
+
+   Therefore, we can precompute for all states (a, b) with a>=0, b>=0, and a+b <= N.
+
+   But note: if a+b = s and we are iterating s from 0 to N, then we cover all states with a+b<=N? Actually, we are iterating s from 0 to N, and for each s, a from 0 to s. Then we cover all a,b such that a+b<=s and s<=N -> so we cover exactly the states with a+b<=N.
+
+   However, the recurrence for a state (a,b) with a+b = s only depends on:
+        (a-1, b+1) -> which has the same s? Actually: a-1 + b+1 = a+b = s -> so same s, and we require that (a-1, b+1) is computed earlier in the same s (by iterating a from 0 to s: so when we are at a, we have computed a'=0,...,a-1). So we must iterate a from 0 to s? But note: the state (a-1, b+1) has a'=a-1 and b'=b+1. How does this relate to the iteration order? 
+
+        Example: s=2, a=1, b=1: 
+            Then we need state (0,2) -> which is a=0, b=2 -> same s=2, and we will compute a=0 first? Then when we get to a=1, we have already computed a=0 (so state (0,2)) and also state (1,0) from s-1? Actually no, we need state (0,2) which is in the same s and we compute it when a=0.
+
+        Therefore, we iterate a from 0 to s: then for each a, we compute state (a, s-a). 
+
+   Steps for fixed N:
+        dp = 2D array of size (N+1) by (N+1) -> we can use a list of lists.
+
+        for s in range(0, N+1):
+            for a in range(0, s+1):
+                b = s - a
+                if s == 0:
+                    dp[a][b] = 0.0
+                else:
+                    if a == 0:
+                        # then we must have b>=1 (because s>=1) -> then we use: E(0,b) = (N + b * dp[0][b-1]) / b
+                        dp[0][b] = (N + b * dp[0][b-1]) / b
+                    elif b == 0:
+                        # then a>=1: 
+                        dp[a][0] = (N + a * dp[a-1][1]) / a
+                    else:
+                        dp[a][b] = (N + a * dp[a-1][b+1] + b * dp[a][b-1]) / s
+
+        However, note: in the else case, we are using dp[a][b-1] -> which is the state (a, b-1) which has s'=a+b-1 = s-1, which we have computed in the previous s iteration? But wait: we are iterating s from 0 to N. So when we are at s, we have computed all states for s'<s. But note: in the same s, we are iterating a from 0 to s. For state (a,b) with a>=1 and b>=1, we also need state (a, b-1) which is (a, s-1 - a)? Actually: no. The state (a, b-1) is (a, (s-1))? Actually: the state (a, b-1) has the same a and b'=b-1, so the sum is a+b-1 = s-1. So it was computed in the previous s (s-1). Therefore, we have computed it.
+
+        But what about state (a-1, b+1)? This is in the same s. And we iterate a from 0 to s. So when we are at a, we have already computed states in the same s for a'=0,1,...,a-1. Therefore, state (a-1, b+1) has a'=a-1 which is less than a -> computed.
+
+   However, note: when we are at a, the state (a-1, b+1) has a'=a-1 and b'=b+1 = s - a + 1. But when a-1 is 0, we have state (0, s - a + 1). But note: we are iterating a from 0 to s. For a given s, we must compute states in increasing a? Then at a=0 we compute (0,s), at a=1 we compute (1,s-1), ... and at a=a0 we compute (a0, s - a0). Then the state (a-1, b+1) = (a-1, s - a + 1) -> but s - a + 1 = (s - a) + 1. This state is computed at a' = a-1? But when we computed a'=a-1, the state was (a-1, s - (a-1))? Wait, no: for a fixed s, we iterate a from 0 to s. For a specific a, we set b = s - a. Then the state (a, b) = (a, s-a). 
+
+        So state (a-1, b+1) = (a-1, (s - a) + 1) = (a-1, s - a + 1). But note: the state (a-1, s - a + 1) has a'=a-1 and b'=s - a + 1, so the sum a'+b' = (a-1) + (s - a + 1) = s. So it's in the same s. But in our iteration for s, we iterate a from 0 to s. Therefore, when we are at a'=a-1, we computed the state (a-1, s - (a-1))? That is: (a-1, s - a + 1) -> exactly! Because when we are at a'=a-1, we set b' = s - a' = s - (a-1) = s - a + 1. So we have computed it.
+
+   Therefore, the recurrence is well-defined.
+
+   But note: we must be cautious about the array bounds: 
+        For state (a,b): we require 0<=a<=N, 0<=b<=N, and a+b<=N? Actually, in our iteration, s=a+b goes from 0 to N, so a+b<=N. Then for a state (a,b) we have:
+          a in [0, s] and b = s - a, and s<=N.
+
+        In the recurrence for state (a,b) with a>=1 and b>=1:
+          (a-1, b+1): 
+              a-1 is in [0, a-1] -> valid as long as a>=1.
+              b+1 = s - a + 1 -> and since s<=N, then b+1 <= s+1 <= N+1? But we only have b in [0, N]. However, note that s<=N, and b+1 = s - a + 1 <= s <= N? Actually: because a>=1 -> s - a + 1 <= s - 1 + 1 = s <= N. So b+1 <= N. Therefore, the state (a-1, b+1) is within the array.
+
+        Similarly, for state (a, b-1): 
+            a in [0, N] and b-1 in [0, N]? 
+            b>=1 -> so b-1>=0, and b-1 = s - a - 1 = s-1 - a, which is nonnegative? yes because s>=a and s>=1.
+
+   Therefore, we can precompute the entire DP table for a fixed N.
+
+   However, the worst-case distinct N: the problem says T up to 100,000, but the distinct N values? The input says: "It is guaranteed that the sum of the value of K on all testcases is not more than 100,000". And also N in [1,3000]. But T can be up to 100,000, so distinct N values might be up to 3000 (if all test cases have distinct N from 1 to 3000). Then the total states to compute would be: for each distinct n, we compute O(n^2) states. The total states: sum_{n=1}^{D} (n+1)*(n+2)/2 ~ D * (max_n)^2 / 2. For D=3000 and max_n=3000, then total states = 3000 * (3000^2) / 2 = 13.5e9 states. This is too heavy in Python.
+
+   We need to avoid precomputation for every distinct N. But note: the constraints say that the sum of K is only 100,000. Also, T is up to 100,000. However, we also note that the distinct N values might be repeated. We can cache the DP tables by N.
+
+   But worst-case: if we have 100,000 test cases with 3000 distinct N, then we precompute 3000 different DP tables, each of size about n^2. For n=3000, the table for one n has about 3000*3001/2 = 4.5e6 states. Then 3000 * 4.5e6 = 13.5e9 states. Each state requires a constant time operation? Then 13.5e9 operations in C++ might be borderline (in Pyton it would be too slow).
+
+   Therefore, we must find an alternative.
+
+   Alternative approach: 
+        The problem constraints on the input: the total K is 100,000. And note: the state for a test case is (a,b) where a and b are computed from the frequency counts. Also, we know that a+b <= N. But note: the frequency counts: we are only counting numbers that have frequency 0 or 1. And the input numbers are between 1 and N.
+
+        However, the recurrence is linear and we can solve it with state (a,b). But the total number of distinct states (a,b) that we need for all test cases: the state (a,b) for a fixed N: but we only need one state per test case. And the total test cases T is 100,000. But the states (a,b) for each test case: a and b are bounded by N (which is up to 3000). So we cannot iterate over all states for each test case.
+
+        We need to precompute the entire DP table for a given N? Then we must avoid precomputing for every distinct N if there are too many distinct N.
+
+        How many distinct N? The problem says: T test cases. The input does not specify how many distinct N. But worst-case, we might have 3000 distinct N. And the total states for one N is O(N^2). Then total states over distinct N is O( (max N)^3) = 3000^3 = 27e9 states -> too heavy in Python.
+
+        Therefore, we must use a different method.
+
+   Known alternative: 
+        There is a known solution for coupon collector problems with multiple quotas. However, we can use generating functions or linear algebra? 
+
+        Another idea: the recurrence can be solved with iterative methods only for the states that are actually needed? But the problem: the recurrence for state (a,b) depends on states that we might not need? Actually, we need the entire table for a fixed N to compute one state? 
+
+        Or we can use memoization and compute states on the fly? But worst-case, for a fixed N, we might be asked one state, but the entire table is needed to compute that state. So we still need to compute the entire table for that N.
+
+        Therefore, we have to precompute the entire table for a given N only once and then cache it.
+
+        But worst-case: if we have 3000 distinct N, and each table is O(N^2) and N=3000, then the total memory and time is too high.
+
+        We need to optimize by noticing that the distinct N values that actually appear in the test cases might be much less than 3000? The problem says: "It is guaranteed that the sum of the value of K on all testcases is not more than 100,000". And the distinct N: we can count how many distinct N we have. Since T can be up to 100,000, but the distinct N might be small? But worst-case, the distinct N can be 3000.
+
+        However, 3000 distinct N, each with N up to 3000, and the table for one N has about n*(n+1)//2 states. The total states over all distinct N:
+
+            sum_{n in distinct_N} (n*(n+1)//2) 
+
+        In the worst-case, distinct_N = {1,2,...,3000}. Then:
+
+            total_states = sum_{n=1}^{3000} n*(n+1)//2 
+                          = 1/2 * [ sum_{n=1}^{3000} (n^2 + n) ]
+                          = 1/2 * [ (3000*3001*6001/6) + (3000*3001/2) ]
+
+        This is about 1/2 * (about 27e9) = 13.5e9 states -> too many to compute in Python.
+
+        Therefore, we must find a more efficient solution.
+
+   Another Insight: 
+        There is a known generating function for this problem? Or we can use inclusion-exclusion? 
+
+        Alternatively, we can use linearity of expectation and break the process into steps. 
+
+        The process is similar to the coupon collector problem with two coupons of each type. The expected time can be written as:
+
+          E = \sum_{i} E_i
+
+        where E_i is the expected time to get the next new state? But the states are complicated.
+
+        Alternatively, we can use absorbing Markov chains. The state is (a,b) and the absorbing state is (0,0). The chain has O(N^2) states. Then we can write equations for each state. The total states is O(N^2) and we need to solve a system of linear equations. But then we are back to O(N^3) per distinct N? 
+
+        We need a solution that is independent of N? Or that precomputes for each distinct N quickly.
+
+        Known result: 
+          The expected time to get all coupons at least twice in the coupon collector problem is:
+
+            E = \int_{0}^{\infty} [1 - \prod_{i=1}^{n} (1 - e^{-t}(1+t))] dt
+
+        But that integral is not trivial to compute for each test case.
+
+        Alternatively, we can use the recurrence we have but use a different order? 
+
+        However, note: the constraints on the test case: the total K is only 100,000. And the state (a,b) for each test case: a and b are bounded by the initial counts. But note: a+b <= N, and N<=3000. So the state we need per test case is (a,b) with a<=3000, b<=3000. But we cannot compute the entire table for N=3000 once and then use it for all test cases with the same N? 
+
+        Why not? The table for N=3000 has about 3000*3001//2 = 4.5e6 states. Precomputation for one N=3000: we iterate s from 0 to 3000, and for each s we iterate a from 0 to s (which is s+1 states). The total operations is about O(N^2) = 4.5e6 states, each state requires O(1) operations. So 4.5e6 operations per distinct N.
+
+        Then if there are D distinct N, total operations is D * (max_N^2). But D is the number of distinct N in the test cases. How many distinct N can we have? The problem says T up to 100,000, but the distinct N: worst-case 3000. Then total operations 3000 * (3000^2) = 27e9 -> too heavy in Python.
+
+        But note: the distinct N are the ones that appear in the test cases. However, the test cases are sorted by N, and we only precompute the table for an N once. But 3000 distinct N is the worst-case, and 3000 * 4.5e6 = 13.5e6? Wait: 3000 * (3000^2) = 3000 * 9000000 = 27e9, which is too many in Python (each operation is cheap, but 27e9 operations in Python might take hours).
+
+        We must avoid if the distinct N is large.
+
+        How about: the problem says that the sum of K is 100,000. But that doesn't bound the distinct N? 
+
+        However, note: N is in [1,3000]. The worst-case distinct N is 3000. But 3000 is not large? 3000 distinct N -> 3000 different tables. The total states over all tables: 
+
+            total_states = sum_{n=1}^{3000} (n*(n+1)//2) 
+                         = (1/2) * [ sum_{n=1}^{3000} n^2 + sum_{n=1}^{3000} n ]
+                         = (1/2) * [ (3000*3001*6001)//6 + (3000*3001)//2 ]
+
+        The exact value: 
+          sum_{n=1}^{M} n = M(M+1)/2
+          sum_{n=1}^{M} n^2 = M(M+1)(2M+1)/6
+
+          M=3000:
+            sum_n = 3000*3001//2 = 4501500
+            sum_n^2 = 3000*3001*6001//6 = 3000*3001*6001//6 = 3000 * 3001 * 1000.1666... -> 3000*3001*1000 = 9.003e9, then divided by 6: 1.5005e9? 
+
+          Actually: 
+            3000*3001*6001 = 54,054,090,000
+            divided by 6 = 9,009,015,000
+
+          So total_states = (9,009,015,000 + 4,501,500) / 2 = (9,013,516,500) / 2 = 4,506,758,250 states? 
+
+        That's 4.5e9 states, which is too many.
+
+        But note: we don't need to precompute for every n from 1 to 3000, only for the distinct n that appear in the test cases. And the distinct n that appear in the test cases: worst-case, we have 3000 distinct n. And we cannot avoid that.
+
+        Therefore, we need a better method.
+
+   Another known approach: 
+        We can use generating functions or combinatorial identities? 
+
+        Alternatively, we can use the following:
+
+          Let T be the stopping time. We can write:
+
+          T = \sum_{i=0}^{\infty} I_i
+
+          where I_i is the indicator that the i-th step is taken (after the initial K steps). But that doesn't help.
+
+        Or use the states only by the number of coupons that have been collected 0,1,2 times. 
+
+        The expected additional time is:
+
+          E = \sum_{i} E[ \text{additional step for the next useful coupon} ]
+
+        But the steps are not independent.
+
+        Alternatively, we can use the known result from [1]:
+
+          The expected time to get at least two of each coupon in a set of n coupons is:
+
+             E = 2n H_n - n \sum_{j=1}^{n} \frac{1}{j^2} + ...
+
+        But I don't recall the exact formula.
+
+        [1]: A generalized coupon collector problem
+
+        After a quick search: 
+          Expected time to collect at least m of each coupon? 
+          Here m=2.
+
+          Formula: 
+            E = \int_{0}^{\infty} (1 - \prod_{i=1}^{n} \gamma(m, x) ) dx   ? 
+
+        But we are in the middle: we have some coupons already collected.
+
+        We can break the remaining time into stages? 
+
+        Alternatively, we can use the linearity of expectation by defining:
+
+          For a coupon i, let T_i be the additional number of steps until coupon i is collected twice. But note the steps are shared.
+
+        Then E[T] = E[ \max_i T_i ]? No, because we stop when every coupon is collected twice, so it's the maximum? But the maximum of geometric random variables is not the sum.
+
+        Actually, we can use the inclusion-exclusion for the maximum:
+
+          E[\max_i T_i] = \sum_{S \subseteq [n]} (-1)^{|S|+1} E[\min_{i\in S} T_i]
+
+        But then we need to compute E[\min_{i\in S} T_i] for every nonempty subset S.
+
+        However, the state we are in: each coupon i has been collected c_i times already (0,1, or 2). For a subset S, we care about the coupons in S that are not yet collected twice. For a coupon i, if it is already collected twice, then T_i=0. Otherwise, it needs at least (2 - c_i) more copies.
+
+        The time to get one additional copy for a coupon i is geometric with success probability p_i = 1/n.
+
+        The minimum over S of the time to get the required copies for the coupons in S: actually, the minimum time to get one of the coupons in S that are not yet satisfied? 
+
+        But note: we need at least two of each. For a coupon i, we need d_i = 2 - c_i (which can be 0,1, or 2). We are in the middle of the process.
+
+        Actually, we can break the remaining time into:
+
+          T = \sum_{i=1}^{n} T_i
+
+        where T_i is the additional time spent to get the d_i copies of coupon i? But the steps are not allocated to specific coupons: one step provides one coupon. And the T_i are not independent and the total time is not the sum.
+
+        Alternatively, we can use the linearity of expectation in a different way: define X_j as the time from the j-th step to the (j+1)-th step that we spend in a state? But that doesn't help.
+
+        Given the complexity, and the constraints in the problem (N<=3000, but worst-case distinct N=3000) and the fact that 4.5e9 states is too heavy in Python, we must try to optimize the precomputation.
+
+        However, note: the worst-case distinct N is 3000, but the total sum of K is only 100,000. Also, T can be up to 100,000. But the distinct N might be not 3000. In worst-case, distinct N can be 3000, but how many test cases have the same N? 
+
+        The problem does not force us to precompute for every N from 1 to 3000, only for those that appear. But if we have 3000 distinct N, then we have to precompute 3000 tables, each of size about O(n^2). The largest n is 3000, so the largest table has 3000*3001//2 = 4.5e6 states. The total states over all distinct N is about 4.5e9, as calculated. 
+
+        But 4.5e9 states might be borderline in C++ in a fast machine, in Python it is not feasible.
+
+        Therefore, we must seek a different recurrence or a generating function that allows us to compute a single state (a,b) for a given N without the entire table.
+
+   Recurrence without the entire table:
+
+        We have:
+          E(a,b) = (N + a * E(a-1, b+1) + b * E(a, b-1)) / (a+b)
+
+        This is a linear recurrence. We can try to represent it as a system. But the state (a,b) has two parameters.
+
+        There is a known solution: 
+          Let F(s) = E(a,b) for s = a+b.
+          But the recurrence mixes a and b.
+
+        Alternatively, we can try to use generating functions in a and b.
+
+        However, after checking known problems: 
+          "Double coupon collector problem" and its variants.
+
+        Known result for the standard double coupon collector: 
+          The expected time to collect all n coupons at least twice is:
+
+            E = 2n H_n - n H_n^{(2)} + ... 
+
+        But we are in the middle.
+
+        Recent insight: 
+          We can use the following representation:
+
+            Let E(a,b) = N * F(a,b)
+
+          then the recurrence becomes:
+
+            F(a,b) = (1 + (a * F(a-1, b+1) + b * F(a, b-1)) / (a+b)
+
+        This is very similar to harmonic numbers.
+
+        In fact, we might conjecture that F(a,b) is related to the harmonic numbers. 
+
+        We know that in the coupon collector problem, the expected time to go from k coupons to k+1 coupons is n/(n-k). Here we have two types of missing coupons.
+
+        We can break the process into two types of steps:
+          Type 1: steps that reduce the number of unseen coupons (a) -> this happens with probability a/N, and then a decreases by 1 and b increases by 1.
+          Type 2: steps that reduce the number of coupons with one copy (b) -> this happens with probability b/N, and then b decreases by 1.
+
+        The expected time is the sum of the expected times spent in each state.
+
+        The total expected time might be:
+
+          E(a,b) = N * [ \sum_{i=0}^{a-1} \frac{1}{?} + \sum_{j=0}^{b-1} \frac{1}{?} ]
+
+        But the states are intertwined.
+
+        Specifically, we can write:
+
+          Let T = expected additional time.
+          T = \sum_{i=1}^{a} \text{time to get a new coupon that is currently unseen} 
+              + \sum_{j=1}^{a+b} \text{time to get a coupon that is currently in the one-copy state} 
+
+        But note: the number of coupons in the one-copy state changes: initially b, then it becomes b+1 when we get a new coupon, then b+2, etc, until a becomes 0, then we start reducing b.
+
+        We can use a telescoping series. 
+
+        In fact, the process has two phases:
+          Phase 1: until all coupons have been seen at least once.
+          Phase 2: then we need to get the second copy for the coupons that are currently at one copy.
+
+        But wait, we might get a second copy before a coupon is seen twice? 
+
+        Actually, we can use the following: 
+          Let A = the set of unseen coupons, size a.
+          Let B = the set of coupons seen once, size b.
+          Let C = the set of coupons seen at least twice, size c = N - a - b.
+
+        When we draw a coupon:
+          - from A: then a decreases by 1, and b increases by 1.
+          - from B: then b decreases by 1, and c increases by 1.
+          - from C: nothing changes.
+
+        The expected time can be computed as the sum of the expected time for each type of progress.
+
+        The is a well-known result: 
+          The expected time to absorption in this chain is:
+
+            E = N * [ \frac{1}{a} + \frac{1}{a-1} + \cdots + \frac{1}{1} ]  for the a part? 
+                + N * [ \frac{1}{b} + \frac{1}{b-1} + \cdots + \frac{1}{1} ]  for the b part? 
+
+        But note: during the process, the value of b changes: when we reduce a by 1, b increases by 1. Then the reduction in b later might be from a larger b.
+
+        However, we can use a telescoping and and independent of the order, the total expected time to get a new unseen coupon (when there are a unseen) is N/a, and the total expected time to get a coupon in the one-copy state (when there are b of them) is N/b, but the catch is that while we are collecting the unseen coupons, the one-copy state coupons are increasing.
+
+        Actually, the coupons in the one-copy state will be collected after we have finished the unseen coupons? 
+
+        No, because we might get a second copy of a coupon that is in the one-copy state before we see all coupons.
+
+        Therefore, we must account for the two types of progress independently. 
+
+        We can write the expected time as the sum over the unseen coupons of the time to see them the first time, and the sum over the coupons (including those not seen and those seen once) of the time to see them the second time, minus something.
+
+        Specifically, the expected time to see a specific unseen coupon the first time is geometric with mean N/a, but a changes. And the expected time to see a specific coupon the second time (given that we have already seen it once) is geometric with mean N/1 = N, but then when there are b coupons with one copy, the time to get one of them is N/b.
+
+        But note: the second time for a coupon that is currently unseen will only be collected after the first time, and then it becomes one-copy state.
+
+        Alternatively, we can use: 
+
+          Let X = time to get all unseen coupons at least once.
+          Let Y = time to get, for the coupons that are not yet at two copies, the second copy.
+
+        But X and Y overlap: during the collection of the first copies, we might be also collecting second copies.
+
+        This is a standard technique in coupon collector with group drawing.
+
+        We can write the additional expected time as:
+
+          E = E[X] + E[Y| after X]
+
+        But that is not correct because after X, we may have already collected some second copies.
+
+        Actually, the state after X: we have a=0, and b' = b + a0 (where a0 is the initial a) because we've seen each unseen coupon once. But also, during the collection of the first copies, we might have gotten some second copies for the ones that were initially in b? 
+
+        Therefore, this decomposition is not clean.
+
+        Instead, we note that the entire process can be seen as collecting a first copy for the a0 coupons and a second copy for the a0+b0 coupons (because the b0 coupons already have one copy).
+
+        Then the expected time might be:
+
+          E = N * [ \sum_{i=1}^{a0} \frac{1}{i} + \sum_{j=1}^{a0+b0} \frac{1}{j} ]
+
+        Example: 
+          Sample 1: N=1, K=0: then a0=1, b0=0.
+          E = 1 * [ 1/1 + 1/1 ] = 1+1 = 2. -> matches.
+
+          Sample 2: N=1, K=1: then a0=0, b0=1.
+          E = 1 * [ 0 + 1/1 ] = 1. -> matches.
+
+          Sample 3: 
+            Input: "2 10" then the state: a0 = 0, b0 = 0 -> then we are done, but the input guarantees at least one not twice, so this state won't occur.
+
+          But sample: "3 0" -> then a0=3, b0=0.
+          E = 3 * [ 1/1 + 1/2 + 1/3 ] + 3 * [ 1/1 + 1/2 + 1/3 ] ? 
+          = 3 * (1+1/2+1/3) + 3 * (1+1/2+1/3) = 3 * (11/6) * 2 = 11 -> but the sample output is 4.0.
+
+          Clearly not.
+
+        What if: 
+          Only the second sum is over the second copies: and there are a0+b0 second copies to collect? 
+
+          Then for the first copies: we have a0 to collect, and for the second copies: we have a0+b0 to collect.
+
+          So: E = N * ( H_{a0} + H  for the second copies = H_{a0} + H_{a0+b0} ) * N?
+
+          In sample 3: a0=3, b0=0: then E = 3 * ( H_3 + H_{3} ) = 3 * ( (1+1/2+1/3) * 2 ) = 3 * ( (11/6) * 2 ) = 3 * (11/3) = 11, but expected is 4.0.
+
+        This is not matching.
+
+        Known result for the double coupon collector from the start: 
+          The expected time to get all n coupons at least twice is: 
+             E = n ( H_n + H_n^{(2)} )   ?  -> no.
+
+          Actually, the expected time is known to be:
+
+             E = \int_{0}^{\infty} \left(1 - \prod_{i=1}^{n} \left(1 - e^{-t}\left(1+t\right)\right) \right) dt
+
+          but this is not helpful for intermediate states.
+
+        Alternatively, we can use the formula from [2]:
+          [2]: https://math.stackexchange.com/questions/28905/expected-time-to-roll-all-1-through-6-on-a-die
+
+          for an n-sided die, the expected time to get every number at least twice is:
+
+             E = n \left( \sum_{i=1}^{n} \frac{(-1)^{i-1}}{i} \binom{n}{i} \frac{1}{1-(1-i/n)^2} \right)
+
+          but this is for the absorption from the start and for the the
+          probability of at least two, and it's not for intermediate states.
+
+        Given the complexity, and the sample provided: 
+          "2 10
+           2 2 2 2 2 2 2 2 2 2"
+
+          This means: N=2, K=10, and the list is [2,2,...,2] (ten 2's).
+
+          Frequency: 
+            1: 0 times -> a=1 (unseen)
+            2: 10 times -> already>=2, so c=1, then a=1, b=0.
+          So state (a,b) = (1,0).
+
+          Then expected additional time = 2 * [ for the one coupon (unseen) we need to see it twice: 
+             first time: expected 2/1 = 2 steps, then second time: expected 2/1 = 2 steps? -> total 4.
+
+          But the sample output is 9.638888889.
+
+        Therefore, the state (1,0) is not yielding 2+2=4.
+
+        Let's compute by recurrence for N=2, state (1,0):
+          E(1,0) = (2 + 1 * E(0,1)) / 1 = 2 + E(0,1)
+
+          E(0,1) = (2 + 1 * E(0,0)) / 1 = 2 + 0 = 2.
+
+          So E(1,0)=2+2=4.
+
+        But sample output for the last test case is 9.638888889.
+
+        The sample input has 4 test cases. The last test case is:
+
+           2 10
+           2 2 2 2 2 2 2 2 2 2
+
+        -> yields 4, but the sample output is 9.638888889.
+
+        This indicates that sample test cases are:
+
+          1st: "1 0" (no numbers) -> output 2.0
+          2nd: "1 1" [1] -> output 1.0
+          3rd: "3 0" -> output 4.0
+          4th: "2 10" [2,2,...,2] -> output 9.638888889
+
+        So the last test case is the fourth one.
+
+        How does the fourth test case yield 9.638888889? 
+
+        Let me read the sample input carefully:
+
+          "4
+          1 0
+          1 1
+          1
+          2 10
+          3 0
+          2 2 2 2 2 2 2 2 2 2"
+
+        This is:
+
+          T=4
+          Test case 1: N=1, K=0 -> list is empty.
+          Test case 2: N=1, K=1 -> list is [1]
+          Test case 3: N=2, K=10 -> list is [2,2,...,2] (10 times)
+          Test case 4: N=3, K=0 -> list is empty.
+
+        Then the output has 4 lines.
+
+        The sample output is:
+
+          2.000000000
+          1.000000000
+          4.000000000
+          9.638888889
+
+        So the fourth test case is: N=3, K=0.
+
+        For N=3, K=0: state (a,b) = (3,0).
+
+        Compute by recurrence for N=3:
+          We want E(3,0).
+
+          s = a+b = 3.
+          E(3,0) = (3 + 3 * E(2,1)) / 3 = 1 + E(2,1)
+
+          E(2,1) = (3 + 2 * E(1,2) + 1 * E(2,0)) / 3
+
+          We need E(2,0) and E(1,2).
+
+          E(2,0) = (3 + 2 * E(1,1)) / 2
+
+          E(1,1) = (3 + 1 * E(0,2) + 1 * E(1,0)) / 2
+
+          We need E(0,2) and E(1,0).
+
+          E(1,0) = (3 + 1 * E(0,1)) / 1 = 3 + E(0,1)
+          E(0,1) = (3 + 1 * E(0,0)) / 1 = 3+0=3 -> so E(1,0)=3+3=6
+
+          E(0,2) = (3 + 2 * E(0,1)) / 2 = (3+2*3)/2 = (3+6)/2 = 4.5
+
+          Now, E(1,1) = (3 + 1 * 4.5 + 1 * 6) / 2 = (3+4.5+6)/2 = 13.5/2 = 6.75
+
+          Then E(2,0) = (3 + 2 * 6.75) / 2 = (3+13.5) / 2 = 16.5/2 = 8.25
+
+          Now, E(1,2) = (3 + 1 * E(0,3) + 2 * E(1,1)) / 3
+
+          We need E(0,3) and we have E(1,1)=6.75.
+
+          E(0,3) = (3 + 3 * E(0,2)) / 3 = (3+3*4.5)/3 = (3+13.5)/3 = 16.5/3 = 5.5
+
+          Then E(1,2) = (3 + 1*5.5 + 2*6.75) / 3 = (3+5.5+13.5)/3 = 22/3 ≈ 7.3333
+
+          Then E(2,1) = (3 + 2*7.3333 + 1*8.25) / 3 = (3 + 14.6666 + 8.25) / 3 = (25.9166) / 3 ≈ 8.6389
+
+          Then E(3,0) = 1 + 8.6389 = 9.6389
+
+        -> matches the sample output.
+
+        Therefore, the recurrence is correct, and we must compute it for the given state (a,b) for the given N.
+
+        Given the constraints on the sum of K (<=100,000) and that distinct N might be up to 3000, and that one table for a fixed N requires O(N^2) and we have distinct N up to 3000, the total states is sum_{n} (n*(n+1)//2 for n in distinct_N.
+
+        We must hope that the distinct N are few. But worst-case distinct N is 3000, and then total states is about 4.5e9, which in Python will be too slow.
+
+        However, the problem says: the sum of K is <=100,000. This does not bound the distinct N, so we must try to optimize by not precomputing for every distinct N, and also we note that the maximum N is 3000, but the test cases might have the same N reused many times.
+
+        In Python, we can cache the DP tables by N. For example, if a test case has the same N as a previous one, we reuse the table.
+
+        But the issue is the first time we see a new N, we compute the entire table for that N.
+
+        Given that the sum of K is only 100,000, the number of test cases T might be up to 100,000, but the distinct N might be up to 3000. 
+
+        Precomputation for one N=3000: the states are about 4.5e6 states, and we do one floating-point operation per state. In Python, each floating-point operation might take a few nanoseconds? Let's assume 10 ns per state. Then 4.5e6 * 10 ns = 45 ms per N.
+
+        For 3000 distinct N: 3000 * 45 ms = 135 seconds.
+
+        This is acceptable in C++ but in Python it might be borderline in PyPy or if optimized in C++ but in Python we hope that the distinct N is not 3000.
+
+        But the problem says: the sum of K is only 100,000. This might imply that many test cases have small N.
+
+        Also, the total test cases T is up to 100,000, but the distinct N cannot exceed 3000 (since N in [1,3000]). 
+
+        However, 3000 is the maximum distinct N, and 3000 * 45 ms = 135 seconds in Python might be acceptable in PyPy/C++ but in Python it is not. We need to optimize further.
+
+        We can try to not iterate over all states for a given N, but only the states that are needed by the test cases. But the recurrence requires the entire table because states are interdependent.
+
+        Therefore, we must bite the bullet and hope that in practice the distinct N are small. Or the average N is small. 
+
+        Alternatively, we can use a different approach: iterative until the state (0,0) is reached, but the state (a,b) might have a+b up to 3000, and the number of states visited in one test case is O(a+b) = O(N), but then for each state we need to compute the recurrence which requires looking up two states -> then we would need to compute the entire table for the given N anyway.
+
+        Given the time, and the sample, we will implement the precomputation with caching, and hope that the distinct N are not worst-case.
+
+        Steps:
+
+          Read T.
+          Read test cases.
+
+          Group test cases by N.
+
+          For each distinct N in the test cases:
+             Precompute a 2D dp[a][b] for a in [0, N] and b in [0, N] such that a+b<=N.
+                 We will dimension dp as a (N+1) x (N+1) matrix.
+
+                 for s in range(0, N+1):  # s = a+b
+                    for a in range(0, s+1):
+                       b = s - a
+                       if s == 0:
+                          dp[a][b] = 0.0
+                       else:
+                          if a == 0:
+                             # then b>=1
+                             dp[a][b] = (N + b * dp[a][b-1]) / b
+                          elif b == 0:
+                             # then a>=1
+                             dp[a][b] = (N + a * dp[a-1][1]) / a
+                          else:
+                             dp[a][b] = (N + a * dp[a-1][b+1] + b * dp[a][b-1]) / s
+
+                 Note: we must be careful to use dp[a][b-1] and dp[a-1][b+1] which have been computed.
+
+          Then for each test case with that N, compute the state (a,b) and output dp[a][b].
+
+        However, note: in the recurrence for the state (a,b) in the 'else' part, we use:
+             a * dp[a-1][b+1] + b * dp[a][b-1]
+
+        And we are iterating s from 0 to N, and for a given s, we iterate a from 0 to s. Then:
+          - dp[a][b-1]: this is state (a, b-1) which has s'=a+b-1 = s-1, so it was computed in the previous s.
+          - dp[a-1][b+1]: this is state (a-1, b+1) which has s'= a-1+b+1 = a+b = s, and we are iterating a in increasing order, so when we are at a, we have already computed a'=0,1,...,a-1 in the same s.
+
+        Therefore, the order is safe.
+
+        We must note: the range of a and b: 
+          a: from 0 to N, b: from 0 to N, but only states with a+b<=N.
+
+        We can iterate s from 0 to N, and within s, a from 0 to s.
+
+        How to store? We can use a 2D list of size (N+1) x (N+1). Initialize with 0.0.
+
+        But note: for states with a+b>N, we don't need them.
+
+        Also, in the recurrence, we access:
+          - (a, b-1): b-1>=0, and a+(b-1)=s-1<=N, so valid.
+          - (a-1, b+1): a-1>=0 and b+1>=0, and (a-1)+(b+1)=s<=N, and also b+1<=N? Since s<=N and b+1 = s - a + 1 = (a+b) - a + 1 = b+1, and b = s - a, then b+1 = s - a + 1. We require b+1<=N -> yes because s<=N and a>=1, so s - a + 1 <= s <= N.
+
+        Implementation:
+
+          Let's create for current N:
+             dp = [[0.0] * (N+1) for _ in range(N+1)]
+
+          Then for s in range(0, N+1):
+             for a in range(0, s+1):
+                 b = s - a
+                 if s == 0:
+                    dp[a][b] = 0.0
+                 else:
+                    if a == 0:
+                       # then b>=1
+                       dp[a][b] = (N + b * dp[a][b-1]) / b
+                    elif b == 0:
+                       dp[a][b] = (N + a * dp[a-1][1]) / a
+                    else:
+                       dp[a][b] = (N + a * dp[a-1][b+1] + b * dp[a][b-1]) / (a+b)
+
+          But note: in the 'else' branch, a>=1 and b>=1, so a+b>=2, and we use a+b as the denominator.
+
+        Then for a test case: 
+             count = [0]*(N+1)
+             for each number in the list A (of length K) that is in the range [1, N], do count[x]++
+
+             a = number of x in [1, N] with count[x]==0
+             b = number of x in [1, N] with count[x]==1
+
+             result = dp[a][b]
+
+        However, note: the state (a,b) must satisfy a+b<=N. And it does.
+
+        Let's test on the sample: 
+          N=1, K=0: then a=1, b=0 -> dp[1][0] = (1 + 1 * dp[0][1])/1.
+          For N=1, we must compute for s=0: (0,0):0.0.
+          s=1: 
+             a=0: b=1 -> dp[0][1] = (1 + 1 * dp[0][0])/1 = (1+0)/1 = 1.0 -> but wait, we need the state (0,1) for N=1: 
+                However, note: for N=1, the state (0,1) means: no unseen, and one coupon with one copy. But then we only have coupon 1. The expected additional steps to get a second 1: it's geometric with p=1, so 1? 
+                But our recurrence: 
+                  E(0,1) = (1 + 1 * E(0,0)) / 1 = 1+0 = 1.
+             then a=1: b=0 -> dp[1][0] = (1 + 1 * dp[0][1])/1 = (1+1)/1 = 2.0.
+
+          Then for the first sample: output 2.0.
+
+          Second sample: N=1, K=1, A=[1]: 
+             count[1] = 1 -> a=0, b=1 (because the coupon 1 has count=1, so not unseen and not at least twice? -> then we use state (0,1): 1.0.
+
+        Third sample: N=3, K=0: a=3, b=0 -> dp[3][0] = 9.638888889.
+
+        Fourth sample: we don't have in the sample input, but the sample output has a fourth line.
+
+        But the sample input has four test cases, and we've done two samples and then two more.
+
+        The sample input says:
+          4
+          1 0
+          1 1
+          1
+          2 10
+          3 0
+          2 2 2 2 2 2 2 2 2 2
+
+        This is:
+
+          Test case 1: N=1, K=0 -> output dp[1][0]=2.0
+          Test case 2: N=1, K=1, A=[1] -> output dp[0][1]=1.0
+          Test case 3: N=2, K=10, A=[2,2,...,2] (10 times) -> 
+                count[1]=0, count[2]=10 -> so a=1 (for 1), b=0 (for 2: count>=2 -> ignore for a and b, and for 1: count=0 -> a=1, for the other number (2) we have count=10 (>=2) -> so a=1, b=0.
+                Then state (1,0) for N=2: 
+                    dp[1][0] = (2 + 1 * dp[0][1])/1 = 2 + dp[0][1]
+                    For N=2, we compute:
+                      s=0: (0,0):0.0
+                      s=1: 
+                         a=0: b=1 -> dp[0][1] = (2 + 1 * dp[0][0])/1 = (2+0)/1 = 2.0
+                         a=1: b=0 -> dp[1][0] = 2+2 = 4.0.
+                Output 4.0.
+          Test case 4: N=3, K=0 -> a=3, b=0 -> output 9.638888889.
+
+        Matches sample output.
+
+        Therefore, we implement caching per N.
+
+        However, worst-case distinct N=3000, and then we do:
+
+           total_ops = sum_{n=1}^{3000} (n+1)*n/2 = about 4.5e9 states.
+
+        In Python, 4.5e9 states might be too slow. We must hope that the distinct N are not that many.
+
+        But the problem says: the sum of K over test cases is at most 100,000. This doesn't bound the distinct N, but it might indicate that the test cases with large N are few.
+
+        We can try to run for the worst-case distinct N=3000 in Python: 
+
+          for n in range(1, 3001):
+              states = n*(n+1)//2
+              total_states += states
+
+          total_states = 4506758250 (as calculated) -> 4.5e9 states.
+
+          If each state takes about 50 ns in Python, then 4.5e9 * 50e-9 = 225 seconds.
+
+        This is 3.75 minutes.
+
+        We need to optimize the inner loop. 
+
+        We can use a different data structure? But the recurrence is defined as given.
+
+        Or we can use a better order: the current order is by s from 0 to N, and for each s, a from 0 to s. This is the natural order.
+
+        We might use a single array and iterate in the order of increasing a+b and then a.
+
+        But anyway, the time complexity is O(N^2) for fixed N.
+
+        Given the constraints, we must hope that the distinct N are not the entire set from 1 to 3000. But the problem does not guarantee that.
+
+        Alternative: the problem says T up to 100,000 and the sum of K is 100,000. This implies that most test cases have very small K, and possibly many test cases have the same N. But it doesn't prevent distinct N to be 3000.
+
+        We must try to optimize by caching the tables for each N, and then if the same N appears again, we reuse the table.
+
+        And hope that in practice, the distinct N are not 3000.
+
+        Given the sample, we output the answer with 9 decimal places.
+
+        We'll implement and hope.
+
+        Steps in code:
+
+          Precomputation cache: 
+             dp_by_n = {}  # key: n, value: 2D list dp of size (n+1) x (n+1)
+
+          For each test case (we are grouping by N, so we sort by N or use a dictionary to group by N).
+
+          How to group:
+
+             Read all test cases.
+
+             Group test cases by N.
+
+             For each n in the groups:
+                 if n not in dp_by_n:
+                     compute the entire dp table for n.
+                     store in dp_by_n[n] = dp   (dp is a 2D list of size (n+1) x (n+1)? But we only need for a+b<=n. However, we allocate (n+1) x (n+1) and only the triangle a+b<=n is filled, the rest is not used.
+
+                 Then for each test case in the group for n:
+                     a = count of numbers from 1 to n that have frequency 0
+                     b = count of numbers from 1 to n that have frequency 1
+
+                 Then result = dp[a][b]
+
+          Then output the results in the order of input.
+
+        Note: we must be cautious about the memory. 
+          One table for n: (n+1) * (n+1) doubles. For n=3000, that's 3001*3001 = 9e6 doubles -> 9e6 * 8 bytes = 72 MB per table.
+          For 3000 tables: 3000 * 72 MB = 216 GB -> not feasible.
+
+        Therefore, we cannot cache all tables for every distinct n up to 3000.
+
+        We must not cache tables that are not needed again? But the same n might appear multiple times.
+
+        But the total distinct n in the test cases might be large, so we cannot cache all.
+
+        How about: we only compute the table for a given n once, and then if we need it again, we use it. But if there are 3000 distinct n, we will have 3000 tables, and the total memory is sum_{n} (n+1)^2. 
+
+          total_memory = sum_{n in distinct_n} (n+1)^2.
+
+          In the worst-case, distinct_n = [1,2,...,3000], then:
+
+             total_memory = sum_{n=1}^{3000} (n+1)^2 = sum_{k=2}^{3001} k^2 
+                          = sum_{k=1}^{3001} k^2 - 1 
+                          = (3001*3002*6003)//6 - 1 
+
+          which is about (3001*3002*6003)/6 = about 3000^3/2 = 13.5e9 doubles? -> 108e9 bytes = 108 GB.
+
+        This is too much.
+
+        We need a more memory-efficient and time-efficient method.
+
+        Insight: 
+          The recurrence only depends on s = a+b, and we only need one s at a time. Therefore, we can use a single array of size (n+1) for the current s, and update for the next s? But the recurrence for state (a,b) in the same s depends on (a-1, b+1) which is in the same s, so we cannot do only one array.
+
+        However, note: for a fixed s, we only need the states for s and s-1.
+
+          Specifically, in the recurrence:
+            if a>=1: we need state (a-1, b+1) which has the same s.
+            if b>=1: we need state (a, b-1) which has s-1.
+
+          So we can do:
+
+            Let dp_prev = array for s-1: which is an array indexed by a for states (a, s-1 - a) for a in [0, s-1].
+            But for s, we are computing an array indexed by a in [0,s] for state (a, s-a).
+
+          However, the recurrence for a fixed s also requires a state in the same s: (a-1, s - a + 1) for a>=1.
+
+          We are computing the states for the same s in increasing a. So we can do:
+
+            We'll have an array for the current s: call it cur, of size (s+1), and an array for s-1: call it prev, of size (s) (for s-1, a in [0, s-1]).
+
+          But we also need for the state (a-1, s - a + 1) at the same s. And we are iterating a from 0 to s. We can store the current s states as we compute them? 
+
+          Specifically, for a fixed s, we iterate a from 0 to s:
+
+             if a==0:
+                 cur[0] = (n + (s) * prev_somevalue) ??? -> no.
+
+          Alternatively, we can use a 2D array but only for the current s and the previous s, but then we also need to store the entire s because the state (a-1, s - a + 1) is not in the previous s but in the current s, and we have computed it for a'=0,...,a-1.
+
+          So we need an array for the current s for a from 0 to a-1. We can do:
+
+            We are going to compute an array for each s. We store the entire dp for the current s in a new array, and then we can discard s-2 and earlier.
+
+          But then we only store two arrays: 
+             dp_prev = array for s-1: size = s (for a in [0, s-1])
+             dp_curr = array for s: size = s+1
+
+          and we also need to have access to the states in the current s that we've computed for a in [0, a-1]? 
+
+          So for the recurrence at a, we need:
+             state (a, b-1) = (a, s-1 - a) = from s-1: which is stored in dp_prev[a] (if we store by a).
+             state (a-1, b+1) = (a-1, s - a + 1) = but in the current s, at a'=a-1, we computed state (a-1, s - (a-1))? 
+                   wait, for the current s, the state (a-1, s - (a-1)) = (a-1, s - a + 1) -> yes.
+
+          So if we store the current s as we compute it, then when we are at a, we have computed the states for a'=0 to a-1.
+
+          Therefore, we can do for s in range(1, n+1):
+
+             dp_curr = [0.0]*(s+1)   # for a in [0, s]
+             for a in range(0, s+1):
+                 b = s - a
+                 if a==0:
+                     # state (0, s) -> but note: b = s, then we need state (0, s-1) from s-1 -> which is dp_prev[0] for the state a=0 in s-1? 
+                     # But in the previous array (s-1) we stored states for a in [0, s-1]. The state (0, s-1) is the first element of dp_prev? 
+                     # However, we stored for a=0 in s-1: state (0, s-1) = dp_prev[0] 
+                     dp_curr[a] = (n + s * dp_prev[0]) / s   # ? 
+
+                     But wait, in the recurrence for (0,s): 
+                         = (n + s * dp[0][s-1]) / s
+                     and dp[0][s-1] = state (0, s-1) = which is stored in the array for s-1 at a=0? 
+
+                     However, in the array for s-1, we have stored for a in [0, s-1] the state (a, s-1 - a). 
+                         state (0, s-1) is stored at a=0 in the array for s-1.
+
+                 elif a==s:
+                     # then b=0
+                     # state (s,0): = (n + s * dp_curr[s-1]?) -> no, because we need state (s-1,1) in the current s? 
+                     # But wait: recurrence for (s,0): 
+                         = (n + s * dp[s-1][1]) / s
+                     and state (s-1,1) has a'=s-1 and b'=1, and s'= (s-1)+1 = s, so it is in the current s, and we haven't computed it because we are at a=s and we iterate a from 0 to s. We have computed a=0,1,...,s-1, including a=s-1: which is state (s-1, s - (s-1)) = (s-1, 1) -> yes, stored in dp_curr[s-1] (the a'=s-1 in the current array).
+
+                     dp_curr[s] = (n + s * dp_curr[s-1]) / s   ? 
+                         But note: recurrence: (n + a * dp_curr[s-1]) / a = (n + s * dp_curr[s-1]) / s   -> because a=s.
+
+                 else:
+                     state (a, s-a) = (n + a * dp_curr[a-1] + (s-a) * dp_prev[a]) / s   ??? 
+                     But wait: 
+                        dp_curr[a-1] is the state (a-1, s - (a-1)) = (a-1, s - a + 1) -> yes.
+                        dp_prev[a] is the state (a, s-1 - a) = (a, s-1 - a) -> but the state (a, b-1) = (a, (s - a) - 1) = (a, s-1 - a) -> yes.
+
+                     So: 
+                        dp_curr[a] = (n + a * dp_curr[a-1] + (s-a) * dp_prev[a]) / s
+
+          But note: the recurrence for a=0 and a=s are handled separately.
+
+          However, for a=0, we use dp_prev[0] which is the state (0, s-1) from s-1.
+          for a=s, we use dp_curr[s-1] (which is the state (s-1,1) in the current s).
+
+          For the base s=0: we don't need to iterate, we know only (0,0) = 0.0.
+
+          We iterate s from 1 to n.
+
+          We only need to store two arrays: 
+             dp_prev: for s-1, indexed by a in [0, s-1]
+             dp_curr: for s, indexed by a in [0, s]
+
+          Then we can set: 
+             dp_prev = dp_curr   for the next s? 
+
+          But note: for s, we build dp_curr of size s+1, then for s+1, we will need dp_prev = dp_curr (which is for s), and then build a new array for s+1.
+
+          Memory: we only store two arrays. The total memory for one n: about O(n) per n? 
+             We store one array of size s and then one of size s+1, then discard the array for s-1.
+
+          Total memory per n: O(n) at the last s.
+
+          And we have one table per n, but we are not caching the entire 2D, only the last s array. However, we need to answer a query for any (a,b) with a+b<=n. How? 
+
+          We would have to compute the entire table for n, and then store it in a 2D array for later queries. 
+
+          But the memory for the entire table for n is O(n^2), which for many distinct n we cannot store.
+
+        Therefore, we are back to the memory issue for caching.
+
+        Given the time constraints, and since the problem has a constraint on the sum of K (100,000) and T up to 100,000, we hope that the distinct n are not too many and that the the test cases with large n are few.
+
+        We will cache the entire table for each distinct n that we meet, and hope that the distinct n are few.
+
+        Alternatively, we can not cache the table and recompute for the same n every time? But then if the same n appears many times, we recompute the table many times.
+
+        Given that the sum of K is only 100,000, there might be many test cases with the same n. 
+
+        Therefore, caching the table for n is essential.
+
+        And then we hope that the distinct n are not the entire set [1,3000] but only a few.
+
+        We might also try to use a more efficient recurrence in terms of memory and time? 
+
+        But the recurrence is O(n^2) per n.
+
+        We'll implement and hope.
+
+        Steps:
+
+          We will group test cases by n.
+          For each n in the group:
+             if n is in the cache: get the 2D dp table.
+             else:
+                 create a 2D dp = list of (n+1) lists, each list of length (n+1) is not necessary, but we can do:
+
+                    dp = [[0.0]*(n+1) for _ in range(n+1)]
+
+                 then for s in range(0, n+1):
+                    for a in range(0, s+1):
+                         b = s - a
+                         if s==0:
+                             dp[a][b] = 0.0
+                         else:
+                             if a==0:
+                                 dp[0][s] = (n + s * dp[0][s-1]) / s   # because b = s
+                             elif b==0:
+                                 # a>0 and b=0 -> then s = a, and we need state (a-1,1) which is dp[a-1][1]
+                                 dp[a][0] = (n + a * dp[a-1][1]) / a
+                             else:
+                                 dp[a][b] = (n + a * dp[a-1][b+1] + b * dp[a][b-1]) / s
+
+                 cache[n] = dp
+
+          Then for a test case with this n, we compute a and b, and then result = cache[n][a][b]
+
+        However, note: in the a==0 branch, we access dp[0][s-1]. But we are iterating s from 0 to n, and for a fixed s, we are iterating a from 0 to s. So when a=0, we are at state (0,s) and we use state (0,s-1) which is computed in the previous s.
+
+        But what about the b in the state (0,s) is s? And we store at dp[0][s] = for state (0,s).
+
+        Similarly, for the b==0 branch, we use dp[a-1][1] which is for state (a-1,1). And we have s = a (because b=0) and a>=1, and we iterate a from 0 to s. When we are at a, we have computed a'=0 to a-1 for this s? But note: state (a-1,1) has a'=a-1 and b'=1, so the sum is a-1+1 = a = s. And we are iterating a in increasing order, so when we are at a, we have already computed a'=a-1 in this s. Therefore, we have the value.
+
+        However, in the else branch, we use:
+             dp[a-1][b+1] and dp[a][b-1]
+
+        And they are available: 
+             dp[a][b-1]: from s-1? But in our loops, we are iterating s in increasing order, and for a fixed s, we iterate a from 0 to s. The state (a, b-1) = (a, s-1 - a) has s'=s-1, so it was computed in a previous s. But note: we are in the same dp table, so it is stored.
+
+        But also, we might have computed state (a-1, b+1) in the current s for a lower a.
+
+        Therefore, the entire table is filled in increasing s.
+
+        But the memory: for a given n, we allocate (n+1) x (n+1) array. For n=3000, that's 3001*3001=9e6 elements, which is acceptable in Python for one n. But for 3000 distinct n, we would have 3000 * 9e6 = 27e9 elements, which is 27e9 * 8 bytes = 216e9 bytes = 216 GB, which is too much.
+
+        Therefore, we cannot cache the entire table for every distinct n if there are 3000 distinct n.
+
+        We must not cache the entire table, but only the last array for the current s? 
+
+        But then how to answer queries? We are not storing the entire table, only the current s.
+
+        We would have to recom the state (a,b) for a test case without caching the entire table.
+
+        Alternative: we do not cache the dp table, but we cache the results for the states that appear in the test cases. But then for a new state (a,b) for a given n, we might have to compute the entire table for that n.
+
+        But then if the same n appears in many test cases with different (a,b), we recompute the entire table for each test case? 
+
+        That would be inefficient.
+
+        Given the complexity, and the sample, and the constraints on the sum of K (<=100,000) and that the total test cases T is up to 100,000, the number of distinct (n, a, b) states might be not too many.
+
+        However, for a fixed n, the number of (a,b) states is O(n^2), and n<=3000, so per n we have 4.5e6 states. If we have many test cases with the same n, we can precompute the entire table once and then answer each test case in O(1).
+
+        Therefore, we can do:
+
+          Group test cases by n.
+
+          For a group of test cases with the same n, and let the group size = g:
+
+             We will have to compute the entire table for n once, and then for each test case in the group, we do a lookup.
+
+             Memory for one n: O(n^2), which for n=3000 is 9e6 doubles, 72 MB.
+
+             Then for distinct n, the total memory is sum_{n} n^2 over the distinct n in the test cases.
+
+             Time: for one n, O(n^2) and then g lookups.
+
+          This is efficient if the distinct n are not too many.
+
+        Given the worst-case distinct n=3000, then total memory = 400 GB, which is not feasible.
+
+        Therefore, we must rely on the distinct n being few. The problem does not guarantee, but in practice the distinct n might be few because the sum of K is only 100,000. This means there are not many test cases with large n.
+
+        How many test cases can have large n? 
+          The total test cases T is up to 100,000, and the sum of K is 100,000. This means that most test cases have K=1 or 0.
+
+          Also, n is in [1,3000], but if a test case has n=3000, it might appear only once.
+
+        The number of distinct n cannot exceed the number of test cases. In the worst-case, there are 100,000 test cases and 3000 distinct n.
+
+        Memory for 3000 distinct n: 3000 * (72 MB) = 216 GB -> not feasible.
+
+        We must find a solution that does not use O(n^2) memory per distinct n.
+
+        We can compute the table for a fixed n and then after processing the group, we discard the table. That is, we do not cache between groups. But then if the same n appears in two groups (not consecutive), we might recompute it.
+
+        However, we are grouping by n. So for one distinct n, we will have a group of test cases. We compute the table once for that n, use it for all test cases in the group, and then discard the table.
+
+        Memory: at the same time, we only need the table for one n. And we process groups by n one at a time.
+
+        Total memory: O(n^2) for the current n, and also we need to store the frequency count for the current test case (which is O(n) per test case, but the sum of K is 100,000, and the n is the current n, and we are not sum of n, but we do one test case at a time within the group).
+
+        Steps:
+
+          Read all test cases.
+
+          Group by n.
+
+          Sort by n? Not necessary.
+
+          For each n, group = list of test cases (each test case has K and list A)
+
+          Then:
+              Precompute the entire dp table for n (using a 2D array of size (n+1) x (n+1))
+
+          For each test case in the group:
+               a = number of integers in the range [1, n] that do not appear in A.
+               b = number of integers in the range [1, n] that appear exactly once in A.
+               result = dp[a][b]
+
+          Then discard the dp table for n.
+
+          And output the result for the test case in the input order.
+
+        Memory for one group: 
+             dp table: O(n^2)
+             and the frequency array for one test case: O(n) 
+             but we process one test case at a time, so we can do frequency count for one test case and then free it.
+
+        The peak memory for a group: 
+             The dp table: n^2, and the frequency array for the current test case: n, and the list A for the current test case: we have read the entire list (length K), but we are in the group, so we can read one test case at a time.
+
+        Total memory: O(n^2) for the dp table + O(n) for the frequency array + O(K) for the current list of numbers.
+
+        For the largest n=3000: 
+             dp table: 3000^2 = 9e6 doubles -> 72 MB, and frequency array: 3000 integers, and K can be up to 100,000, so list A: 100,000 integers.
+
+        Total memory: 72 MB + 0.4 MB (for frequency array) + 0.8 MB (for list A) -> about 73 MB.
+
+        And for the next group, we free the dp table and reuse the memory.
+
+        Time: for one group with distinct n, the time to compute the dp table is O(n^2), and then for each test case in the group, we do O(n + K) to compute the frequency array.
+
+        The sum of K over all test cases is 100,000, so the total time for the frequency counting is 100,000.
+
+        The total time for the dp tables: sum_{n in distinct_n} O(n^2)
+
+        Let D = number of distinct n.
+
+        total_time = O(100,000) + sum_{n in distinct_n} O(n^2)
+
+        In the worst-case, distinct_n = 3000, then sum_{n in distinct_n} n^2 = 3000 * 3000^2 = 3000 * 9e6 = 27e9 operations.
+
+        In Python, 27e9 operations might take: if one operation is 10 ns, then 270 seconds.
+
+        But we must hope that the distinct_n are not the entire set from 1 to 3000, but only the n that appear in the test cases. And the n in the test cases are not necessarily contiguous.
+
+        Also, note: the distinct_n are the ones that appear in the test cases, and if a test case has n, then we will have one group for that n. The number of distinct_n is at most the number of groups, which is at most 100,000? But n in [1,3000], so distinct_n at most 3000.
+
+        And 3000 groups, each with n. The sum of n^2 for the groups: if the groups have n_i, then sum_{i=1}^{D} n_i^2.
+
+        In the worst-case, if the distinct n are 3000, then we do:
+
+            total_ops = sum_{n in distinct_n} n^2
+
+        where distinct_n is the set of n that appear. And the worst-case is when the distinct_n = {1,2,...,3000}, then total_ops = 3000*3001*6001//6 = around 9e9, not 27e9.
+
+        Because we do one table per distinct n, and the work for one table is about (n*(n+1))//2 states, and each state is O(1). The number of states for a given n is about n^2/2.
+
+        Therefore, total states = sum_{n in distinct_n} (n*(n+1)//2) = (1/2) * (sum_{n} n^2 + sum_{n} n)
+
+        = (1/2)*(S2 + S1)
+
+        with S2 = sum_{n in distinct_n} n^2, S1 = sum_{n in distinct_n} n.
+
+        In the worst-case distinct_n = {1,2,...,3000}, then:
+           S1 = 3000*3001//2 = 4501500
+           S2 = 3000*3001*6001//6 = around 9004500000 (9e9)
+
+        Then total states = (9004500000 + 4501500) // 2 = around 4.5e9 states.
+
+        This is 4.5e9 states, and in Python, if we do 4.5e9 iterations, and each iteration is a few operations, it will be slow (minutes).
+
+        Given the constraints, we must hope that the distinct_n are not the worst-case.
+
+        Or we can run in C++.
+
+        But the problem says: memory limit 256 MB, and we are using per group: 72 MB for the dp table for n=3000, and then we free it. And the total memory will be 72 MB (for the current dp table) plus the input and output buffer.
+
+        Therefore, we implement in Python and hope that the distinct_n are small.
+
+        Or if the distinct_n are the worst-case, we might need to run on a faster machine or in PyPy.
+
+        Given the sample, we will implement and hope.
+
+        Summary of the code for one test case grouping:
+
+          groups = defaultdict(list)
+          for i in range(T):
+              read (n, k) and list A of k numbers.
+              groups[n].append( (k, A, i) )   # and index to output in order
+
+          results = [0] * T
+
+          for n, test_cases in groups.items():
+              # Precompute dp for n
+              dp = [[0.0]*(n+1) for _ in range(n+1)]
+              # We'll create a 2D list of (n+1) x (n+1), and we only use a,b such that a+b<=n.
+              for s in range(0, n+1):
+                  for a in range(0, s+1):
+                      b = s - a
+                      if s == 0:
+                         dp[a][b] = 0.0
+                      else:
+                         if a == 0:
+                             # state (0, s) -> b = s
+                             dp[a][b] = (n + b * dp[a][b-1]) / b
+                         elif b == 0:
+                             dp[a][b] = (n + a * dp[a-1][b+1]) / a
+                         else:
+                             dp[a][b] = (n + a * dp[a-1][b+1] + b * dp[a][b-1]) / s
+
+              for (k, A, index) in test_cases:
+                  # create an array to count frequency of numbers in [1, n]
+                  freq = [0] * (n+1)
+                  for x in A:
+                      if 1<= x <= n:
+                         freq[x] += 1
+                  a = 0
+                  b = 0
+                  for i in range(1, n+1):
+                      if freq[i] == 0:
+                         a += 1
+                      elif freq[i] == 1:
+                         b += 1
+                  results[index] = dp[a][b]
+
+          Then output results.
+
+        We must be cautious: when n=0, then the for s in range(0,0+1) is s=0, then we do a in [0,0] -> a=0, and then we do the s=0 branch.
+
+        But the problem: n>=1.
+
+        Let's hope.
+
+        Run on the sample: 
+           n=1: 
+              s=0: a=0, b=0 -> dp[0][0]=0.0
+              s=1: 
+                 a=0: b=1 -> dp[0][1] = (1 + 1 * dp[0][0])/1 = (1+0)/1=1.0
+                 a=1: b=0 -> dp[1][0] = (1 + 1 * dp[0][1])/1 = (1+1.0)=2.0
+
+           n=2: 
+              s=0: (0,0):0.0
+              s=1: 
+                 a=0: b=1: dp[0][1] = (2 + 1 * dp[0][0])/1 = (2+0)/1=2.0
+                 a=1: b=0: dp[1][0] = (2 + 1 * dp[0][1])/1 = (2+2.0)=4.0
+              s=2:
+                 a=0: b=2: dp[0][2] = (2 + 2 * dp[0][1])/2 = (2+2*2)/2 = (2+4)/2 = 3.0
+                 a=1: b=1: dp[1][1] = (2 + 1 * dp[0][2] + 1 * dp[1][0]) / 2 = (2 + 3.0 + 4.0) / 2 = 9/2 = 4.5
+                 a=2: b=0: dp[2][0] = (2 + 2 * dp[1][1])/2 = (2+2*4.5)/2 = (2+9)/2 = 11/2 = 5.5
+
+          For the test case: n=2, K=10, A=[2,2,...,2]: a=1, b=0 -> dp[1][0]=4.0.
+
+          For the test case: n=3, as above.
+
+        Therefore, we output.
+
+        We must format the output to 9 decimal places.
+
+        Let's hope the worst-case distinct_n is not 3000.
+
+        Given the constraints on the sum of K (100,000) and that the worst-case distinct_n=3000 might be 3000, and then total states ~4.5e9, we hope that in PyPy or on a fast machine it passes in C++ but in Python we may need optimization.
+
+        We will try to optimize the inner loop by using local variables.
+
+        We might also use a 1D array and iterate in a specific order? But the recurrence is as given.
+
+        We'll try to run for n=3000 locally to see the time.
+
+        But 4.5e9 states: in Python, if each state takes 10 ns (which is 100 million states per second), then 4.5e9 states would take 45 seconds.
+
+        In Pyton, it might be 10 times slower: 450 seconds.
+
+        We need to optimize the inner loop.
+
+        We can use a different approach: 
+          for s in range(1, n+1):
+             for a in range(0, s+1):
+                 b = s - a
+                 if a==0:
+                    dp[0][b] = (n + b * dp[0][b-1]) / b
+                 elif b==0:
+                    dp[a][0] = (n + a * dp[a-1][1]) / a
+                 else:
+                    dp[a][b] = (n + a * dp[a-1][b+1] + b * dp[a][b-1]) / s
+
+        This is the same.
+
+        We can avoid the function calls and use local lookups.
+
+        Let's hope that the distinct_n are not the worst-case.
+
+        Given the sample input, we output as expected.
+
+        We also note: the input T can be up to 100,000, but the distinct_n are at most 3000, and the sum of K is 100,000, so the test cases with large n might be few.
+
+        We'll implement and submit.
+
+        Note: the worst-case distinct_n=3000 might be 3000, and then the precomputation takes 45 seconds in C++ but in Python we hope that the machine is fast.
+
+        If not, we might need to use a more efficient language.
+
+        But the problem says: memory 256MB, and we are using per group the dp table for n (72 MB for n=3000) and then we free it, so total memory is the maximum for the largest n encountered.
+
+        We are ready to code.
+
+        Let's code accordingly.
+
+        IMPORTANT: We must not do an O(n^2) for a group that has a test case with small n, then for a group with large n we do O(n^2). And hope that the groups with large n are few.
+
+        Steps:
+
+          groups = {}
+          for each test case: 
+             read T
+             for i in range(T):
+                 read n, k
+                 read list A of k integers
+                 if n not in groups: groups[n] = []
+                 groups[n].append( (k, A, i) )
+
+          results = [0.0] * T
+
+          for n, test_cases in groups.items():
+              # if n==0: skip? but n>=1
+              # create dp table for n: a 2D list of (n+1) x (n+1)
+              dp = [[0.0]*(n+1) for _ in range(n+1)]
+              # base: s=0: a=0, b=0 -> dp[0][0]=0.0
+              # We iterate s from 1 to n:
+              for s in range(1, n+1):
+                  for a in range(0, s+1):
+                      b = s - a
+                      if a == 0:
+                          # state (0, b) = (0, s)
+                          # Here, we have b>=1
+                          dp[0][b] = (n + b * dp[0][b-1]) / b
+                      elif b == 0:
+                          # state (a,0)
+                          dp[a][0] = (n + a * dp[a-1][1]) / a
+                      else:
+                          dp[a][b] = (n + a * dp[a-1][b+1] + b * dp[a][b-1]) / s
+
+              for (k, A, idx) in test_cases:
+                  freq = [0] * (n+1)
+                  for x in A:
+                      if 1<= x<=n:
+                          freq[x] += 1
+                  a = 0
+                  b = 0
+                  for i in range(1, n+1):
+                      if freq[i]==0:
+                          a += 1
+                      elif freq[i]==1:
+                          b += 1
+                  results[idx] = dp[a][b]
+
+          for res in results:
+              print("{:.9f}".format(res))
+
+        Let's hope.
+
+        We run on the sample.
+
+        Sample 1: n=1, test case1: (0, []) -> a=1, b=0 -> dp[1][0]=2.0
+        Sample 2: n=1, test case2: (1, [1]) -> a=0, b=1 -> dp[0][1]=1.0
+        Sample 3: n=2, test case: (10, [2,..,2]) -> a=1, b=0 -> dp[1][0]=4.0
+        Sample 4: n=3, test case: (0, []) -> a=3, b=0 -> dp[3][0]=9.638888889 (approximately)
+
+        We must check the value for n=3, a=3, b=0.
+
+        We computed by hand: 9.638888889.
+
+        In the code for n=3, we do:
+
+          s=1: 
+             a=0: b=1 -> dp[0][1] = (3+1*dp[0][0])/1 = (3+0)/1 = 3.0
+             a=1: b=0 -> dp[1][0] = (3+1*dp[0][1])/1 = 3+3=6.0
+          s=2:
+             a=0: b=2 -> dp[0][2] = (3+2*dp[0][1])/2 = (3+2*3)/2 = 9/2 = 4.5
+             a=1: b=1 -> dp[1][1] = (3+1*dp[0][2] + 1*dp[1][0]) / 2 = (3+4.5+6)/2 = 13.5/2 = 6.75
+             a=2: b=0 -> dp[2][0] = (3+2*dp[1][1])/2 = (3+2*6.75)/2 = (3+13.5)/2 = 16.5/2 = 8.25
+          s=3:
+             a=0: b=3 -> dp[0][3] = (3+3*dp[0][2])/3 = (3+3*4.5)/3 = (3+13.5)/3 = 16.5/3 = 5.5
+             a=1: b=2 -> dp[1][2] = (3+1*dp[0][3] + 2*dp[1][1]) / 3 = (3+5.5+2*6.75)/3 = (3+5.5+13.5)/3 = 22/3 = 7.333333333
+             a=2: b=1 -> dp[2][1] = (3+2*dp[1][2] + 1*dp[2][0]) / 3 = (3+2*(22/3)+8.25)/3 
+                 = (3 + 44/3 + 8.25) / 3 
+                 = (3 + 14.6666667 + 8.25) / 3 = 25.9166667 / 3 = 8.6388889
+             a=3: b=0 -> dp[3][0] = (3+3*dp[2][1])/3 = 1 + dp[2][1] = 1+8.6388889 = 9.6388889
+
+        So we output 9.638888889.
+
+        Therefore, we code accordingly.
+
+        Let's run the code for the sample.
+
+        We hope for the best.
+
+        Note: The problem says the sum of K is 100,000, so the time for the frequency counting is 100,000, and the time for the dp is sum_{n in distinct_n} (n^2), and we hope that the distinct_n are not the worst-case.
+
+        We'll run and if it times out, we might need to switch to C++ or PyPy.
+
+        Given the constraints, it might be borderline in Python.
+
+        We output the code.
+
+        IMPORTANT: we must not output the table for n that has been computed and then discarded, and we hope that the garbage collector frees the memory.
+
+        We also note: for a test case with n=0, we skip, but n>=1.
+
+        Let's code accordingly.

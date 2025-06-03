@@ -1,0 +1,175 @@
+To solve this problem, we need to determine if there exists a node in a given tree such that removing it results in a forest where all the resulting trees are identical (isomorphic). If such a node exists, we should return the maximum number of identical trees obtained by removing one such node; otherwise, return -1.
+
+### Approach
+1. **Problem Analysis**: The problem requires finding a node (called a good cutting point) whose removal splits the tree into two or more disconnected subtrees that are all pairwise identical (isomorphic). The number of subtrees is equal to the degree of the node (since each subtree is connected to the node via an edge).
+2. **Key Insights**:
+   - **Divisor Check**: For each node, check if its degree is a divisor of \(N-1\) (where \(N\) is the number of nodes in the tree) and is at least 2. This ensures that all resulting subtrees have the same number of nodes.
+   - **Size Validation**: For each candidate node, verify that all resulting subtrees have the same size \((N-1)/k\) (where \(k\) is the degree of the node).
+   - **Tree Isomorphism**: After verifying the size condition, check if all resulting subtrees are identical. This involves:
+     - **Finding Centers**: For each subtree, identify its center(s) (either 1 or 2 nodes) which help in determining a canonical representation of the tree.
+     - **Tree Hashing**: Compute a hash for each subtree rooted at its center(s). The canonical hash of the subtree is the minimum of the hashes when rooted at each center (to handle symmetric cases).
+3. **Algorithm Selection**:
+   - Iterate over each node to check if it meets the divisor condition.
+   - For each candidate node, perform BFS to split the tree into components (subtrees) when the node is removed.
+   - Validate that all components have the same size.
+   - For each component, find its center(s) and compute a canonical hash.
+   - If all components of a candidate node have the same canonical hash, update the answer to the maximum such degree encountered.
+4. **Complexity Analysis**:
+   - **Time Complexity**: For each candidate node (up to \(O(\sqrt{N})\) due to divisor constraints), we perform BFS and hashing in \(O(N)\) time. Thus, the total time is \(O(N^{3/2})\).
+   - **Space Complexity**: \(O(N)\) for storing the tree and intermediate data structures.
+
+### Solution Code
+```python
+import sys
+from collections import deque
+
+mod1 = 10**9 + 7
+mod2 = 10**9 + 9
+base = 131
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    n = int(data[0])
+    graph = [[] for _ in range(n)]
+    index = 1
+    for i in range(n-1):
+        a = int(data[index]); b = int(data[index+1]); index += 2
+        a -= 1; b -= 1
+        graph[a].append(b)
+        graph[b].append(a)
+    
+    deg = [len(graph[i]) for i in range(n)]
+    ans = -1
+
+    for u in range(n):
+        k = deg[u]
+        if k < 2:
+            continue
+        total = n - 1
+        if total % k != 0:
+            continue
+        s = total // k
+
+        visited = [False] * n
+        visited[u] = True
+        comps = []
+        for v in graph[u]:
+            if not visited[v]:
+                comp_set = set()
+                queue = deque([v])
+                visited[v] = True
+                comp_set.add(v)
+                while queue:
+                    node = queue.popleft()
+                    for neighbor in graph[node]:
+                        if not visited[neighbor] and neighbor != u:
+                            visited[neighbor] = True
+                            comp_set.add(neighbor)
+                            queue.append(neighbor)
+                comps.append(comp_set)
+                
+        if len(comps) != k:
+            continue
+            
+        valid_size = True
+        for comp_set in comps:
+            if len(comp_set) != s:
+                valid_size = False
+                break
+        if not valid_size:
+            continue
+
+        comp_hashes = []
+        for comp_set in comps:
+            n_nodes = len(comp_set)
+            if n_nodes == 0:
+                continue
+            deg_comp = [0] * n
+            for node in comp_set:
+                for neighbor in graph[node]:
+                    if neighbor in comp_set:
+                        deg_comp[node] += 1
+
+            if n_nodes == 1:
+                centers = [next(iter(comp_set))]
+            else:
+                leaves = deque()
+                deg_temp = deg_comp[:]
+                for node in comp_set:
+                    if deg_temp[node] == 1:
+                        leaves.append(node)
+                current_nodes = n_nodes
+                while current_nodes > 2:
+                    num_leaves = len(leaves)
+                    current_nodes -= num_leaves
+                    new_leaves = deque()
+                    for _ in range(num_leaves):
+                        node = leaves.popleft()
+                        for neighbor in graph[node]:
+                            if neighbor in comp_set and deg_temp[neighbor] > 1:
+                                deg_temp[neighbor] -= 1
+                                if deg_temp[neighbor] == 1:
+                                    new_leaves.append(neighbor)
+                    leaves = new_leaves
+                centers = list(leaves)
+            
+            center_hashes = []
+            for center in centers:
+                parent_arr = [-1] * n
+                children_arr = [[] for _ in range(n)]
+                order = []
+                q_bfs = deque([center])
+                parent_arr[center] = -1
+                while q_bfs:
+                    node = q_bfs.popleft()
+                    order.append(node)
+                    for neighbor in graph[node]:
+                        if neighbor in comp_set and neighbor != parent_arr[node]:
+                            parent_arr[neighbor] = node
+                            children_arr[node].append(neighbor)
+                            q_bfs.append(neighbor)
+                
+                h1 = [1] * n
+                h2 = [1] * n
+                for node in reversed(order):
+                    child_hashes = []
+                    for child in children_arr[node]:
+                        child_hashes.append((h1[child], h2[child]))
+                    child_hashes.sort(key=lambda x: (x[0], x[1]))
+                    h_val1 = 1
+                    h_val2 = 1
+                    for a, b in child_hashes:
+                        h_val1 = (h_val1 * base + a) % mod1
+                        h_val2 = (h_val2 * base + b) % mod2
+                    h1[node] = h_val1
+                    h2[node] = h_val2
+                center_hashes.append((h1[center], h2[center]))
+            
+            if not center_hashes:
+                comp_hash = (0, 0)
+            else:
+                comp_hash = min(center_hashes)
+            comp_hashes.append(comp_hash)
+        
+        if all(hash_val == comp_hashes[0] for hash_val in comp_hashes):
+            if k > ans:
+                ans = k
+
+    print(ans if ans != -1 else -1)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Input Reading and Initialization**: The input is read and parsed into a tree represented as an adjacency list. The degree of each node is computed.
+2. **Candidate Node Check**: For each node, check if its degree \(k\) is at least 2 and divides \(N-1\) (where \(N\) is the number of nodes). If not, skip the node.
+3. **Component Extraction**: For each candidate node, perform BFS to extract connected components formed by its removal. Ensure each component has the required size \((N-1)/k\).
+4. **Center Identification and Hashing**: For each component:
+   - **Center Identification**: Use a leaf removal algorithm to find the center(s) of the component.
+   - **Tree Hashing**: Compute a canonical hash for the component by traversing it in BFS order from the center(s), combining child hashes in sorted order to ensure invariance under child reordering.
+5. **Result Compilation**: If all components of a candidate node have the same canonical hash, update the answer to the maximum such degree encountered. If no such node exists, output -1.
+
+This approach efficiently checks each candidate node and leverages tree hashing to verify isomorphism, ensuring correctness within feasible computational limits.

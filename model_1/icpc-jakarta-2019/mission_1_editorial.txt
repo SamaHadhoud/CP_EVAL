@@ -1,0 +1,280 @@
+### Approach
+To solve this problem, we need to find a feasible path for Allen to move from his starting position to the target location within a rectangular secret base, avoiding detection by any sensors. Each sensor has a circular detection radius, and Allen must ensure that no point along his path is strictly within any sensor's radius. The path must consist of straight-line segments, and Allen can change direction at intermediate points. The solution involves constructing a visibility graph that includes key points and then finding a valid path through this graph.
+
+#### Key Insights
+1. **Problem Analysis**: The problem involves navigating a rectangular area with circular obstacles (sensors). The path must avoid these obstacles while staying within the base boundaries.
+2. **Visibility Graph**: The solution leverages a visibility graph where nodes represent critical points such as:
+   - Start and target positions.
+   - The four corners of the rectangular base.
+   - Tangent points from the start and target to each sensor's circle.
+   - Common tangent points between pairs of sensor circles (both outer and inner tangents).
+3. **Graph Construction**: For each pair of nodes in the graph, an edge is added if the straight-line segment connecting them lies entirely within the base and maintains a safe distance (≥ sensor radius) from all sensors.
+4. **Path Finding**: Using Breadth-First Search (BFS) on the visibility graph, the shortest path (in terms of segments) from start to target is found. The intermediate nodes in this path form the solution set \( P \).
+
+#### Algorithm Selection
+1. **Tangent Points Calculation**: For each sensor, compute the points of tangency from the start and target positions. These points are where the path would touch the sensor's circle without entering its detection radius.
+2. **Common Tangents Between Sensors**: For each pair of sensors, compute the outer and inner common tangents. These tangents help in navigating around multiple sensors efficiently.
+3. **Graph Construction**: Populate the graph with all critical points (start, target, corners, tangent points). For each pair of points, check if the connecting segment is safe (within base and outside all sensor radii).
+4. **BFS for Shortest Path**: Use BFS to find the path with the fewest segments from start to target. The intermediate nodes in this path are the solution set \( P \).
+
+#### Complexity Analysis
+- **Node Generation**: The graph includes:
+  - Start, target, and 4 corners: \( O(1) \).
+  - Tangent points from start and target to each of \( N \) sensors: \( O(N) \).
+  - Common tangent points between each pair of sensors: \( O(N^2) \).
+  Total nodes: \( O(N^2) \).
+- **Edge Construction**: For each pair of nodes, check safety against \( N \) sensors. Total operations: \( O(N^4) \).
+- **BFS**: On a graph with \( O(N^2) \) nodes and \( O(N^4) \) edges, BFS runs in \( O(N^4) \) time.
+Given \( N \leq 50 \), the total operations are manageable within the time constraints (1 second).
+
+### Solution Code
+```python
+import math
+import collections
+
+epsilon = 1e-6
+
+class Point:
+    __slots__ = ('x', 'y')
+    def __init__(self, x=0, y=0):
+        self.x = x
+        self.y = y
+
+    def __repr__(self):
+        return f"({self.x},{self.y})"
+    
+    def distance_sq(self, other):
+        dx = self.x - other.x
+        dy = self.y - other.y
+        return dx*dx + dy*dy
+    
+    def distance(self, other):
+        return math.sqrt(self.distance_sq(other))
+    
+    def subtract(self, other):
+        return Point(self.x - other.x, self.y - other.y)
+    
+    def add(self, other):
+        return Point(self.x + other.x, self.y + other.y)
+    
+    def multiply(self, scalar):
+        return Point(self.x * scalar, self.y * scalar)
+    
+    def dot(self, other):
+        return self.x * other.x + self.y * other.y
+    
+    def norm(self):
+        return math.sqrt(self.x*self.x + self.y*self.y)
+    
+    def normalize(self):
+        n = self.norm()
+        if n < epsilon:
+            return Point(0,0)
+        return Point(self.x/n, self.y/n)
+    
+    def rotate(self, angle):
+        # rotate counterclockwise by angle (radians)
+        cos_angle = math.cos(angle)
+        sin_angle = math.sin(angle)
+        return Point(
+            self.x * cos_angle - self.y * sin_angle,
+            self.x * sin_angle + self.y * cos_angle
+        )
+
+class Circle:
+    __slots__ = ('c', 'r')
+    def __init__(self, center, radius):
+        self.c = center
+        self.r = radius
+    
+    def tangent_points_from_point(self, p):
+        d_vec = Point(self.c.x - p.x, self.c.y - p.y)
+        d_sq = d_vec.x*d_vec.x + d_vec.y*d_vec.y
+        if d_sq < self.r*self.r - epsilon:
+            return []
+        if abs(d_sq - self.r*self.r) < epsilon:
+            return [p]
+        d = math.sqrt(d_sq)
+        angle = math.atan2(d_vec.y, d_vec.x)
+        da = math.acos(self.r / d)
+        p1 = Point(
+            self.c.x + self.r * math.cos(angle - da),
+            self.c.y + self.r * math.sin(angle - da)
+        )
+        p2 = Point(
+            self.c.x + self.r * math.cos(angle + da),
+            self.c.y + self.r * math.sin(angle + da)
+        )
+        return [p1, p2]
+
+def common_tangents(c1, c2):
+    tangents = []
+    d_sq = c1.c.distance_sq(c2.c)
+    if d_sq < epsilon:
+        return tangents
+    d = math.sqrt(d_sq)
+    v = Point((c2.c.x - c1.c.x)/d, (c2.c.y - c1.c.y)/d)
+    for sign in [1, -1]:
+        r_diff = sign * c1.r - sign * c2.r
+        if abs(r_diff) < epsilon:
+            a = v.rotate(math.pi/2)
+            offset1 = a.multiply(c1.r)
+            tangents.append((c1.c.add(offset1), c2.c.add(offset1)))
+            tangents.append((c1.c.add(offset1.multiply(-1)), c2.c.add(offset1.multiply(-1))))
+        else:
+            ratio = (c1.r - sign * c2.r) / d
+            if abs(ratio) > 1:
+                continue
+            angle = math.acos(ratio)
+            a1 = v.rotate(angle)
+            a2 = v.rotate(-angle)
+            offset1 = a1.multiply(c1.r)
+            offset2 = a2.multiply(c1.r)
+            dir_vec = v.multiply(sign * c1.r)
+            point1_1 = c1.c.add(offset1)
+            point1_2 = c1.c.add(offset2)
+            point2_1 = c2.c.add(dir_vec).add(offset1.rotate(math.pi))
+            point2_2 = c2.c.add(dir_vec).add(offset2.rotate(math.pi))
+            tangents.append((point1_1, point2_1))
+            tangents.append((point1_2, point2_2))
+    for sign in [1, -1]:
+        r_sum = c1.r + sign * c2.r
+        ratio = r_sum / d
+        if ratio > 1:
+            continue
+        angle = math.acos(ratio)
+        a1 = v.rotate(angle)
+        a2 = v.rotate(-angle)
+        offset1 = a1.multiply(c1.r)
+        offset2 = a2.multiply(c1.r)
+        point1_1 = c1.c.add(offset1)
+        point1_2 = c1.c.add(offset2)
+        dir_vec = v.multiply(-sign * c2.r)
+        point2_1 = c2.c.add(offset1.rotate(math.pi)).add(dir_vec)
+        point2_2 = c2.c.add(offset2.rotate(math.pi)).add(dir_vec)
+        tangents.append((point1_1, point2_1))
+        tangents.append((point1_2, point2_2))
+    return tangents
+
+def point_to_segment_distance(p, a, b):
+    ab = b.subtract(a)
+    ap = p.subtract(a)
+    if ab.x == 0 and ab.y == 0:
+        return ap.norm()
+    t = max(0.0, min(1.0, ap.dot(ab) / ab.dot(ab)))
+    projection = Point(a.x + t * ab.x, a.y + t * ab.y)
+    return p.distance(projection)
+
+def segment_in_rectangle(a, b, xL, yL, xR, yR):
+    if min(a.x, b.x) > xR + epsilon or max(a.x, b.x) < xL - epsilon:
+        return False
+    if min(a.y, b.y) > yR + epsilon or max(a.y, b.y) < yL - epsilon:
+        return False
+    return True
+
+def segment_safe(a, b, circles, xL, yL, xR, yR):
+    if not segment_in_rectangle(a, b, xL, yL, xR, yR):
+        return False
+    for circle in circles:
+        d = point_to_segment_distance(circle.c, a, b)
+        if d < circle.r - epsilon:
+            return False
+    return True
+
+def main():
+    import sys
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    it = iter(data)
+    n = int(next(it)); xL = int(next(it)); yL = int(next(it)); xR = int(next(it)); yR = int(next(it))
+    xs = int(next(it)); ys = int(next(it))
+    xt = int(next(it)); yt = int(next(it))
+    circles = []
+    for i in range(n):
+        x = int(next(it)); y = int(next(it)); r = int(next(it))
+        circles.append(Circle(Point(x,y), r))
+    
+    start = Point(xs, ys)
+    target = Point(xt, yt)
+    
+    points = []
+    points.append(start)
+    points.append(target)
+    corners = [Point(xL,yL), Point(xL,yR), Point(xR,yL), Point(xR,yR)]
+    points.extend(corners)
+    
+    for circle in circles:
+        tangents_start = circle.tangent_points_from_point(start)
+        for t in tangents_start:
+            if xL - epsilon <= t.x <= xR + epsilon and yL - epsilon <= t.y <= yR + epsilon:
+                points.append(t)
+        tangents_target = circle.tangent_points_from_point(target)
+        for t in tangents_target:
+            if xL - epsilon <= t.x <= xR + epsilon and yL - epsilon <= t.y <= yR + epsilon:
+                points.append(t)
+    
+    for i in range(len(circles)):
+        for j in range(i+1, len(circles)):
+            tangents = common_tangents(circles[i], circles[j])
+            for tangent_seg in tangents:
+                p1, p2 = tangent_seg
+                if xL - epsilon <= p1.x <= xR + epsilon and yL - epsilon <= p1.y <= yR + epsilon:
+                    points.append(p1)
+                if xL - epsilon <= p2.x <= xR + epsilon and yL - epsilon <= p2.y <= yR + epsilon:
+                    points.append(p2)
+    
+    n_points = len(points)
+    graph = [[] for _ in range(n_points)]
+    for i in range(n_points):
+        for j in range(i+1, n_points):
+            if segment_safe(points[i], points[j], circles, xL, yL, xR, yR):
+                graph[i].append(j)
+                graph[j].append(i)
+    
+    parent = [-1] * n_points
+    queue = collections.deque()
+    queue.append(0)
+    parent[0] = 0
+    found = False
+    while queue:
+        node = queue.popleft()
+        if node == 1:
+            found = True
+            break
+        for neighbor in graph[node]:
+            if parent[neighbor] == -1:
+                parent[neighbor] = node
+                queue.append(neighbor)
+    
+    if not found:
+        print("No path found")
+        return
+    
+    path = []
+    node = 1
+    while node != 0:
+        path.append(node)
+        node = parent[node]
+    path.append(0)
+    path.reverse()
+    
+    intermediates = path[1:-1]
+    print(len(intermediates))
+    for idx in intermediates:
+        p = points[idx]
+        print(f"{p.x} {p.y}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation
+1. **Point and Circle Classes**: These classes handle geometric operations such as distance calculation, rotation, and tangent point computation.
+2. **Tangent Calculation**: For each sensor, tangent points from the start and target positions are computed. These points are potential path waypoints around sensors.
+3. **Common Tangents**: For each pair of sensors, common outer and inner tangents are calculated. These tangents help navigate between sensors without entering their detection radii.
+4. **Graph Construction**: The graph includes start, target, base corners, and all computed tangent points. Edges are added between nodes if the connecting segment is safe (within base and outside all sensor radii).
+5. **BFS for Path Finding**: The shortest path (in segments) from start to target is found using BFS. Intermediate nodes in this path form the solution set \( P \), which is printed.
+
+This approach efficiently navigates the complex geometry of the problem by leveraging visibility graphs and BFS, ensuring Allen's path avoids all sensors while staying within the base boundaries.

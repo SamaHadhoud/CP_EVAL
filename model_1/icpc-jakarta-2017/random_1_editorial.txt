@@ -1,0 +1,141 @@
+### Problem Analysis
+Aristides is using a random number generator that produces integers between 1 and \( N \) uniformly. His friend Iorgos stops him only when every integer from 1 to \( N \) has appeared at least twice. Given that \( K \) numbers have already been generated and the stopping condition hasn't been met yet, we need to compute the expected number of additional numbers Aristides must generate until Iorgos stops him.
+
+#### Key Insight
+The problem can be modeled using states defined by two parameters:
+- \( a \): the count of numbers from 1 to \( N \) that haven't appeared yet.
+- \( b \): the count of numbers that have appeared exactly once.
+
+The state \((a, b)\) captures the current progress, where \( a + b \leq N \). The stopping state is \((0, 0)\), meaning all numbers have appeared at least twice. The expected number of additional steps from any state \((a, b)\) can be derived using dynamic programming.
+
+#### Recurrence Relation
+The expected steps \( E(a, b) \) from state \((a, b)\) satisfy:
+- If \( a = 0 \) and \( b = 0 \), \( E(0, 0) = 0 \).
+- Otherwise:
+  \[
+  E(a, b) = \frac{N + a \cdot E(a-1, b+1) + b \cdot E(a, b-1)}{a + b}
+  \]
+
+This recurrence accounts for three possibilities when generating the next number:
+1. **Probability \( \frac{a}{N} \)**: A new number (from the \( a \) unseen numbers) appears, moving to state \((a-1, b+1)\).
+2. **Probability \( \frac{b}{N} \)**: A number seen once (from the \( b \) numbers) appears again, moving to state \((a, b-1)\).
+3. **Probability \( \frac{N - a - b}{N} \)**: A number already seen twice appears, staying in state \((a, b)\).
+
+The equation is rearranged to express \( E(a, b) \) in terms of states with lower \( a + b \) or adjusted parameters.
+
+#### Algorithm Selection
+1. **Precomputation for Efficiency**: For each distinct \( N \) encountered in test cases, precompute a DP table for all valid states \((a, b)\) where \( a + b \leq N \). This table is computed once per \( N \) and reused for all test cases with the same \( N \).
+2. **State Computation**: 
+   - Iterate \( s \) (sum \( a + b \)) from 0 to \( N \).
+   - For each \( s \), iterate \( a \) from 0 to \( s \), setting \( b = s - a \).
+   - Apply the recurrence based on whether \( a \) or \( b \) is zero.
+3. **Handling Test Cases**:
+   - For each test case, compute \( a \) and \( b \) by counting frequencies of numbers in the given list \( A \).
+   - Retrieve \( E(a, b) \) from the precomputed table for the test case's \( N \).
+
+#### Complexity Analysis
+- **Precomputation**: For a fixed \( N \), the number of states is \( O(N^2) \), specifically \( \frac{(N+1)(N+2)}{2} \). For \( D \) distinct \( N \) values, the total operations are \( \sum_{n=1}^{D} O(n^2) \), which is \( O(D \cdot N_{\text{max}}^2) \). Given \( N_{\text{max}} = 3000 \), worst-case \( D = 3000 \), the total states are ~4.5 billion, manageable in C++ but optimized by grouping test cases by \( N \).
+- **Per Test Case**: Computing \( a \) and \( b \) is \( O(N + K) \). With \( T \) test cases and sum of \( K \) bounded by 100,000, this is efficient.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <iomanip>
+#include <algorithm>
+#include <map>
+
+using namespace std;
+
+struct TestCase {
+    int N;
+    int K;
+    vector<int> A;
+    int index;
+};
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int T;
+    cin >> T;
+    vector<TestCase> testCases(T);
+    for (int i = 0; i < T; i++) {
+        cin >> testCases[i].N >> testCases[i].K;
+        testCases[i].A.resize(testCases[i].K);
+        for (int j = 0; j < testCases[i].K; j++) {
+            cin >> testCases[i].A[j];
+        }
+        testCases[i].index = i;
+    }
+
+    sort(testCases.begin(), testCases.end(), [](const TestCase &a, const TestCase &b) {
+        return a.N < b.N;
+    });
+
+    vector<double> results(T);
+    int lastN = -1;
+    vector<vector<double>> dp;
+
+    for (int i = 0; i < T; ) {
+        int currentN = testCases[i].N;
+        if (currentN != lastN) {
+            dp.assign(currentN + 1, vector<double>(currentN + 1, 0.0));
+            for (int s = 0; s <= currentN; s++) {
+                for (int a = 0; a <= s; a++) {
+                    int b = s - a;
+                    if (s == 0) {
+                        dp[a][b] = 0.0;
+                    } else {
+                        if (a == 0) {
+                            dp[0][b] = (currentN + b * dp[0][b-1]) / b;
+                        } else if (b == 0) {
+                            dp[a][0] = (currentN + a * dp[a-1][1]) / a;
+                        } else {
+                            dp[a][b] = (currentN + a * dp[a-1][b+1] + b * dp[a][b-1]) / s;
+                        }
+                    }
+                }
+            }
+            lastN = currentN;
+        }
+
+        int j = i;
+        while (j < T && testCases[j].N == currentN) {
+            TestCase &tc = testCases[j];
+            vector<int> count(tc.N + 1, 0);
+            for (int x : tc.A) {
+                if (x >= 1 && x <= tc.N) {
+                    count[x]++;
+                }
+            }
+            int a = 0, b = 0;
+            for (int k = 1; k <= tc.N; k++) {
+                if (count[k] == 0) a++;
+                else if (count[k] == 1) b++;
+            }
+            results[tc.index] = dp[a][b];
+            j++;
+        }
+        i = j;
+    }
+
+    for (int i = 0; i < T; i++) {
+        cout << fixed << setprecision(9) << results[i] << '\n';
+    }
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Input Handling**: Read all test cases, storing \( N \), \( K \), and the list \( A \) for each.
+2. **Grouping by \( N \)**: Sort test cases by \( N \) to process all test cases with the same \( N \) together.
+3. **DP Table Precomputation**: For each distinct \( N \), compute a DP table where `dp[a][b]` is the expected additional steps from state \((a, b)\). The table is filled by iterating over all possible sums \( s = a + b \) and all valid \( a \).
+4. **Processing Test Cases**: For each test case in a group:
+   - **Frequency Counting**: Count occurrences of each number in \( A \) to determine \( a \) (unseen numbers) and \( b \) (numbers seen once).
+   - **Result Retrieval**: Use the precomputed DP table to get the result for state \((a, b)\).
+5. **Output**: Print results for each test case with 9 decimal places.
+
+This approach efficiently handles multiple test cases by leveraging precomputation and grouping, ensuring optimal performance even for large inputs. The solution correctly models the expected steps using dynamic programming and processes inputs in a scalable manner.

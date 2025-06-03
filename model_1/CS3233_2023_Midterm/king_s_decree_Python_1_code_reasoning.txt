@@ -1,0 +1,1125 @@
+ We are given up to 300,000 test cases in total (the sum of n over test cases <= 300,000)
+ However, note: the input says that the total sum of n (the number of cats) over all test cases does not exceed 300,000.
+ So we can process each test case with a loop that in total runs at most 300,000 cats.
+
+ The idea:
+ We want the maximum M such that we can assign each cat i an amount x_i >= max(l_i, M) and the sum of x_i <= total_wealth (and of course we can only redistribute, so the total is fixed).
+
+ Note: The total wealth is fixed (T = sum(w_i)). The condition is:
+   sum_i x_i = T, and we require x_i >= max(l_i, M) for every i.
+
+ The minimal total we must use is S(M) = sum_i max(l_i, M).
+
+ We require S(M) <= T.
+
+ How does S(M) look?
+   For each cat i: 
+      if M <= l_i, then max(l_i, M) = l_i.
+      if M > l_i, then max(l_i, M) = M.
+
+ So we can write:
+   S(M) = [sum of l_i for all i] + [for cats with l_i < M, we have to give extra: (M - l_i) for each such cat].
+
+ Alternatively, we can precompute:
+   total_l = sum(l_i)
+
+   Then for a given M, let:
+        S(M) = total_l + sum_{i: l_i < M} (M - l_i)
+
+ But note: we can also express it as:
+        S(M) = total_l + (M * (number of cats with l_i < M) - (sum of l_i for cats with l_i < M))
+
+ We are going to iterate over the distinct values of l_i (which are sorted). Let d0, d1, ..., d_{k-1} be distinct l_i in increasing order.
+
+ Consider M in the interval [d_j, d_{j+1}) (for j from 0 to k-2) and for the last interval [d_{k-1}, infinity) (but note M cannot exceed total_wealth).
+
+ For M in [d_j, d_{j+1}):
+   The cats with l_i <= d_j will have l_i < M? Actually:
+        cats with l_i <= d_j: 
+            if l_i <= d_j and d_j < M, then actually we are considering M above d_j. But note: in the interval [d_j, d_{j+1}), the set of cats with l_i < M is exactly the set of cats with l_i <= d_j? Not exactly: because if a cat has l_i = d_j, then when M>d_j, we have l_i < M? Actually yes: if M>d_j then l_i=d_j < M.
+
+   However, note: for a cat with l_i = d_j, if M is in [d_j, d_{j+1}), then since d_j <= M, we have max(l_i, M)=M? Actually, no: if M>=d_j, then max(l_i, M)=M for a cat with l_i=d_j? Only if M>=l_i? Actually, yes: max(l_i, M) = M when M>=l_i.
+
+   But wait: if M>=l_i, then we use M. Otherwise, we use l_i.
+
+   Therefore, for a fixed M, the cats that contribute extra are those with l_i < M? Actually, no: when M>=l_i, we use M. So the extra is M - l_i. But if M>=l_i, then we are replacing l_i by M. So indeed, we have:
+        S(M) = total_l + (M * (# of cats with l_i < M) - (sum of l_i for cats with l_i < M))   -> this is for cats that have l_i < M?
+        Actually, note: for a cat with l_i >= M, we use l_i (so no extra). For a cat with l_i < M, we use M, so the amount we use is l_i + (M - l_i) = M.
+
+   Alternatively, we can also write:
+        S(M) = (# of cats with l_i >= M) * (their own l_i) + (# of cats with l_i < M) * M
+        But wait: no, because for cats with l_i >= M, we use l_i, and for cats with l_i < M, we use M.
+
+   But note: the above expression is equivalent to:
+        S(M) = (sum of l_i for all cats) - (sum of l_i for cats with l_i < M) + M * (# of cats with l_i < M)
+
+        = total_l + M*(# of cats with l_i < M) - (sum of l_i for cats with l_i < M)
+
+   However, note: we can also include the cats with l_i >= M? Actually, the expression above is correct.
+
+   Alternatively, we can also express it by:
+        S(M) = total_l + (M - l_i) for every cat i with l_i < M.
+
+   So: S(M) = total_l + (M * count) - (sum_low), where count = (# of cats with l_i < M) and sum_low = (sum of l_i for cats with l_i < M).
+
+ How can we compute this quickly?
+
+   We can pre-sort the l_list. Then we can precompute:
+        distinct: distinct values of l
+        freqs: frequency of each distinct value
+
+   Also, we can precompute prefix sums for the distinct values: the cumulative frequency and cumulative sum of l_i.
+
+   However, note: we are iterating by distinct values. For M in [d_j, d_{j+1}):
+        The set of cats with l_i < M is exactly the set of cats with l_i <= d_j? Actually, no: because d_j is the current distinct value, and M is at least d_j. The cats with l_i <= d_j are exactly the ones that are strictly below M? Actually, no: because if a cat has l_i = d_j, then since M>=d_j, we have l_i<=M? But note: for the condition "l_i < M", if M is exactly d_j, then the cats with l_i < d_j are strictly below, and the cats with l_i = d_j are not below. So:
+
+        For M in [d_j, d_{j+1}):
+            The count of cats with l_i < M = (the cumulative frequency of all distinct values strictly below d_j) ? 
+            Actually, we can note: the cumulative frequency we have processed so far (including d_j) is the number of cats with l_i <= d_j. But we want the cats with l_i < M. Since M>=d_j, then:
+                cats with l_i < M = cats with l_i <= d_j? 
+                But if M = d_j, then we want cats with l_i < d_j. So we cannot include the current d_j.
+
+        Therefore, we should not include the current segment in the count for "l_i < M". Instead, we process the distinct values and for the segment [d_j, d_{j+1}), we use the cumulative data from the previous distinct values (i.e., strictly less than d_j).
+
+        But wait: when we are at distinct value d_j, we have not yet added the current segment to the cumulative? Actually, in the loop we are going to add the current segment after we use it? 
+
+        We can do:
+
+          Let cum_freq = cumulative frequency of all distinct values < d_j? 
+          Then for M in [d_j, d_{j+1}), we use:
+                count = cum_freq   [which is the count of all l_i that are < d_j, and hence < M]
+                sum_low = cum_sum   [the sum of all l_i that are < d_j]
+
+          Then S(M) = total_l + M * cum_freq - cum_sum.
+
+        But note: what about the cats with l_i = d_j? They are not in the "l_i < M" set? Actually, no: if M>=d_j, then the condition for a cat with l_i=d_j is that we require at least max(d_j, M)=M? However, if M>=d_j, then max(d_j, M)=M. But then why are we not including them in the count?
+
+        Actually, we are including them in the set that must be raised to M? But wait: in the expression above, we are only accounting for cats with l_i < M. However, when M>d_j, the cat with l_i=d_j has l_i < M? Yes. So then why are we not including them?
+
+        The problem: when we are at distinct value d_j, we are going to process it and add it to the cumulative. However, for the segment [d_j, d_{j+1}), we want to include the cats with l_i = d_j? Actually, no: because for M>=d_j, the cats with l_i=d_j become part of the group that must be raised to M? But note: for M in [d_j, d_{j+1}):
+            For a cat with l_i = d_j: 
+                if M>=d_j, then max(l_i, M)=M, which is above l_i. So we must account for an extra (M - d_j) for each such cat.
+
+        Therefore, we have two choices:
+
+          Option 1: Do not include the current distinct value in the cumulative for the segment [d_j, d_{j+1}), and then after we process the segment, we add the current distinct value to the cumulative for the next segment.
+
+          Then for the segment [d_j, d_{j+1}):
+                count = cum_freq   (which includes only distinct values < d_j)
+                Then we have to add the cats with l_i = d_j? Actually, we haven't included them in the cumulative yet. So we do not include them in the "l_i < M" set? But actually, for M>=d_j, the cats with l_i=d_j are in the set that we must raise (because d_j < M? only if M>d_j). However, if M=d_j, then we don't raise them? 
+
+          How do we handle M=d_j?
+                For M=d_j: 
+                    cats with l_i < d_j: count = cum_freq, and we raise each by (d_j - l_i) -> so extra = d_j * cum_freq - cum_sum.
+                    cats with l_i = d_j: we do not raise? because max(l_i, M)=d_j (so we use l_i = d_j) -> no extra.
+                    cats with l_i > d_j: we use l_i -> no extra.
+
+          Therefore, for M=d_j:
+                S(d_j) = total_l + (d_j * cum_freq - cum_sum)
+
+          But note: total_l already includes the l_i of all cats. So we are not changing the cats with l_i>=d_j.
+
+          However, for M in (d_j, d_{j+1}): 
+                We must also raise the cats with l_i=d_j? Because now M>d_j, so max(l_i, M)=M. So we have to account for (M - d_j) for each cat with l_i=d_j.
+
+          So we can break the segment [d_j, d_{j+1}) into two parts: 
+                M = d_j: then we use cum_freq (which is the count of l_i < d_j) and cum_sum (for those).
+                M > d_j: then we have to add the cats with l_i=d_j? So the count becomes cum_freq + freq_j, and the sum_low becomes cum_sum + (d_j * freq_j).
+
+          Therefore, we can do:
+
+            We process distinct values in increasing order. We maintain:
+                cum_freq: the total frequency of distinct values that we have processed (so far) that are less than the current distinct value? Actually, no: we process from low to high.
+
+            We can do:
+
+                Let cum_freq = 0, cum_sum = 0.
+                For each distinct value d_j (from smallest to largest):
+                    We first consider the segment [d_j, d_{j+1}) if exists, but note: at the beginning of the loop, cum_freq and cum_sum do not include the current distinct value d_j.
+
+                    So for M in [d_j, d_{j+1}):
+                         count = cum_freq   [cats with l_i < d_j] 
+                         Then for the cats with l_i = d_j: they are not in the set of l_i < d_j? And for M>=d_j, they become part of the set that we must raise? Actually, no: the condition is l_i < M. For M>=d_j, the cats with l_i=d_j are only in the set if M>d_j? 
+
+                    Actually, we can express the entire set for M in [d_j, d_{j+1}) as:
+                         The set { i: l_i < M } = { i: l_i <= d_j } if M>d_j? But wait: at M=d_j, the set is { i: l_i < d_j }.
+
+                    Therefore, we have to break the segment at M=d_j and then M in (d_j, d_{j+1})? 
+
+          Alternatively, we can avoid the point M=d_j by noting that the function S(M) is continuous? Actually, S(M) is linear in segments and changes at the distinct l_i.
+
+          We can compute for the entire segment [d_j, d_{j+1}) in one go by including the current distinct value? Actually, we can't because at M=d_j the set is different from M>d_j.
+
+        Therefore, we can do two steps:
+
+          Step 1: Consider M=d_j.
+                count0 = cum_freq   (cats with l_i < d_j)
+                sum_low0 = cum_sum
+                S(d_j) = total_l + d_j * count0 - sum_low0
+
+                Then we check if S(d_j) <= total_wealth? Then we can set candidate = d_j.
+
+          Step 2: Then for M in (d_j, d_{j+1}), we have:
+                count1 = cum_freq + freqs[j]   (because now the set of cats with l_i < M includes all cats with l_i <= d_j, since M>d_j and d_j is the current distinct value we are processing)
+                sum_low1 = cum_sum + d_j * freqs[j]
+                Then S(M) = total_l + M * count1 - sum_low1.
+
+                Then we can solve for M in the interval (d_j, d_{j+1}) such that:
+                    total_l + M * count1 - sum_low1 <= total_wealth
+                    => M * count1 <= total_wealth - total_l + sum_low1
+                    => M <= (total_wealth - total_l + sum_low1) / count1
+
+                Then the maximum M in this segment is: 
+                    candidate = min( (total_wealth - total_l + sum_low1) // count1, d_{j+1}-1)   [if there is a next distinct value, else we don't have an upper bound? Actually, we can set the next distinct value to infinity? But note: we know M cannot exceed total_wealth (because the total wealth is T, so the minimum cannot exceed T)].
+
+          But note: we are iterating distinct values, and we are going to update cum_freq and cum_sum after processing the current distinct value? Actually, we can do:
+
+            After we consider the current distinct value d_j, we update:
+                cum_freq = cum_freq + freqs[j]
+                cum_sum = cum_sum + d_j * freqs[j]
+
+          Then for the next distinct value d_{j+1}, we use the updated cum_freq and cum_sum to represent the cumulative for l_i<=d_j.
+
+        However, note: in the next segment [d_{j+1}, d_{j+2}), we want to have cum_freq and cum_sum including d_j? Yes.
+
+        So the algorithm per distinct value j (0-indexed) is:
+
+            candidate1 = d_j   (if we set M=d_j)
+            We compute S(d_j) = total_l + d_j * cum_freq - cum_sum   [because the set of cats with l_i < d_j is cum_freq and their sum is cum_sum]
+
+            If S(d_j) <= total_wealth, then candidate1 is feasible.
+
+            Then we update cum_freq and cum_sum: 
+                new_cum_freq = cum_freq + freqs[j]
+                new_cum_sum = cum_sum + d_j * freqs[j]
+
+            Then for the segment (d_j, d_{j+1}) [if j is not the last distinct value, then d_{j+1} is the next, else we consider up to total_wealth?], we compute:
+
+                We want the maximum M in (d_j, min(d_{j+1}, total_wealth+1)) such that:
+                    total_l + M * new_cum_freq - new_cum_sum <= total_wealth
+                    => M <= (total_wealth - total_l + new_cum_sum) / new_cum_freq
+
+                candidate2 = min( (total_wealth - total_l + new_cum_sum) // new_cum_freq, (d_{j+1}-1) )   [because the segment is [d_j+1, d_{j+1}-1]? Actually, the segment is (d_j, d_{j+1}), so M must be less than d_{j+1}.]
+
+                But note: we can take the floor? Since M must be integer.
+
+            However, note: we are solving for M as an integer. The expression (total_wealth - total_l + new_cum_sum) might be large, and we use integer floor division.
+
+        But wait: what if we are at the last distinct value? Then we don't have a next_d. Then the segment is [d_j, ...) and we can go up to total_wealth? Actually, the maximum M we can set is bounded by total_wealth (since the total wealth is T, the poorest cat cannot have more than T). However, note: we have n cats, so the poorest cat cannot have more than T, but also note that we have to have at least the minimums. So M is at most T? Actually, the poorest cat's wealth is at most T, but note: we have n cats so the poorest cat cannot exceed T? Actually, it could be that T is huge and M can be large. However, we have the constraint that the total of the min functions must be <= T.
+
+        For the last distinct value, we do:
+
+            candidate2 = (total_wealth - total_l + new_cum_sum) // new_cum_freq   [but we must cap it by total_wealth? Actually, we don't need to cap by total_wealth? The poorest cat cannot exceed total_wealth? But total_wealth is the entire wealth, and there are n cats, so the poorest cat can be at most total_wealth? Actually, the maximum value for the poorest cat is at most total_wealth, but also note: we might have to distribute to n cats. However, we are not requiring that all cats have exactly M, but at least M and the total is T. The maximum M we can set is at most T, because the poorest cat cannot have more than T (if there is only one cat, then that cat has T; if multiple, then the poorest has at most T).
+
+        But note: the condition S(M)= total_l + M * (new_cum_freq) - new_cum_sum <= T, and we are solving M. Since new_cum_freq is the total number of cats (because we are at the last distinct value, so we have processed all cats) then:
+
+            M <= (T - total_l + new_cum_sum) / n   [because new_cum_freq = n]
+
+            But note: total_l is the sum of l_i, and new_cum_sum is also the sum of l_i? Actually, yes: because we have processed all cats. Then:
+
+                M <= (T - total_l + total_l) / n = T / n.
+
+            So the maximum M is at most T//n? Actually, no: because we are not requiring that every cat has exactly M. The cats that have l_i >= M are not forced to lower to M. Actually, the total we require is: for cats with l_i < M, we set them to M, and for cats with l_i>=M, we leave them at l_i. So the total is at least M * n? Not necessarily: because the cats with l_i>=M are at their l_i which may be above M. The total is at least M * (number of cats with l_i < M) + (sum of l_i for cats with l_i>=M). 
+
+            But note: we can express the total as at least M * (number of cats with l_i < M) + (sum of l_i for cats with l_i>=M) = M * (n0) + (total_l - (sum of l_i for cats with l_i < M))? Actually, no: because the cats with l_i>=M are kept at l_i, and the cats with l_i < M are raised to M.
+
+            However, we have an expression: S(M) = total_l + M * (n0) - (sum of l_i for cats with l_i < M)   [where n0 = number of cats with l_i < M].
+
+            And at the last distinct value, we have n0 = n (because all cats have l_i <= last distinct value, and we are in the segment above the last distinct value, so all cats have l_i < M? Actually, no: if M is above the last distinct value, then all cats have l_i < M? Yes, because the last distinct value is the maximum l_i. So then:
+
+                S(M) = total_l + M * n - total_l = M * n.
+
+            Then the condition becomes: M * n <= T -> M <= T/n.
+
+            Therefore, the maximum M in the last segment is T/n? (and we take floor if we are using integer division? But note: M must be integer).
+
+        However, note: we are using integer arithmetic. So:
+
+            candidate2 = (T - total_l + new_cum_sum) // new_cum_freq
+
+            But in the last segment, new_cum_sum = total_l? Yes, because we have included all cats. Then:
+
+                candidate2 = (T - total_l + total_l) // n = T // n.
+
+        But wait: what if T is not divisible by n? Then we take the floor? Actually, we can take the floor: because we are using integer division. However, note: the equation is:
+
+            M * n <= T   -> M <= T/n.
+
+            Then the maximum integer M is floor(T/n). 
+
+        However, is that correct? For example: T=10, n=3 -> M=3? Then S(M)=3*3=9<=10 -> feasible. But M=4: 4*3=12>10 -> not feasible. So yes, floor(T/n).
+
+        But note: we are not requiring that every cat has M? Actually, we are: because we set all cats to at least M. Then the total must be at least n*M. So the condition is n*M<=T? Then M<=T/n. The maximum integer M is floor(T/n).
+
+        However, wait: we are also allowed to leave some cats above M? Yes, but we are only concerned with the minimum. The total must be at least n*M? Actually, no: we are setting the minimum to M, so the total must be at least n*M. But we also have the constraint that some cats must be at least their own l_i which might be above M? Actually, in the last segment, we are considering M above the maximum l_i, so we set every cat to at least M. Therefore, the total must be at least n*M.
+
+        So the maximum M in the last segment is floor(T/n).
+
+        But note: what if the last distinct value is very high? Then we might get M = floor(T/n) which might be lower than the last distinct value? Then we don't use the last segment? Actually, we process the distinct values in increasing order. The last distinct value is the maximum l_i. Then we consider the segment [max_l_i, ...). In this segment, we have:
+
+            candidate1 = max_l_i   (if we set M = max_l_i) -> then S(max_l_i) = total_l + max_l_i * (cum_freq) - cum_sum, where cum_freq is the count of cats with l_i < max_l_i, and cum_sum is the sum of those.
+
+            Then we update cum_freq and cum_sum to include the last distinct value: then we have cum_freq = n, cum_sum = total_l.
+
+            Then candidate2 = (T - total_l + total_l) // n = T // n.
+
+            And we require candidate2 to be at least max_l_i? Maybe not: if T//n < max_l_i, then we cannot use the segment above max_l_i? Actually, if T//n < max_l_i, then we would have already considered M = max_l_i? But note: M = max_l_i is considered in the candidate1 step for the last distinct value. And we have:
+
+                candidate1 = max_l_i, and we require S(max_l_i) <= T.
+
+            But what if S(max_l_i) <= T? Then candidate1 is feasible. However, then we also compute candidate2 = T//n, which is less than max_l_i? Then we do not consider candidate2? Actually, we can only consider M in the segment [max_l_i, ...) and then the candidate2 we compute is the maximum M in that segment, which is T//n. But if T//n < max_l_i, then the entire segment above max_l_i is not feasible? Actually, no: because we require M>=max_l_i? Then the feasible M in the segment [max_l_i, ...) are from max_l_i to T//n. But if T//n < max_l_i, then there is no M in the segment above max_l_i that is feasible? 
+
+            Therefore, we must cap candidate2 to be at least the lower bound of the segment? Actually, we compute:
+
+                candidate2 = min( (T - total_l + new_cum_sum) // new_cum_freq, next_bound)   for non-last segment, but for last segment we don't have next_bound? Then we set candidate2 = (T - total_l + new_cum_sum) // new_cum_freq, and then we require candidate2 to be at least the lower bound of the segment? Actually, the segment is [max_l_i, ...), so we want M>=max_l_i. But if (T - total_l + new_cum_sum) // new_cum_freq < max_l_i, then we skip candidate2? Actually, we don't skip: we set candidate2 = that value, but then we only consider it if it is in the segment? But the segment is [max_l_i, ...), so if candidate2 < max_l_i, then we cannot set M in that segment? 
+
+            How do we handle? We only consider candidate2 if it is at least the current distinct value? Actually, we can do:
+
+                candidate_seg = candidate2   # for the last segment: candidate2 = T//n
+                if candidate_seg < d_j:   # d_j is the last distinct value (max_l_i)
+                    then we skip candidate2? 
+
+            But note: we already considered M=d_j (candidate1) which is in the segment.
+
+        Actually, we can do:
+
+            For each distinct value j:
+
+                candidate = d_j   (for M=d_j) -> but we compute S(d_j) and if it is <= T, then candidate = d_j is feasible.
+
+                Then we update cum_freq and cum_sum to include d_j.
+
+                Then we consider M in (d_j, next_d) [if j < last] or M in (d_j, ...) [if j is last]. Then we compute:
+
+                    candidate_seg = (T - total_l + cum_sum) // cum_freq   [because we updated cum_freq and cum_sum to include d_j?]
+
+                    Then we cap candidate_seg by:
+                         if j < last: candidate_seg = min(candidate_seg, distinct[j+1]-1)   # because the next distinct value is distinct[j+1], and we are in the segment (d_j, distinct[j+1])
+                         else: candidate_seg = min(candidate_seg, T)   # but note: we know M<=T, and also we know that M cannot exceed T? Actually, we are solving for the poorest cat's wealth: it can be at most T (if one cat has T and the rest have 0, but we don't allow that because we have minimums). Actually, the condition we have is that the total must be T, and we have n cats. The poorest cat cannot exceed T? Actually, the poorest cat has at least M and the total is T, so M <= T. But also, if we set M = T, then every cat must have at least T, so the total is at least n*T, which must be <= T? -> only if n=1. So in general, M is bounded by T.
+
+                    But note: we are already computing candidate_seg = (T - total_l + cum_sum) // cum_freq, which for the last segment is T//n, which is <= T.
+
+                Then we require candidate_seg to be at least d_j? Actually, we are in the segment (d_j, ...) so we want candidate_seg to be at least d_j+1? Actually, no: we want to consider M that are above d_j. But if candidate_seg is less than d_j, then we skip? Because the segment is M>d_j.
+
+                However, note: candidate_seg is computed as the maximum M that satisfies the equation. But if that maximum M is less than d_j, then we skip? Actually, we don't need to consider because we are in the segment above d_j. So we only take candidate_seg if candidate_seg > d_j? 
+
+                But note: the segment is (d_j, next_d) for non-last, and (d_j, ...) for last. So we only consider candidate_seg if candidate_seg > d_j? Actually, we can set M = min(candidate_seg, next_d-1) and then if that M is > d_j, then we can use it.
+
+                However, we can simply do:
+
+                    candidate_val = candidate_seg   (the computed value by the formula, and then bounded by next_d-1 for non-last, and for last we don't bound by next_d? but we bound by T? Actually, we don't have to bound by T? because candidate_seg = (T - total_l + cum_sum) // cum_freq, and cum_freq = n (for last) and then T - total_l + total_l = T, so T//n, which is <= T. 
+
+                Then we set:
+
+                    if j < last: 
+                         candidate_val = min(candidate_seg, distinct[j+1]-1)
+                    else:
+                         candidate_val = candidate_seg   (which is T//n)
+
+                Then we compare candidate_val to the current best, but only if candidate_val >= d_j? Actually, note: the segment we are considering is above d_j. But candidate_val might be below d_j? Then we skip.
+
+                However, how can candidate_val be below d_j? 
+                    candidate_seg = (T - total_l + cum_sum) // cum_freq.
+                    After updating cum_freq and cum_sum to include d_j, we have:
+                         cum_freq = count of cats with l_i <= d_j
+                         cum_sum = sum of l_i for cats with l_i <= d_j.
+
+                    Then T - total_l + cum_sum = T - (total_l - cum_sum) ...? Not exactly.
+
+                Actually, note: total_l = sum of all l_i. And cum_sum at this point is the sum of l_i for all cats processed so far (which is for l_i<=d_j). Then the expression is:
+
+                    candidate_seg = (T - (total_l - cum_sum) + cum_sum) / cum_freq? 
+                    = (T - total_l + 2*cum_sum) / cum_freq? 
+
+                Let me write clearly:
+
+                    S(M) = total_l + M * cum_freq - cum_sum   [for M in the segment above d_j, because then the set of cats with l_i < M is exactly the set we've processed so far (all l_i<=d_j)].
+
+                    We set: total_l + M * cum_freq - cum_sum <= T
+                    => M <= (T - total_l + cum_sum) / cum_freq.
+
+                So candidate_seg = (T - total_l + cum_sum) // cum_freq   (using integer floor division? Actually, we can use integer floor division because M must be integer).
+
+                Now, what is the value of (T - total_l + cum_sum)? It might be negative? Then candidate_seg would be negative? Then we skip.
+
+                But note: we have already considered M=d_j and found that S(d_j) = total_l + d_j * (cum_freq_old) - (cum_sum_old) <= T? 
+                Then we update: cum_freq = cum_freq_old + count_j, cum_sum = cum_sum_old + d_j * count_j.
+
+                Then the expression for M in the next segment uses the updated cum_freq and cum_sum.
+
+                But the condition for M>d_j: we require that S(M) = total_l + M * (cum_freq_old+count_j) - (cum_sum_old+d_j*count_j) <= T.
+
+                And we know that at M=d_j: 
+                    total_l + d_j * (cum_freq_old) - cum_sum_old <= T   [from the candidate1 check]
+
+                But for M>d_j, we have:
+
+                    total_l + M * (cum_freq_old+count_j) - (cum_sum_old+d_j*count_j) 
+                    = [total_l + d_j * cum_freq_old - cum_sum_old] + [ M*(cum_freq_old+count_j) - d_j * cum_freq_old - d_j*count_j ]
+                    = [<=T] + [ M*(cum_freq_old+count_j) - d_j*(cum_freq_old+count_j) ]
+                    = [<=T] + (M - d_j) * (cum_freq_old+count_j)
+
+                So if T is very small, then even a small increase beyond d_j might break the condition? 
+
+            Therefore, we only consider candidate_seg if it is > d_j? Actually, we don't need to: because if candidate_seg is at most d_j, then the entire segment (d_j, ...) is not feasible? Then we skip.
+
+        Alternatively, we can compute candidate_seg and then if candidate_seg > d_j, then we have a candidate in the segment. Otherwise, we skip.
+
+        Then the best candidate for the segment is max(candidate1, candidate_seg) but note: candidate1 is d_j, and candidate_seg might be below d_j? Then we skip candidate_seg.
+
+        Actually, we can simply set:
+
+            candidate_val = candidate_seg   (for the segment above d_j) and then if candidate_val > d_j, then we update best = max(best, candidate_val)
+
+        But note: we already have candidate1 = d_j as a candidate? Then we update best = max(best, candidate1) and then if candidate_val>d_j, then update best = max(best, candidate_val).
+
+        Therefore, the algorithm for a distinct value j:
+
+            Step 1: Compute candidate1 = d_j, with condition: 
+                    condition1 = (total_l + d_j * cum_freq - cum_sum) <= total_wealth
+            Step 2: If condition1 holds, then candidate1 is feasible: update best = max(best, d_j)
+
+            Step 3: Update:
+                    cum_freq += freqs[j]
+                    cum_sum += d_j * freqs[j]
+
+            Step 4: Now, if j is the last distinct value, then next_bound = total_wealth+1   [but we don't need next_bound? We compute candidate_seg = (total_wealth - total_l + cum_sum) // cum_freq, and then candidate_val = min(candidate_seg, total_wealth)   [but note: we know M<=total_wealth, but actually we are using floor division and the expression might be bounded by T//n, which is <= total_wealth?]
+
+                    Actually, we don't cap by total_wealth? We cap by the next distinct value? For the last segment, we set candidate_val = candidate_seg   (and then if candidate_val > d_j, we consider it).
+
+            For non-last: 
+                    next_bound = distinct[j+1]   # the next distinct value
+                    candidate_seg = (total_wealth - total_l + cum_sum) // cum_freq
+                    candidate_val = min(candidate_seg, next_bound - 1)
+
+            Step 5: If candidate_val > d_j: then update best = max(best, candidate_val)
+
+        Then we move to the next distinct value.
+
+        However, note: what if the entire segment (d_j, next_bound) is feasible? Then we have candidate_val = next_bound-1? But we don't know if next_bound-1 is feasible? Actually, we computed candidate_seg as the maximum M that satisfies the equation. Then if candidate_seg >= next_bound, then we cap it to next_bound-1. Then we update best = max(best, candidate_val). And then when we process the next distinct value, we will consider M = next_bound (the next distinct value) in the candidate1 step? Yes.
+
+        But note: when we process the next distinct value (say d_{j+1}), we do:
+
+            candidate1 = d_{j+1}, and then we compute condition1 = total_l + d_{j+1} * cum_freq_prev - cum_sum_prev <= total_wealth, where cum_freq_prev and cum_sum_prev are the cumulative without including d_{j+1}. 
+
+            Then we update to include d_{j+1}, and then compute candidate_val for the next segment.
+
+        Therefore, we cover all distinct values and the segments in between.
+
+        But note: what about segments that are not adjacent to any distinct value? We are covering the entire real line: from the smallest distinct value to the next, etc., and then beyond the last.
+
+        However, note: we start with cum_freq=0, cum_sum=0. Then for the first distinct value d0:
+
+            candidate1: condition = total_l + d0*0 - 0 <= T? -> total_l <= T? which is always true because total_l = sum(l_i) and T = sum(w_i) and l_i<=w_i? Actually, not necessarily: we have l_i<=w_i for each cat, so total_l <= T? Yes.
+
+            Then candidate1 = d0 is always feasible? Then best = max(best, d0) -> at least d0.
+
+            Then update cum_freq = freqs[0], cum_sum = d0 * freqs[0].
+
+            Then candidate_seg = (T - total_l + cum_sum) // cum_freq, then cap by next_bound = distinct[1]-1.
+
+            Then if candidate_seg > d0, we update best.
+
+        Therefore, the algorithm:
+
+            best = 0   # we will update per distinct value
+
+            Sort the l_list and get distinct values and frequencies.
+
+            cum_freq = 0, cum_sum = 0.
+
+            for j in range(len(distinct)):
+                d = distinct[j]
+                # candidate1: M = d
+                # S(d) = total_l + d * cum_freq - cum_sum
+                if total_l + d * cum_freq - cum_sum <= total_wealth:
+                    if d > best:
+                        best = d
+
+                # update cum_freq and cum_sum for the current distinct value
+                count_here = freqs[j]
+                cum_freq += count_here
+                cum_sum += d * count_here
+
+                # Now, for the segment above d (if any)
+                # Compute candidate_seg = (T - total_l + cum_sum) // cum_freq   [this is the maximum M for the segment above d, without cap]
+                # But note: we must avoid division by zero? cum_freq is at least count_here (which is at least 1) so cum_freq>=1.
+
+                # Compute candidate_seg = (total_wealth - total_l + cum_sum) // cum_freq   [using integer floor division? But note: we want the maximum integer M such that M <= (total_wealth - total_l + cum_sum) / cum_freq? So floor division is correct.
+
+                candidate_seg = (total_wealth - total_l + cum_sum) // cum_freq
+
+                if j < len(distinct)-1:
+                    next_d = distinct[j+1]
+                    candidate_val = min(candidate_seg, next_d - 1)
+                else:
+                    candidate_val = candidate_seg
+
+                # candidate_val must be at least d+1 to be in the segment above d? Actually, we are in the segment (d, ...) so we require candidate_val > d.
+                if candidate_val > d:
+                    if candidate_val > best:
+                        best = candidate_val
+
+            Then output best.
+
+        However, note: what if candidate_val is exactly d? Then we skip. But candidate_val is computed as floor((T - total_l + cum_sum) / cum_freq) and we updated cum_freq and cum_sum to include d. Since we are in the segment above d, we only consider values above d.
+
+        But note: we already considered M=d above? So we don't lose d.
+
+        Let's test with the sample: 
+            "5
+             4 2 3 6 12
+             3 2 3 3 10"
+
+            total_wealth = 4+2+3+6+12 = 27
+            l_list = [3,2,3,3,10] -> sorted: [2,3,3,3,10] -> distinct: [2,3,10]; freqs: [1,3,1]
+
+            total_l = 2+3+3+3+10 = 21.
+
+            Step j=0: d=2
+                cum_freq=0, cum_sum=0.
+                candidate1: 21 + 2*0 - 0 = 21 <= 27 -> true, then best = max(0,2) -> best=2.
+                update: cum_freq=1, cum_sum=2.
+
+                candidate_seg = (27 - 21 + 2) // 1 = (8) //1 = 8.
+                next_d = 3, so candidate_val = min(8, 3-1)=min(8,2)=2.
+                candidate_val=2, which is not > d=2 -> skip.
+
+            Step j=1: d=3
+                candidate1: condition = 21 + 3 * cum_freq - cum_sum = 21 + 3*1 - 2 = 21+3-2=22<=27 -> true, so best = max(2,3)=3.
+                update: cum_freq=1+3=4, cum_sum=2+3*3=2+9=11.
+                candidate_seg = (27-21+11) //4 = (17)//4 = 4 (since 17//4=4 in integer division? 4*4=16<=17, 5*4=20>17 -> so 4)
+                next_d = 10, so candidate_val = min(4, 10-1)=4.
+                4>3 -> update best = max(3,4)=4.
+
+            Step j=2: d=10
+                candidate1: condition = 21 + 10 * cum_freq - cum_sum = 21 + 10*4 - 11 = 21+40-11=50<=27? false -> skip.
+                update: cum_freq=4+1=5, cum_sum=11+10=21.
+                candidate_seg = (27-21+21) //5 = (27) //5 = 5. (because 5*5=25<=27, 6*5=30>27 -> 5)
+                candidate_val = 5 (since last segment) -> and 5>10? no -> skip.
+
+            Then output best=4.
+
+            The sample output is 4.
+
+        Another sample: 
+            "8
+             998 244 353 3109 4650 4305 6507 9699
+             100 200 300 2040 4230 4236 5234 3233"
+
+            total_wealth = 998+244+353+3109+4650+4305+6507+9699 = 25665
+            l_list: [100,200,300,2040,4230,4236,5234,3233] -> sorted: [100,200,300,2040,3233,4230,4236,5234]
+            distinct: [100,200,300,2040,3233,4230,4236,5234]; freqs: [1,1,1,1,1,1,1,1]
+
+            total_l = 100+200+300+2040+3233+4230+4236+5234 = 19573
+
+            Step0: d=100
+                candidate1: 19573 + 100*0 - 0 = 19573 <= 25665 -> true, best=100.
+                update: cum_freq=1, cum_sum=100.
+                candidate_seg = (25665-19573+100) //1 = (25665-19573=6092+100=6192) -> 6192.
+                next_d=200, candidate_val=min(6192,199)=199 -> 199>100 -> update best=199.
+
+            Step1: d=200
+                candidate1: 19573 + 200*1 - 100 = 19573+200-100=19673<=25665 -> true, best=max(199,200)=200.
+                update: cum_freq=2, cum_sum=300.
+                candidate_seg = (25665-19573+300)=25665-19573=6092+300=6392 //2 = 3196.
+                next_d=300, candidate_val=min(3196,299)=299 -> 299>200 -> update best=299.
+
+            Step2: d=300
+                candidate1: 19573 + 300*2 - 300 = 19573+600-300=19873<=25665 -> true, best=300.
+                update: cum_freq=3, cum_sum=600.
+                candidate_seg = (25665-19573+600)=6092+600=6692//3=2230 (because 3*2230=6690<=6692, 3*2231=6693>6692? so 2230? but 6692//3 = 2230 in integer floor? 3*2230=6690, and 6692-6690=2 -> so 2230 is the floor? But we can have M=2230.666... -> so floor is 2230? But then candidate_val = min(2230, 2040-1)=min(2230,2039)=2039.
+                2039>300 -> update best=2039? but wait, we have a distinct value 2040 next, so we cap at 2039.
+
+            Step3: d=2040
+                candidate1: 19573 + 2040*3 - 600 = 19573+6120-600=25093<=25665 -> true, best=max(2039,2040)=2040.
+                update: cum_freq=4, cum_sum=600+2040=2640.
+                candidate_seg = (25665-19573+2640)=6092+2640=8732//4=2183.
+                next_d=3233, candidate_val=min(2183,3232)=2183.
+                2183>2040 -> update best=2183.
+
+            Step4: d=3233
+                candidate1: 19573 + 3233*4 - 2640 = 19573 + 12932 - 2640 = 29865? -> 29865>25665 -> false.
+                update: cum_freq=5, cum_sum=2640+3233=5873.
+                candidate_seg = (25665-19573+5873)=6092+5873=11965 //5 = 2393.
+                next_d=4230, candidate_val=min(2393,4229)=2393.
+                2393>3233? no -> skip.
+
+            Then we continue? 
+            Step5: d=4230 -> candidate1: 19573+4230*5 - 5873 = 19573 + 21150 - 5873 = 34850? -> too big -> skip.
+                update: cum_freq=6, cum_sum=5873+4230=10103.
+                candidate_seg = (25665-19573+10103)=6092+10103=16195 //6 = 2699 (approx: 6*2699=16194, 16195-16194=1 -> so 2699)
+                candidate_val = min(2699,4229)=2699 -> 2699>4230? no.
+
+            Step6: d=4236 -> candidate1: ... skip, then update: cum_freq=7, cum_sum=10103+4236=14339.
+                candidate_seg = (25665-19573+14339)=6092+14339=20431 //7=2918 -> then candidate_val = min(2918,5233) -> 2918, and 2918>4236? no.
+
+            Step7: d=5234 -> candidate1: ... skip, update: cum_freq=8, cum_sum=14339+5234=19573.
+                candidate_seg = (25665-19573+19573)=25665 //8=3208.125 -> floor=3208 -> 3208>5234? no.
+
+            Then the answer is 2183? But the sample output is 3233.
+
+        Why 3233? 
+
+        The sample output is 3233.
+
+        Let me check: 
+            The minimum wealths: [100,200,300,2040,4230,4236,5234,3233] -> the maximum M we can set? 
+
+            How about M=3233? 
+                Cats: 
+                    cat0: l0=100 -> must have at least 3233? 
+                    cat1: 200 -> 3233
+                    cat2: 300 -> 3233
+                    cat3: 2040 -> 3233
+                    cat4: 4230 -> already above 3233 -> so we leave at 4230? 
+                    cat5: 4236 -> leave at 4236
+                    cat6: 5234 -> leave at 5234
+                    cat7: 3233 -> at least 3233.
+
+                Then the minimal total we need: 
+                    3233*4 (for the first four cats) + 4230+4236+5234+3233 = 3233*4 + 4230+4236+5234+3233 = 3233*5 + 4230+4236+5234.
+
+                = 16165 + 4230+4236+5234 = 16165+13700 = 29865.
+
+                But total wealth is 25665 -> 29865 > 25665 -> not feasible.
+
+            Then why is the sample output 3233?
+
+        Actually, the sample output is 3233. Let me re-read the sample:
+
+            Input: 
+                8
+                998 244 353 3109 4650 4305 6507 9699
+                100 200 300 2040 4230 4236 5234 3233
+
+            Output: 3233.
+
+        How can that be? 
+
+        The problem says: 
+            "Cat i is not willing to have less than l_i"
+
+        And we want to maximize the poorest cat's wealth.
+
+        The sample input: 
+            w = [998,244,353,3109,4650,4305,6507,9699]
+            l = [100,200,300,2040,4230,4236,5234,3233]
+
+        Note: the last cat (with l=3233) has w=9699. 
+
+        How about we set the poorest cat to 3233? 
+
+        Then the cats must have at least:
+
+            cat0: max(100,3233)=3233
+            cat1: max(200,3233)=3233
+            cat2: max(300,3233)=3233
+            cat3: max(2040,3233)=3233
+            cat4: max(4230,3233)=4230   -> no problem, because w4=4650>=4230.
+            cat5: max(4236,3233)=4236   -> w5=4305>=4236? 4305<4236? -> no, 4305<4236? Actually, 4305<4236 is false? 4305>=4236 -> true.
+            cat6: max(5234,3233)=5234   -> w6=6507>=5234 -> true.
+            cat7: max(3233,3233)=3233   -> w7=9699>=3233 -> true.
+
+        So the minimal total required: 
+            3233*4 + 4230+4236+5234+3233 = 3233*5 + 4230+4236+5234 = 16165 + 4230+4236+5234 = 16165 + 13700 = 29865.
+
+        But the total wealth is 998+244+353+3109+4650+4305+6507+9699 = 25665.
+
+        29865 > 25665 -> not feasible.
+
+        However, the sample output is 3233. 
+
+        What is the catch?
+
+        The problem does not require that we set every cat to at least M? It requires that the poorest cat has at least M? And we want to maximize M? 
+
+        Actually, the problem says: 
+            "King SoCCat wants to ensure that all cats have **at least** l_i units of wealth, and the poorest cat has the maximum possible wealth."
+
+        But note: the redistribution must satisfy that each cat i has at least l_i. And we are setting a global M as the poorest cat's wealth. Then we require that the poorest cat has at least M, and every cat i has at least l_i. Therefore, the actual wealth of cat i must be at least max(l_i, M). 
+
+        So the minimal total we require is the sum_i max(l_i, M). 
+
+        Therefore, the sample requires 29865, which is more than 25665. So M=3233 is not feasible.
+
+        Then why is the sample output 3233? 
+
+        Let me check the provided sample output: 3233.
+
+        I see: the problem sample input has:
+
+            "8
+             998 244 353 3109 4650 4305 6507 9699
+             100 200 300 2040 4230 4236 5234 3233"
+
+            Output: 3233
+
+        And the first sample:
+
+            "5
+             4 2 3 6 12
+             3 2 3 3 10"
+
+            Output: 4.
+
+        Why is the second sample 3233? 
+
+        After re-examining: 
+
+            The total wealth is 998+244+353+3109+4650+4305+6507+9699.
+
+            Let me compute: 
+                998+244=1242
+                1242+353=1595
+                1595+3109=4704
+                4704+4650=9354
+                9354+4305=13659
+                13659+6507=20166
+                20166+9699=29865.
+
+            So the total wealth is 29865, not 25665.
+
+        I computed 25665 by mistake? 
+
+        Correction: 
+            998+244=1242
+            1242+353=1595
+            1595+3109=4704
+            4704+4650=9354
+            9354+4305=13659
+            13659+6507=20166
+            20166+9699=29865.
+
+        So total_wealth=29865.
+
+        Then for M=3233: 
+            minimal total = 3233*5 + 4230+4236+5234 = 16165 + 4230+4236+5234 = 16165 + 13700 = 29865.
+
+        Exactly 29865 -> feasible.
+
+        Therefore, the algorithm must be fixed: 
+
+            In the step for d=3233 (the distinct value 3233, which is the 4th distinct value?):
+
+                j=4: d=3233
+                candidate1: condition = total_l + 3233 * cum_freq - cum_sum <= total_wealth?
+
+                What is cum_freq and cum_sum at this step? 
+                    Before update: cum_freq=4 (from the first four distinct values: 100,200,300,2040) and cum_sum=100+200+300+2040=2640? 
+
+                Then condition1: 19573 + 3233*4 - 2640 = 19573 + 12932 - 2640 = 19573+10292 = 29865 <= 29865 -> true.
+
+                So we update best = max(2183,3233)=3233.
+
+                Then we update: cum_freq=5, cum_sum=2640+3233=5873.
+
+                Then candidate_seg = (29865 - 19573 + 5873) = (29865-19573=10292+5873=16165) //5 = 3233.
+
+                Then for the segment above 3233: next_d=4230, so candidate_val = min(3233,4229)=3233.
+
+                But 3233>3233? no -> skip.
+
+            Then best=3233.
+
+        So we must fix the algorithm: 
+
+            In the step for distinct value j, we have:
+
+                candidate1: M = d_j -> condition: total_l + d_j * (current cum_freq) - (current cum_sum) <= total_wealth.
+
+            Then update cum_freq and cum_sum.
+
+            Then candidate_seg: for the segment above d_j, we use the updated cum_freq and cum_sum.
+
+            But note: the updated cum_freq and cum_sum now include d_j.
+
+            Then candidate_seg = (total_wealth - total_l + cum_sum) // cum_freq.
+
+            Then cap by next_d-1 if not last.
+
+            Then candidate_val = that value.
+
+            Then if candidate_val > d_j, update best = max(best, candidate_val).
+
+        And we already updated best with d_j if condition1 holds.
+
+        Therefore, the code above is correct.
+
+        But note: in the step for d=3233, candidate_seg=3233, which is not greater than d_j=3233? So we don't update? But we already set best=3233 from candidate1.
+
+        So we are safe.
+
+        However, note: what if we have a distinct value d_j, and then the segment above d_j yields an M that is exactly d_j? Then we skip? That's correct: because we already have d_j.
+
+        But what if we have a distinct value d_j, condition1 fails (so we skip candidate1), but then candidate_seg yields d_j? Then we skip? But note: the segment is above d_j, so we require M>d_j. Then we cannot set M=d_j? But we skipped candidate1? Then we lose d_j? 
+
+        How can candidate_seg be d_j? 
+            candidate_seg = (T - total_l + cum_sum) // cum_freq = d_j?
+            Then we require: (T - total_l + cum_sum) // cum_freq = d_j -> so T - total_l + cum_sum = d_j * cum_freq.
+
+            Then the condition for M=d_j (with the updated cum_freq and cum_sum) is:
+
+                S(d_j) = total_l + d_j * cum_freq - cum_sum = total_l + (T - total_l + cum_sum) - cum_sum = T.
+
+            So it is feasible? But we are in the segment above d_j? Actually, we are allowed to set M=d_j? But we already considered that in the candidate1 step? 
+
+        But note: candidate1 step used the cum_freq and cum_sum BEFORE updating (which did not include the current distinct value). Then condition1 for M=d_j might have failed? 
+
+        However, the condition for candidate1 is:
+
+            total_l + d_j * (old_cum_freq) - old_cum_sum <= T.
+
+        After updating, we have:
+
+            new_cum_freq = old_cum_freq + count_j
+            new_cum_sum = old_cum_sum + d_j * count_j
+
+        Then the condition for M=d_j with the updated set is:
+
+            total_l + d_j * new_cum_freq - new_cum_sum 
+            = total_l + d_j*(old_cum_freq+count_j) - (old_cum_sum+d_j*count_j)
+            = total_l + d_j*old_cum_freq + d_j*count_j - old_cum_sum - d_j*count_j
+            = total_l + d_j*old_cum_freq - old_cum_sum   [which is the condition for candidate1]
+
+        So if candidate1 condition fails, then even if we set M=d_j, the minimal total we require is more than T? Then we cannot set M=d_j.
+
+        Then we skip candidate1.
+
+        Then in the segment above, we get candidate_seg = d_j? Then we skip because we require candidate_val>d_j? Then we lose d_j.
+
+        But note: if candidate_seg = d_j, then the minimal total required for M=d_j (with the updated set) is T? But we know T is the total wealth, so it is feasible? However, we have:
+
+            S(M) = total_l + M * (new_cum_freq) - new_cum_sum.
+
+            At M=d_j: 
+                S(d_j) = total_l + d_j * (new_cum_freq) - new_cum_sum = T.
+
+            So it is exactly feasible.
+
+        But we are in the segment above d_j? We want M>d_j? Then we cannot set M=d_j in this segment? 
+
+        How can we set M=d_j? It should be set in the candidate1 step? But candidate1 step failed.
+
+        Therefore, we must not lose this? 
+
+        How to fix? 
+
+        We note that the formula for candidate_seg is the maximum M that satisfies:
+
+            total_l + M * new_cum_freq - new_cum_sum <= T
+
+        This equation is linear. The maximum M is floor((T - total_l + new_cum_sum) / new_cum_freq).
+
+        But note: we can set M = floor((T - total_l + new_cum_sum) / new_cum_freq) which might be d_j? Then we are allowed to set M=d_j? 
+
+        However, we are in the segment (d_j, ...). But if the maximum M we can set is d_j, then we cannot set M>d_j? Then we are forced to set M=d_j? But we already skipped candidate1? 
+
+        Therefore, we should consider candidate_seg even if it is only >= d_j? But the segment is (d_j, ...). 
+
+        Alternatively, we can remove the condition "if candidate_val > d_j" and instead require candidate_val >= d_j? But note: the segment is (d_j, ...), so M must be greater than d_j. But if candidate_val==d_j, then we cannot set M in the segment (d_j, ...) to d_j? 
+
+        Actually, the segment (d_j, ...) is for M>d_j. Then if the maximum M we can set in that segment is d_j, that means we cannot set any M>d_j? Then we skip.
+
+        But then we lose the opportunity to set M=d_j? 
+
+        However, we already had the opportunity in candidate1? But candidate1 failed.
+
+        Therefore, we are consistent: if candidate1 fails and candidate_seg yields d_j, then we cannot set M=d_j? 
+
+        But wait: the equation for candidate_seg is:
+
+            M = (T - total_l + new_cum_sum) // new_cum_freq
+
+            and we have:
+
+                total_l + M * new_cum_freq - new_cum_sum <= T   -> by the definition of floor division, it holds.
+
+            But if M = d_j, then:
+
+                total_l + d_j * new_cum_freq - new_cum_sum <= T.
+
+            And we know that:
+
+                total_l + d_j * (old_cum_freq) - old_cum_sum > T   (from candidate1 failure)
+
+            But we updated: new_cum_freq = old_cum_freq + count_j, new_cum_sum = old_cum_sum + d_j * count_j.
+
+            Then:
+
+                total_l + d_j * new_cum_freq - new_cum_sum = total_l + d_j*(old_cum_freq+count_j) - (old_cum_sum + d_j*count_j)
+                = total_l + d_j*old_cum_freq - old_cum_sum   [which we know > T]
+
+            So if candidate1 fails, then even the updated condition for M=d_j fails? 
+
+            Therefore, we cannot have candidate_seg = d_j? Because:
+
+                total_l + d_j * new_cum_freq - new_cum_sum = ... > T.
+
+            Then candidate_seg must be less than d_j? 
+
+            Then the condition candidate_val>d_j will be false.
+
+        Therefore, the algorithm is safe.
+
+        But note: we are using integer division, and the expression (T - total_l + new_cum_sum) might be negative? Then candidate_seg would be negative? 
+
+        How? 
+            We have T - total_l + new_cum_sum = T - total_l + (cum_sum_old + d_j * count_j) 
+            But total_l = sum_i l_i, and new_cum_sum is the sum of a subset of the l_i (those <= d_j). So T - total_l + new_cum_sum <= T? 
+
+            Actually, the condition for candidate1 for the next distinct value? 
+
+        But note: we know that for the current distinct value, candidate1 condition failed? Then:
+
+            total_l + d_j * old_cum_freq - old_cum_sum > T.
+
+            Then T - total_l + (old_cum_sum + d_j * count_j) = T - total_l + new_cum_sum 
+                = [T - (total_l - old_cum_sum - d_j * count_j)]   ... 
+
+        Actually, we don't need to worry: because if candidate1 fails, then we skip candidate1, and then we update, and then compute candidate_seg. But if the updated cum_freq and cum_sum are such that T - total_l + new_cum_sum is negative, then candidate_seg would be negative? Then we set candidate_val to that negative? Then we skip because negative is not greater than d_j (which is at least 1).
+
+        Therefore, the algorithm is:
+
+            for j in range(len(distinct)):
+                d = distinct[j]
+                # candidate1: M = d
+                if total_l + d * cum_freq - cum_sum <= total_wealth:
+                    best = max(best, d)
+
+                # update cumulative
+                count_here = freqs[j]
+                cum_freq += count_here
+                cum_sum += d * count_here
+
+                # candidate_seg for the segment above d
+                num = total_wealth - total_l + cum_sum
+                # We want to compute candidate_seg = num // cum_freq, but if num<0? 
+                # If num < 0, then the equation fails? Then candidate_seg = floor(num/cum_freq) which is negative? Then candidate_val = min(negative, ...) -> then we skip because negative<=0 and d_j>=1.
+
+                candidate_seg = num // cum_freq   # integer floor division: note that if num is negative, this is the floor (which is more negative).
+
+                if j < len(distinct)-1:
+                    candidate_val = min(candidate_seg, distinct[j+1]-1)
+                else:
+                    candidate_val = candidate_seg
+
+                if candidate_val > d:   # only consider if strictly above d (since we are in the open interval above d)
+                    best = max(best, candidate_val)
+
+            Then output best.
+
+        However, note: what if num is negative? Then candidate_seg is negative? Then candidate_val is negative? Then we skip.
+
+        But what if num is not negative? 
+
+        We assume the above.
+
+        But note: we are using integer floor division. For nonnegative num, it is fine.
+
+        However, if num is negative, then the condition S(M)=total_l + M * cum_freq - cum_sum <= T fails for any M>=0? Then we skip.
+
+        Therefore, we can write:
+
+            if num < 0:
+                # Then even the minimal requirement for M=0 would be ...? Actually, we are not considering M=0. We are in the segment above d. But skip.
+                candidate_val = -10**18   # so it will be skipped? 
+            else:
+                candidate_seg = num // cum_freq
+
+        But we can avoid the if: because if num<0, then num//cum_freq is negative? Then we skip.
+
+        Therefore, we can do as above.
+
+        Let me test with the two samples.
+
+        We'll code accordingly.
+
+        Important: the total n over test cases is at most 300000, and the distinct values per test case is at most 300000? But the sum of n over test cases is 300000, so the total distinct values over test cases is not too high? But worst-case per test case: if we have one test case with n=300000, then we have distinct values at most 300000. Then the loop runs 300000 times per test case? But the total n over test cases is 300000, so there is only one test case? 
+
+        Actually, the input says: the sum of n over all test cases does not exceed 300000.
+
+        So we have at most 300000 cats in total, and we are processing each test case by grouping the l_list and then iterating over the distinct values. The total distinct values over all test cases might be up to 300000? 
+
+        Therefore, the algorithm is efficient.
+
+        We'll code accordingly.
+
+        One more note: the formula for candidate1: 
+            total_l + d * cum_freq - cum_sum
+
+        This might be a very large number? But total_wealth is at most 300000 * 10^9? (if n=300000 and each w_i up to 10^9). Then we are doing integer arithmetic. Python integers are arbitrary precision, but we must be cautious for speed? 
+
+        However, the constraints: the total n over test cases is 300000, and the distinct values per test case is at most the number of cats in that test case. So the total distinct values is <= 300000. Then the total operations is 300000 * (some constant) per total? 
+
+        Therefore, we write the code as described.
+
+        Code:
+
+            Read C
+            For each test case:
+                n = int
+                w = list of n integers
+                l_list = list of n integers
+
+                total_wealth = sum(w)
+                total_l = sum(l_list)
+
+                Sort l_list.
+
+                Preprocessing: distinct values and frequencies.
+
+                cum_freq = 0
+                cum_sum = 0
+                best = 0   # but note: the answer is at least min(l_list) and min(l_list)>=1.
+
+                For j in range(len(distinct)):
+                    d = distinct[j]
+                    # candidate1: M = d
+                    # Compute S = total_l + d * cum_freq - cum_sum
+                    S_d = total_l + d * cum_freq - cum_sum
+                    if S_d <= total_wealth:
+                        if d > best:
+                            best = d
+
+                    # update cumulative
+                    count_here = freqs[j]
+                    cum_freq += count_here
+                    cum_sum += d * count_here
+
+                    # candidate_seg for the segment above d
+                    num = total_wealth - total_l + cum_sum
+                    # If num is negative, then candidate_seg will be negative -> skip.
+                    # But we compute candidate_seg = num // cum_freq   (integer floor division)
+                    # However, if num < 0, we skip the candidate_val update? But we can still compute and then skip by the condition candidate_val>d?
+                    candidate_seg = num // cum_freq   # note: if num is negative, then candidate_seg is <=0, and d>=1 -> skip.
+
+                    if j < len(distinct)-1:
+                        next_d = distinct[j+1]
+                        candidate_val = candidate_seg
+                        if candidate_val > next_d - 1:
+                            candidate_val = next_d - 1
+                    else:
+                        candidate_val = candidate_seg
+
+                    if candidate_val > d:
+                        if candidate_val > best:
+                            best = candidate_val
+
+                Append best to results.
+
+            Print results.
+
+        However, note: when computing candidate_seg, we use floor division. But what if the division is not exact? We want the maximum integer M such that 
+            M <= (total_wealth - total_l + cum_sum) / cum_freq.
+
+        Floor division gives the floor, which is the largest integer not greater than the real quotient. So it is the maximum integer M satisfying M * cum_freq <= total_wealth - total_l + cum_sum.
+
+        Then condition: 
+            total_l + M * cum_freq - cum_sum <= total_wealth
+            <=> M * cum_freq <= total_wealth - total_l + cum_sum   -> which holds.
+
+        Therefore, it is correct.
+
+        Let's run the sample 1 again with the code:
+
+            n=5, w=[4,2,3,6,12] -> total_wealth=27
+            l_list=[3,2,3,3,10] -> sorted: [2,3,3,3,10] -> distinct=[2,3,10], freqs=[1,3,1]
+
+            total_l=2+3+3+3+10=21
+
+            Step0: j=0, d=2
+                cum_freq=0, cum_sum=0.
+                S_d = 21 + 2*0 -0 =21<=27 -> best = max(0,2)=2.
+                update: cum_freq=1, cum_sum=2.
+                num = 27-21+2=8
+                candidate_seg=8//1=8
+                j<2 -> next_d=3, candidate_val=min(8,3-1)=min(8,2)=2.
+                2>2? no -> skip.
+
+            Step1: j=1, d=3
+                S_d = 21 + 3 * 1 - 2 = 21+3-2=22<=27 -> best = max(2,3)=3.
+                update: cum_freq=1+3=4, cum_sum=2+3*3=11.
+                num = 27-21+11=17
+                candidate_seg=17//4=4 (because 4*4=16<=17, 5*4=20>17 -> 4)
+                j<2 -> next_d=10, candidate_val=min(4,10-1)=min(4,9)=4.
+                4>3 -> best = max(3,4)=4.
+
+            Step2: j=2, d=10
+                S_d = 21 + 10*4 - 11 = 21+40-11=50>27 -> skip.
+                update: cum_freq=4+1=5, cum_sum=11+10=21.
+                num = 27-21+21=27
+                candidate_seg=27//5=5
+                j is last -> candidate_val=5.
+                5>10? no -> skip.
+
+            Then best=4.
+
+        The second sample: 
+            total_wealth=29865
+            distinct = sorted(l) = [100,200,300,2040,3233,4230,4236,5234]
+            freqs: all 1.
+
+            Step0: d=100
+                cum_freq=0, cum_sum=0
+                S_d = 19573 + 100*0 -0 = 19573 <=29865 -> best=100.
+                update: cum_freq=1, cum_sum=100.
+                num = 29865-19573+100 = 29865-19573=10292+100=10392
+                candidate_seg=10392//1=10392
+                candidate_val = min(10392,199)=199
+                199>100 -> best=max(100,199)=199.
+
+            Step1: d=200
+                S_d = 19573+200*1-100 = 19573+200-100=19673<=29865 -> best=max(199,200)=200.
+                update: cum_freq=2, cum_sum=300.
+                num=29865-19573+300=10292+300=10592
+                candidate_seg=10592//2=5296
+                candidate_val = min(5296,299)=299
+                299>200 -> best=max(200,299)=299.
+
+            Step2: d=300
+                S_d = 19573+300*2-300=19573+600-300=19873<=29865 -> best=300.
+                update: cum_freq=3, cum_sum=600.
+                num=29865-19573+600=10292+600=10892
+                candidate_seg=10892//3=3630 (because 3630*3=10890, 3631*3=10893>10892 -> 3630)
+                candidate_val=min(3630,2039)=2039
+                2039>300 -> best=max(300,2039)=2039.
+
+            Step3: d=2040
+                S_d = 19573+2040*3-600=19573+6120-600=25093<=29865 -> best=2040.
+                update: cum_freq=4, cum_sum=600+2040=2640.
+                num=29865-19573+2640=10292+2640=12932
+                candidate_seg=12932//4=3233   (3233*4=12932)
+                candidate_val=min(3233,3232)=3232   # because next_d=3233 -> next_d-1=3232.
+                3232>2040 -> best=max(2040,3232)=3232.
+
+            Step4: d=3233
+                S_d = 19573+3233*4-2640 = 19573+12932-2640=19573+10292=29865<=29865 -> best=3233.
+                update: cum_freq=5, cum_sum=2640+3233=5873.
+                num=29865-19573+5873=10292+5873=16165
+                candidate_seg=16165//5=3233
+                candidate_val=min(3233,4229)=3233   [if j<7 -> j=4, next_d=4230 -> candidate_val=min(3233,4229)=3233]
+                3233>3233? no -> skip.
+
+            Then best=3233.
+
+        But wait: in step4, we set best=3233 from candidate1. Then candidate_val=3233 is not greater than 3233, so we skip.
+
+        Therefore, the answer is 3233.
+
+        However, note: in step3, we set best=3232? Then step4 sets best=3233.
+
+        So the code is correct.
+
+        We'll code accordingly.
+
+        One more note: the formula for candidate_seg: we use integer floor division. But what if the numbers are huge? It's safe in Python.
+
+        Let's code accordingly.
+
+        But note: we must be cautious: the numbers can be up to 10^9, and we are doing multiplications: 
+            total_wealth, total_l, cum_sum can be up to 300000 * 10^9 = 3e15 -> which is within Python integer range.
+
+        So we are safe.
+
+        Code:

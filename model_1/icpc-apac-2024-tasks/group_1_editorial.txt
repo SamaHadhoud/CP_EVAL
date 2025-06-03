@@ -1,0 +1,150 @@
+### Approach
+The problem involves forming groups of students for a hackathon such that the ratio of the maximum group skill to the minimum group skill is minimized. The key insights and steps are:
+
+1. **Problem Analysis**:
+   - There are `n` students, with student 1 (the captain) having a skill level `a1`. The other students (2 to `n`) are in a fixed line.
+   - The captain can choose any position in this line (including the ends), and the number of groups `k` (a divisor of `n` greater than 1).
+   - Groups are formed by assigning students in order: the first student to group 1, the second to group 2, ..., the `k`-th to group `k`, the `k+1`-th to group 1, and so on.
+   - The goal is to minimize the ratio of the maximum group skill sum to the minimum group skill sum.
+
+2. **Key Insights**:
+   - For each test case, iterate over all divisors `k` of `n` (where `k > 1`).
+   - For each `k`, simulate inserting the captain at all possible positions (from 0 to `n-1`).
+   - For each insertion position, compute the group sums efficiently by updating only the affected groups when moving the insertion position.
+
+3. **Algorithm Selection**:
+   - **Precompute Divisors**: For numbers up to \(10^6\), precompute all divisors to quickly access them for each test case.
+   - **Group Sum Calculation**: For each divisor `k`:
+     - **Initial State**: Calculate initial group sums when the captain is inserted at position 0.
+     - **Update Heaps**: Use min-heap and max-heap to track the smallest and largest group sums. Lazily remove outdated entries to maintain efficiency.
+     - **Insertion Positions**: For each subsequent insertion position (1 to `n-1`), update the group sums of affected residues (groups) and push the new values into the heaps. Clean the heaps to ensure the top elements are current.
+     - **Track Best Ratio**: For each insertion position, compute the current ratio (max/min) and track the minimum ratio encountered for the divisor `k`.
+   - **Global Best Ratio**: After processing all divisors, select the best ratio across all divisors and insertion positions, reduce it to an irreducible fraction, and output it.
+
+4. **Complexity Analysis**:
+   - **Precomputation**: \(O(N \log N)\) for sieve-like divisor precomputation (where \(N = 10^6\)).
+   - **Per Test Case**:
+     - **Divisor Processing**: For each divisor `k` of `n`, the processing involves:
+       - Initial group sum calculation: \(O(n)\).
+       - Processing `n` insertion positions: For each position, update 2 group sums, and perform heap operations (push and pop) which are \(O(\log k)\) per operation. Since \(k\) can be up to \(n\), the total per divisor is \(O(n \log n)\).
+     - Given the number of divisors \(d(n)\) (up to ~100 for \(n \leq 10^6\)), the total per test case is \(O(d(n) \cdot n \log n)\).
+   - **Overall**: With the sum of `n` across test cases \(\leq 10^6\), the total operations are bounded by \(O(\text{sum}(n) \cdot d(n) \cdot \log n) \approx 10^6 \cdot 100 \cdot 20 = 2 \times 10^9\), which is feasible within the 5-second time limit for optimized implementations.
+
+### Solution Code
+```python
+import math
+import sys
+import heapq
+
+def main():
+    maxN = 1000000
+    divisors_list = [[] for _ in range(maxN + 1)]
+    for i in range(1, maxN + 1):
+        for j in range(i, maxN + 1, i):
+            divisors_list[j].append(i)
+    
+    t = int(sys.stdin.readline().strip())
+    out_lines = []
+    for _ in range(t):
+        data = sys.stdin.readline().split()
+        if not data:
+            continue
+        n = int(data[0])
+        a1 = int(data[1])
+        arr = []
+        while len(arr) < n - 1:
+            data_line = sys.stdin.readline().split()
+            if not data_line:
+                break
+            arr.extend(map(int, data_line))
+        if len(arr) > n - 1:
+            arr = arr[:n - 1]
+        elif len(arr) < n - 1:
+            arr = arr + [0] * (n - 1 - len(arr))
+        
+        divisors = divisors_list[n]
+        divisors = [k for k in divisors if k > 1]
+        
+        best_ratio_num = None
+        best_ratio_den = None
+        
+        for k in divisors:
+            current_value = [0] * k
+            current_value[0] = a1
+            for i in range(n - 1):
+                r = (i + 1) % k
+                current_value[r] += arr[i]
+            
+            min_heap = []
+            max_heap = []
+            for idx in range(k):
+                heapq.heappush(min_heap, (current_value[idx], idx))
+                heapq.heappush(max_heap, (-current_value[idx], idx))
+            
+            while min_heap and min_heap[0][0] != current_value[min_heap[0][1]]:
+                heapq.heappop(min_heap)
+            while max_heap and -max_heap[0][0] != current_value[max_heap[0][1]]:
+                heapq.heappop(max_heap)
+            
+            if not min_heap or not max_heap:
+                min_val = 10**18
+                max_val = -10**18
+            else:
+                min_val = min_heap[0][0]
+                max_val = -max_heap[0][0]
+            best_ratio_this_k = (max_val, min_val)
+            
+            for pos in range(1, n):
+                r1 = (pos - 1) % k
+                r2 = pos % k
+                current_value[r1] += arr[pos - 1] - a1
+                current_value[r2] += -arr[pos - 1] + a1
+                
+                heapq.heappush(min_heap, (current_value[r1], r1))
+                heapq.heappush(min_heap, (current_value[r2], r2))
+                heapq.heappush(max_heap, (-current_value[r1], r1))
+                heapq.heappush(max_heap, (-current_value[r2], r2))
+                
+                while min_heap and min_heap[0][0] != current_value[min_heap[0][1]]:
+                    heapq.heappop(min_heap)
+                while max_heap and -max_heap[0][0] != current_value[max_heap[0][1]]:
+                    heapq.heappop(max_heap)
+                
+                if not min_heap or not max_heap:
+                    min_val = 10**18
+                    max_val = -10**18
+                else:
+                    min_val = min_heap[0][0]
+                    max_val = -max_heap[0][0]
+                
+                a_prev, b_prev = best_ratio_this_k
+                if max_val * b_prev < a_prev * min_val:
+                    best_ratio_this_k = (max_val, min_val)
+            
+            a_candidate, b_candidate = best_ratio_this_k
+            if best_ratio_num is None:
+                best_ratio_num = a_candidate
+                best_ratio_den = b_candidate
+            else:
+                if a_candidate * best_ratio_den < best_ratio_num * b_candidate:
+                    best_ratio_num = a_candidate
+                    best_ratio_den = b_candidate
+        
+        g = math.gcd(best_ratio_num, best_ratio_den)
+        p = best_ratio_num // g
+        q = best_ratio_den // g
+        out_lines.append(f"{p} {q}")
+    
+    print("\n".join(out_lines))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Precomputation**: The divisors for all numbers up to \(10^6\) are precomputed once to efficiently access divisors during each test case.
+2. **Reading Input**: For each test case, the number of students `n` and the captain's skill `a1` are read, followed by the skills of the other `n-1` students.
+3. **Processing Divisors**: For each divisor `k` of `n` (greater than 1), the algorithm:
+   - **Initializes Group Sums**: Computes initial group sums with the captain at position 0.
+   - **Heaps for Min/Max**: Uses min-heap and max-heap to track the smallest and largest group sums, cleaning outdated entries lazily.
+   - **

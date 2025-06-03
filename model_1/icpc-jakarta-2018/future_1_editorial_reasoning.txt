@@ -1,0 +1,1174 @@
+We are given up to 15 strings, each of length at most 15. We have to assign to the i-th child a subsequence of the i-th string such that the names are strictly increasing lexicographically (each name is lexicographically greater than the one before). We wish to maximize the total length of the names.
+
+Constraints: 
+  - N in [1,15], |S_i| in [1,15], and strings are uppercase letters.
+
+Note: The problem might have no solution (output -1).
+
+Key idea:
+  Since N is small (<=15) and the strings are short, we can consider using dynamic programming over the set of children (i.e., the index of the child) and also consider the state as the last chosen name (or a representation of the last chosen name). However, the challenge is that the lexicographic condition must hold for consecutive children.
+
+But note: The lexicographic condition for the entire sequence is equivalent to: 
+   name1 < name2 < ... < nameN (lexicographically)
+
+We are allowed to choose any subsequence for the i-th child from the string S_i.
+
+We wish to maximize the total length.
+
+How to approach:
+
+1. Precomputation for each string: 
+   Since each string S_i is short (<=15), we can precompute all the subsequences? However, the number of subsequences can be up to 2^(15) = 32768. That is acceptable for one string. But if we do for all 15 strings, and then we have to compare every possible subsequence from string i with every possible from string i+1, then the state space would be 32768 * 32768 * 15 which is about 15 * (32768)^2 ~ 15 * 1e9 which is too high.
+
+2. Alternative idea: 
+   Instead, we can use DP over the index of the child and the "current" lexicographic state. The state for the DP can be the actual subsequence we chose for the last child? But that is a string and we cannot represent that easily.
+
+3. Insight: 
+   We are only interested in the lexicographic order. We can use a trie to represent all the subsequences? But note: we are going to assign one subsequence per string, and we have to satisfy the chain: s1 < s2 < ... < sN.
+
+4. Another idea: 
+   We can traverse the children in order (from first to last). For the first child, we can choose any subsequence of S1. For the second child, we must choose a subsequence of S2 that is lexicographically greater than the subsequence chosen for the first child, and so on.
+
+   We wish to maximize the total length.
+
+   We can do DP[i][x] = maximum total length we can achieve for the first i children, where the i-th child is assigned a subsequence that is represented by state x. But what is x?
+
+   Since the subsequence is a string, we cannot use the string as state. However, note that the lexicographic order condition only requires that we know the entire string for the previous child to compare with the current.
+
+   But storing the entire string as state is too heavy: the subsequence can be up to 15 characters, but there are 32768 subsequences per string. We have 15 children, so the state space would be 15 * (32768 * ...) which is 15 * (32768)^15? That is astronomical.
+
+5. We need a smarter representation.
+
+   Alternate Insight: 
+   The condition that the names must be increasing is global. We can precompute for each string i the set of all subsequences. However, we note that many subsequences are redundant: 
+      - If we have two subsequences of the same string: s and t, and if s is lexicographically less than t and also |s| <= |t|, then we would prefer t because it gives more length. But note: if we choose a longer subsequence, it might be lexicographically too large and then we cannot assign the next child? So we cannot simply discard the shorter ones.
+
+   However, for a fixed string, we can consider the subsequences and then for each possible lexicographic value, we want the maximum length we can get that is at least that lexicographic value? Actually, we are going to chain: we need to know for a given subsequence chosen for the previous child, what subsequences of the next string are lexicographically greater and what their lengths are.
+
+   We can precompute for each string i a sorted list of all distinct subsequences (by lex order) along with the maximum length we can get for a given lexicographic value? But note: two different subsequences might have the same lexicographic value? Actually, distinct strings? However, distinct subsequences: but if two subsequences are the same string, then we can use the same representation.
+
+   Actually, the set of distinct subsequences for a string: we can generate and store as a sorted list (by lex order). The number of distinct subsequences for a string of length L is at most 2^L, which is 2^15 = 32768. And we have 15 strings, so we can store all.
+
+   Then, we can use DP that goes from one string to the next. Let DP[i][j] = maximum total length we can achieve for the first i children, where the i-th child is assigned the j-th subsequence (in the sorted list of subsequences for string i). Then:
+
+        DP[0][j] = length of the j-th subsequence of S_0.
+
+        Then for i from 1 to N-1:
+            For each subsequence j in string i (with value = s, length = L = |s|), we consider:
+                We need a subsequence k in string i-1 such that the subsequence k is lexicographically less than s.
+                Then: DP[i][j] = max_{k: s_{i-1,k} < s} { DP[i-1][k] } + L
+
+        And then the answer for the last child would be max_j DP[N-1][j].
+
+   But the problem: the state j is an index in the subsequences of string i, and the number of subsequences for each string is up to 32768. Then we have 15 * 32768 states. For each state j in string i, we have to look at all states k in string i-1 that are less than the subsequence j. The total work per i is O( (number of subsequences in i) * (number of subsequences in i-1) ) which is about 32768 * 32768 = about 1e9 per i. And i goes from 1 to 14, so total operations about 14e9, which is too high in 1 second (even in C++ it might be borderline, and we are in Python? But the problem says 1.0s and memory 256MB, and we are using C++? Actually, we can code in C++ if needed, but the problem doesn't specify language. However, the editorial is to explain the solution. But we must design an efficient solution).
+
+6. Optimization: 
+   We can pre-sort the subsequences for each string by lex order. Then for a fixed subsequence j in string i, the condition for k in string i-1 is that the subsequence k must be less than s (the string for j). Since the list for string i-1 is sorted by lex order, we can do a binary search to find the last subsequence k that is less than s. But note: we don't want the last one, we want the maximum DP[i-1][k] for all k such that subsequence k < s.
+
+   How to quickly get the maximum value of DP[i-1][k] for all k with subsequence value < s? 
+
+        We can precompute for the list of subsequences for string i-1 (which is sorted by the subsequence string) an array M where M[k] = DP[i-1][k]. Then we want the maximum value of M[k] for k from 0 to some index (the last index where the subsequence is less than s).
+
+        We can precompute a prefix maximum array for the sorted list of subsequences for string i-1. But note: the subsequences are sorted lexicographically, so the condition "less than s" corresponds to a contiguous prefix of the list? Actually, yes: because the lex order is a total order. So if we sort the subsequences of string i-1 by lex order, then we can have an array of the DP values for each subsequence in that order, and then we can build a prefix maximum array: 
+            prefix_max[k] = max( M[0], M[1], ..., M[k] )
+
+        Then we do: 
+            Find the largest index t in the list for string i-1 such that the subsequence at t is < s. Then candidate = prefix_max[t].
+
+        Then DP[i][j] = candidate + |s|.
+
+   Steps for one i (from 0 to N-1) for the i-th string:
+
+        Step 1: Precompute all distinct subsequences of S_i. We can use bit masks? Since |S_i| <= 15, we can iterate over all masks (from 0 to (1<<L)-1) and then generate the subsequence by taking the characters at the positions where the bit is set. But note: we must avoid duplicates? Actually, the problem says "subsequence" and we can get duplicates: for example, in "AAA", the subsequence "A" can be formed in multiple ways. We want distinct subsequences? 
+
+        But note: two different masks might yield the same string. So we should use a set.
+
+        Step 2: Convert the set to a sorted list (lexicographically). Also, for each distinct subsequence, we know its length.
+
+        Step 3: For the first string (i=0), we initialize DP[0][j] = len(subsequence_j) for each j.
+
+        Step 4: For i>=1, we process:
+
+                Sort the subsequences for string i-1 and string i by lex order.
+
+                Build an array M for string i-1: M[k] = DP[i-1][k] for the k-th subsequence in the sorted list of string i-1.
+
+                Build a prefix maximum array for M: prefix_max[0] = M[0], and for k>=1, prefix_max[k] = max(prefix_max[k-1], M[k])
+
+                Now, for each subsequence j in the sorted list for string i (with string s and length L), we need to find the last subsequence in the list for string i-1 that is less than s.
+
+                How to do that? We can do a binary search in the sorted list for string i-1 for the string s. We want the largest string in the list that is < s. Actually, we can use upper_bound: we want the position of the first element that is >= s, then the index just before that is the last one that is < s.
+
+                Let pos = the index of the first element in the list for i-1 that is >= s (if any). Then the valid indices are [0, pos-1]. Then the maximum value in M for indices [0, pos-1] is prefix_max[pos-1] (if pos>=1). If there is no element (pos==0), then we skip? Actually, if no subsequence in i-1 is less than s, then we cannot assign this j for the i-th child? Then we set DP[i][j] = -infinity? Or we skip.
+
+                But note: if we skip, then we must remember that if for a child we have no valid assignment, then the entire chain fails.
+
+        Step 5: After processing all children, the answer is the maximum value in DP[N-1][j] for j in the subsequences of the last string.
+
+        However, if at any step for a string i we have that for every subsequence j in string i we did not get a valid chain (i.e., no valid k in the previous string), then we output -1.
+
+   But note: what if the same subsequence appears multiple times? We have stored distinct subsequences. That is acceptable: because if we have the same string, then we only need one occurrence. And we are storing the length which is the same.
+
+   However, is the lexicographic condition strict? The problem says "lexicographically larger", meaning strictly increasing. So if we have two identical subsequences, they are not strictly increasing. Therefore, we must avoid consecutive identical names. But note: the subsequences we choose must be distinct? Actually, they can be the same? But then the condition fails. So we don't want identical consecutive names.
+
+   Therefore, when we generate the distinct subsequences, we can have duplicates? Actually no: we use a set, so we have distinct strings.
+
+   But note: it is possible that two different masks yield the same string? Then we only keep one. So we are storing distinct strings.
+
+   However, the problem: the condition is that each name must be strictly greater than the previous. Therefore, we must have s_{i-1} < s_i. So if we have two consecutive identical strings, that fails. But in our set we have each distinct string only once, so we won't choose the same string twice for consecutive children? Actually, we could choose the same string for non-consecutive children? But that is allowed as long as the consecutive ones are strictly increasing.
+
+   The issue: we are comparing consecutive children. So for two consecutive children, we must have two distinct strings and the next must be lexicographically greater. Therefore, in the list for a fixed string, we can have multiple entries? Actually, we have one entry per distinct string.
+
+   But note: it is possible that for a fixed string i, we have a subsequence that is the same as a subsequence from a different mask? Then we store it once.
+
+   Therefore, the above DP is over the distinct subsequences of each string.
+
+   However, the state space: 
+        For each string, we have at most 32768 distinct subsequences. Then we have 15 * 32768 states. And for each state, we do a binary search (O(log(32768)) which is about 15 operations. Then the total operations is about 15 * 32768 * 15 * log(32768) = 15 * 15 * 32768 * 15 = about 15 * 15 * 32768 * 15 = 110,592,000 which is acceptable (about 100 million).
+
+   But wait: for each state j in string i, we do one binary search in the list for string i-1 (which is O(log(#subseq(i-1)))), and then one array lookup for the prefix maximum. So the inner loop per state j is O(log(32768)) ~ 15.
+
+   Then the total operations for one i (from 1 to N-1) is: 
+        (#subseq for string i) * (log(#subseq for string i-1))
+
+        <= 32768 * log2(32768) = 32768 * 15 = 491520.
+
+   Then for 14 steps (i from 1 to 14) we have 14 * 491520 = 6,881,280 operations. This is acceptable.
+
+   However, note that the number of distinct subsequences for a string of length L is at most 2^L, but it can be less? Actually, worst-case when all characters are distinct, it is 2^L. But if there are repeated characters, then the number of distinct subsequences is less. But worst-case we assume 2^L, and L<=15 -> 2^15=32768.
+
+   But worst-case total operations: 
+        Precomputation for one string: generating all distinct subsequences: we iterate over all masks (2^L) and form the string. Then we put in a set. The set insertion: each insertion is O(L) for the string (but the string length is at most L, so 15). Then for one string: 2^L * L = 32768 * 15 = 491520.
+
+        For N strings: 15 * 491520 = 7,372,800.
+
+   Then the DP: 
+        For i=0: we just set DP[0][j] = len(subseq_j) for each j (in the distinct set for S0). Then we sort the list of subsequences for S0 and build the prefix maximum? Actually, for the next step we need the list for S0 to be sorted and the DP values for the next step.
+
+        Then for i>=1: 
+            For each string i (from 1 to N-1), we do:
+
+                Sort the distinct subsequences of S_i (we have a set, then we make a sorted list). Similarly, for the previous string (i-1) we have a sorted list.
+
+                Build an array M for the previous string: which is the DP values for the previous string, but we need to arrange them in the lex order of the subsequences. Actually, we stored the DP[i-1] as an array indexed by the index in the sorted list? Not exactly: we stored for each distinct subsequence.
+
+                Actually, we can structure:
+
+                  Let A[i] = sorted list of distinct subsequences for S_i.
+                  We also store an array dp[i] of length = len(A[i]), where dp[i][j] is the maximum total length for the first i+1 children ending with the j-th subsequence in A[i].
+
+                For the transition from i-1 to i:
+
+                    Precomputation for the previous string i-1:
+                         Sort A[i-1] (we have that list) and then we have an array: dp_prev = dp[i-1] for each j in the list? But note: our dp[i-1] was computed per subsequence. However, we have the list A[i-1] and we have the dp[i-1] values for each element in A[i-1]. But when we sort A[i-1], we must also sort the dp_prev accordingly? Actually, we sort A[i-1] and then we have the same index for the dp_prev? But we want the dp_prev for the j-th element in the sorted list.
+
+                    How we stored dp[i-1]? 
+                         We can store: 
+                             For each string i, we have:
+                                 List_of_subseq = sorted list of distinct subsequences for S_i.
+                                 dp[i] = array of length len(List_of_subseq), where dp[i][k] is the maximum total length for the first i+1 children if the i-th child is assigned the subsequence List_of_subseq[k].
+
+                    But when we move from i-1 to i, we have the dp[i-1] array already computed and stored for the sorted list of the previous string. Then we build the prefix maximum array for dp[i-1] (over the entire sorted list).
+
+                    Then for each subsequence s in A[i] (the current string i), we:
+
+                         pos = bisect.bisect_left(A[i-1], s)   # This returns the first index in A[i-1] that is >= s.
+
+                         Then the indices we care about are [0, pos-1]. 
+
+                         If pos==0, then there is no subsequence in the previous string that is less than s -> then we cannot use s for the current child? Then we set candidate = -inf.
+
+                         Else, candidate = prefix_max[pos-1]   (which is the maximum value in dp[i-1][0..pos-1])
+
+                         Then dp[i][index_of_s] = candidate + len(s)
+
+                    But note: if candidate is -inf, then we set dp[i][index] to -inf as well.
+
+                After processing all s in A[i], we then build a new prefix_max for the current string? Actually, we don't need to until the next string. But we do need to sort A[i] and then arrange dp[i] accordingly? Actually, we are iterating in the sorted order for A[i]? We are building the list A[i] and then we will sort it? 
+
+                Actually, we have the set for S_i. Then we make a sorted list A[i]. Then we iterate over every element in A[i] and compute dp[i][j] for j=0,...,len(A[i])-1.
+
+                Then we build a prefix_max array for the current dp[i]? Actually, for the next step we will use the current string as the previous, so we need to sort the current string's subsequences and then build the prefix_max array for the entire dp[i] array? 
+
+                However, note: the next step (for i+1) will require the sorted list of the current string and the dp[i] values in the order of that sorted list. So we have to sort the current string's subsequences and then arrange the dp[i] values accordingly? 
+
+                But wait: we computed dp[i][j] for the j-th element in the sorted list A[i]. So when we build the prefix_max array for the next step, we can do:
+
+                    prefix_max[0] = dp[i][0]
+                    for j from 1 to len(A[i])-1:
+                         prefix_max[j] = max(prefix_max[j-1], dp[i][j])
+
+                And then for the next string i+1, we can use this prefix_max array for the sorted list A[i].
+
+        Finally, after processing the last child, we take the maximum value in dp[N-1] (if any). If that maximum is negative (or we never set any to a positive value) then we output -1? Actually, we must check: if the entire chain is broken, then we output -1.
+
+        But note: we set dp[i][j] to candidate + len(s). If candidate is -inf, then we set -inf. So we can initialize the dp[0] to the length of the subsequence (which is at least 1). Then we propagate.
+
+        We must use a very small number for -inf. Since the maximum total length is at most 15*15 = 225, we can use -10**9 for -inf.
+
+   Steps:
+
+        Precomputation for each string i (0-indexed) in [0, N-1]:
+            Generate all distinct subsequences: 
+                L = len(S_i)
+                use a set: subseq_set = set()
+                for mask in range(1, 1<<L):   # note: skip mask=0 (empty string) because the problem says non-empty.
+                    s = ""
+                    for j in range(L):
+                        if mask & (1<<j):
+                            s += S_i[j]
+                    subseq_set.add(s)
+
+                Then convert to sorted list: A[i] = sorted(subseq_set)
+
+                Note: We must avoid the empty string.
+
+        Then initialize:
+
+            dp0 = [len(s) for s in A[0]]   # for the first child, we don't have a previous, so we just take the length.
+
+            Then we build for the first string: 
+                We sort A[0] (we have it sorted) and then we build a prefix_max0 for dp0? Actually, for the next step we need the prefix_max for the entire sorted list? But the next step (i=1) will use the first string as the previous.
+
+        Then for i from 1 to N-1 (0-indexed, so the second child and beyond):
+
+            Precomputation for the previous string (i-1): 
+                We have A[i-1] (sorted) and dp_prev = dp[i-1] (an array of the same length as A[i-1]). Then we build an array prefix_prev[0] = dp_prev[0], and for j in range(1, len(A[i-1])):
+                    prefix_prev[j] = max(prefix_prev[j-1], dp_prev[j])
+
+            Then for the current string i:
+                Let A_cur = A[i] (sorted list of distinct subsequences for S_i)
+                dp_cur = [ -10**9 ] * len(A_cur)
+
+                For each index j in range(len(A_cur)):
+                    s = A_cur[j]
+                    # Find the position in A[i-1] for the first element >= s
+                    pos = bisect.bisect_left(A[i-1], s)   # returns the index of the first element >= s.
+
+                    # Then all elements in A[i-1] from 0 to pos-1 are < s.
+                    if pos == 0:
+                        # no element in the previous string is less than s -> skip (leave as -10**9)
+                        continue
+                    else:
+                        best_prev = prefix_prev[pos-1]   # the maximum dp_prev in indices [0, pos-1]
+                        # If best_prev is -10**9, then we get -10**9 + len(s) -> which is still very negative? That's okay.
+                        dp_cur[j] = best_prev + len(s)
+
+                Then set dp[i] = dp_cur.
+
+                Also, we note: we don't build the prefix_prev for the current string until the next step? Actually, for the next step (if any) we will need to build prefix_prev for the current string. So we store dp[i] and A[i] for the next step.
+
+        After processing all children, we look at the last string (i = N-1) and take the maximum value in dp[N-1]. If the maximum is less than 0 (or if we never found a valid chain) then we output -1.
+
+        But note: it is possible that the maximum is negative? Actually, we set -10**9 for invalid, and the maximum total length is at most 225 (15*15). So if the maximum is negative, we output -1.
+
+        Alternatively, we can check: if the maximum value in dp[N-1] is negative, then output -1, else output that maximum.
+
+   However, what if the chain breaks in the middle? For example, for the second child we have no valid assignment? Then for the third child we won't get any? Then the last dp[N-1] will be all -10**9? Then we output -1.
+
+   This algorithm satisfies the constraints: 
+        Precomputation: for each string, generating distinct subsequences: O(2^L * L) per string -> 15 * 32768 * 15 = 7,372,800 (worst-case) which is acceptable.
+
+        Then the DP: for each i from 1 to N-1: 
+            Sorting the current string's subsequences? Actually, we generated the set and then sorted it already in precomputation.
+
+            Then building the prefix_prev for the previous string: O(len(A[i-1])) which is at most 32768.
+
+            Then for the current string: for each subsequence j, we do a binary search in the previous string's list (O(log(32768)) ~ 15 operations per j). Total per i: O(len(A[i]) * log(len(A[i-1]))) <= 32768 * 15 = 491520.
+
+            And we do this for i in [1, N-1] -> at most 14 steps: 14 * 491520 = 6,881,280.
+
+        Total operations: 7,372,800 (precomputation) + 6,881,280 (DP) ~ 14 million, which is acceptable.
+
+   But note: the problem says the strings are in uppercase, and the distinct subsequences might be fewer if there are repeated letters. So worst-case we assume 32768 per string.
+
+   However, worst-case total memory: 
+        We store for each string: 
+            A[i]: list of distinct subsequences (each subsequence is a string of length up to 15) -> worst-case 32768 * 15 = 491520 characters per string? Then 15 strings: 15 * 491520 = 7,372,800 characters. This is about 7.4 MB.
+
+        Also, we store dp[i] for each string: an array of length up to 32768 integers -> 15 * 32768 * sizeof(int) = 15 * 32768 * 4 = about 1.97 MB.
+
+        And we store the prefix_prev arrays only for the previous string? We can discard after use. So we only need to store the current and the previous.
+
+   Therefore, the memory is acceptable.
+
+   Implementation details:
+
+        We'll do:
+
+          N = int(input().strip())
+          S = []
+          for i in range(N):
+              S.append(input().strip())
+
+          # Precompute distinct subsequences for each S[i] (non-empty)
+          A = []   # A[i] is the sorted list of distinct non-empty subsequences of S[i]
+          for s in S:
+              L = len(s)
+              seen = set()
+              # iterate over masks: from 1 to (1<<L)-1 (skip 0: empty string)
+              for mask in range(1, 1<<L):
+                  sub = []
+                  for j in range(L):
+                      if mask & (1<<j):
+                          sub.append(s[j])
+                  # form the string
+                  t = ''.join(sub)
+                  seen.add(t)
+              # convert to sorted list
+              sorted_list = sorted(seen)   # lex order
+              A.append(sorted_list)
+
+          # If the first string has no subsequence? It should have at least one because the string is non-empty. But if we get an empty set? Then we skip. But we skip mask 0, so if the string is non-empty, we have at least the one-character strings.
+
+          # Initialize dp for the first child (i=0)
+          dp_prev = [len(sub) for sub in A[0]]   # dp_prev[j] for the j-th subsequence in A[0]
+          # Also, we have A_prev = A[0]
+
+          # If N==1, then the answer is the maximum value in dp_prev.
+
+          # For i in range(1, N):   # for the i-th child (0-indexed, so the second child, ..., last child)
+          #   Build prefix_prev: an array of the same length as dp_prev, where prefix_prev[k] = max(dp_prev[0], dp_prev[1], ..., dp_prev[k])
+          #   Then for the current string i: 
+          #       A_cur = A[i]
+          #       dp_cur = [-10**9] * len(A_cur)
+          #       For j, s in enumerate(A_cur):
+          #           # Find the position in A_prev (the previous string's list) of the first element >= s
+          #           pos = bisect.bisect_left(A_prev, s)
+          #           if pos > 0:
+          #               candidate = prefix_prev[pos-1]
+          #               dp_cur[j] = candidate + len(s)
+          #           # else: leave as -10**9
+          #       Then set: 
+          #           A_prev = A_cur   # for the next iteration, the current becomes the previous
+          #           dp_prev = dp_cur
+          #
+          #   And we also need to build the prefix_prev for the next step? Actually, in the next step we will build prefix_prev from dp_prev and A_prev.
+
+          # After the loop, the answer is the maximum value in dp_prev (if any) that is not -10**9. If the maximum is negative (or we have no valid chain) then output -1.
+
+          ans = max(dp_prev) if N>=1 else 0   # but note N>=1 per the input.
+
+          However, if we have multiple children, then after processing the last child, we take the max of the last dp_prev.
+
+          But note: if we have only one child: then we do the first child and then the loop doesn't run. Then we take max of the first dp_prev.
+
+          For the case N>=2, we run the loop for i from 1 to N-1.
+
+          Finally, if the maximum value we found is less than 0? Actually, the total length cannot be negative. The minimum length for one child is 1, so the total is at least 1. Therefore, if the max is negative, it means no valid chain.
+
+          So: 
+              ans = max(dp_prev)   # after processing the last child
+              if ans < 0: 
+                  print(-1)
+              else:
+                  print(ans)
+
+   But note: what if the chain breaks at the first child? Actually, the first child always has at least one subsequence (since the string is non-empty). So we don't have to worry.
+
+   However, what if the chain breaks at the second child? Then the dp_prev for the second child will be all -10**9. Then when we go to the third child, we build prefix_prev from the second child: which is an array of -10**9. Then for the third child: 
+        For each subsequence s in A[2]: 
+            we find the position in A[1] (which is the list for the second child) and then if we get a candidate from prefix_prev (which is -10**9) then we set dp_cur[j] = -10**9 + len(s) -> still negative.
+
+        Then the entire chain remains broken.
+
+   So the algorithm propagates the broken chain.
+
+   Let's test with the sample: 
+        N=2, strings: ["ZORO", "ANDI"]
+
+        Precomputation for "ZORO": distinct subsequences: we get many, including "Z", "O", "R", "ZO", "ZR", "ZOR", "ZORO", etc. -> all these are lexicographically >= "A" (the smallest letter) but note: "Z" is the largest? Actually, the lex order: the smallest subsequence of "ZORO" is "O" (because 'O'<'R'<'Z')? Actually, the lex order: 
+            The smallest subsequence: we have to generate. 
+            Actually, the smallest subsequence is the smallest character? But note: we can have multiple: 
+                The characters: 'Z','O','R','O' -> so the distinct characters: 'O','R','Z'. 
+                Then the lex smallest is 'O'.
+
+            Then the subsequences: 
+                one letter: 'O','R','Z' -> sorted: ['O','R','Z']
+                two letters: "OR", "OZ", "OO" (if we take the two O's? But we have two O's? Then we can form "OO" by taking the second and the last? But the string is "ZORO": 
+                    positions: 0:Z, 1:O, 2:R, 3:O.
+                    Then we can form "OO" (from indices 1 and 3).
+
+                How to sort? 
+                    "O", "OO", "OR", "OZ", "R", "RO", "RR", "RZ", "Z", "ZO", "ZR", "ZOR", "ZOO", "ZORO", ... 
+                Actually, the lex smallest is "O", then "OO", then "OR", then "OZ", then "R", then "RO", ... 
+
+        Now for the second string "ANDI": 
+            The distinct subsequences: 
+                one letter: 'A','D','I','N'
+                two letters: "AN", "AD", "AI", "ND", "NI", "DI", "AND", "ANI", "ADI", "NDI", "ANDI", etc.
+
+            The lex smallest is 'A'. 
+
+        Now, for the second child: we need a subsequence of "ANDI" that is > than the subsequence chosen for the first child. But the first child can choose a subsequence that is as large as we want? Actually, the largest in the first string? The lex largest is "ZORO", which is bigger than any subsequence of "ANDI" (because the first letter: 'Z' > 'A'? but actually, the first letter of any subsequence of "ANDI" is at least 'A', and 'A' is less than 'Z'. So if the first child chooses "Z", then the second child can choose any subsequence? But wait: the condition is that the second child's name must be > "Z". But the subsequences of "ANDI" are all starting with 'A','D','I','N'? which are all less than 'Z'. 
+
+        Therefore, the chain breaks.
+
+        How does our algorithm handle?
+            For the first child: 
+                A[0] = sorted list of distinct non-empty subsequences of "ZORO". 
+                dp_prev = [length for each subsequence in A[0]]
+
+            Then we build prefix_prev: the prefix maximum array for A[0] (in lex order). 
+
+            Then for the second child: 
+                For each subsequence s in A[1] (which includes "A", "AA" not possible, ... the smallest is "A"): 
+                    We do: 
+                         pos = bisect.bisect_left(A[0], "A")   -> returns the first index in A[0] that is >= "A". 
+                    What is the lex order? 
+                         The first element in A[0] is "O" (which is greater than "A")? 
+                         Actually, "A" vs "O": 'A'<'O', so the first element "O" is > "A". Then the entire list of A[0] is > "A"? Then pos=0? 
+
+                Then if pos==0, we skip.
+
+            Then for every subsequence in A[1], we skip? Then dp_cur for the second child is all -10**9.
+
+            Then the answer = max(dp_cur) = -10**9 -> we output -1.
+
+        This matches.
+
+   Let's test with sample #1: 
+        N=3, strings: ["KARIM", "PARBUDI", "CHANDRA"]
+
+        We know the maximum total length is 16.
+
+        How would we get 16? 
+            Possibilities: 
+                ["ARIM", "ARUDI", "CHANDRA"] -> 4+5+7=16
+                ["AIM", "ARBUDI", "CHANDRA"] -> 3+6+7=16
+
+        How does the algorithm compute?
+
+            Step 0: Precompute distinct subsequences for "KARIM", "PARBUDI", "CHANDRA"
+
+            Step 1: For the first child (string "KARIM"): 
+                We have to choose a subsequence. We want to maximize the total length, but we have to leave room for the next children.
+
+                The algorithm will consider every subsequence for the first child.
+
+            Step 2: For the second child: 
+                We consider every subsequence of "PARBUDI" and we look for the best chain from the first child that ends with a subsequence < current.
+
+            Step 3: Similarly for the third child.
+
+            We hope that the maximum chain for the third child is 16.
+
+        The algorithm will do:
+
+          dp0 for the first child: for each subsequence of "KARIM", the value is the length of that subsequence.
+
+          Then for the second child: 
+             For a subsequence s in A[1] (which is the list for "PARBUDI"), we look in A[0] for the maximum dp0 value for a subsequence < s, and then set dp1 = that max + len(s).
+
+          Then for the third child: similarly.
+
+          We then take the maximum in dp2.
+
+        How do we get 16? 
+          One possibility: 
+            child1: "AIM" (length=3) -> note: "AIM" is a subsequence of "KARIM": take the A (at index1), I (at index3), M (at index4) -> "AIM"
+            child2: "ARBUDI" (length=6) -> subsequence of "PARBUDI": take A (at index1), R (at index2), B (at index3), U (at index4), D (at index5), I (at index6) -> "ARBUDI"
+            child3: "CHANDRA" (length=7) -> total=16.
+
+          Now, we must check: 
+            "AIM" < "ARBUDI": 
+                Compare: 
+                  'A' vs 'A' -> equal.
+                  'I' vs 'R' -> 'I'<'R' -> so "AIM" < "ARBUDI". 
+
+          How does the algorithm capture this?
+
+            In the second child: 
+                s = "ARBUDI"
+                We look in A[0] (the list for "KARIM") for all subsequences that are < "ARBUDI". 
+                Is "AIM" in A[0]? Yes.
+                What is the value for "AIM"? 3.
+
+                Then we set dp1 for "ARBUDI" = 3 + 6 = 9.
+
+            Then for the third child: 
+                s = "CHANDRA"
+                We look in A[1] for all subsequences that are < "CHANDRA". 
+                We need to check: is "ARBUDI" < "CHANDRA"? 
+                    'A' vs 'C': 'A'<'C' -> so yes.
+
+                Then we take the value from "ARBUDI" which is 9, and then add 7 -> 16.
+
+          But note: the algorithm for the second child might have chosen a longer subsequence for the first child? For example, if we choose "ARIM" (length=4) for the first child, then for the second child we can choose "ARUDI" (length=5) -> then total for the first two: 4+5=9. Then the third child: 7 -> 16.
+
+          The algorithm will consider all possibilities.
+
+          However, the algorithm for the second child: 
+            For each subsequence of the second string, we take the best (max) total length from the first child that ends with a subsequence < the current one.
+
+          Then for the third child: similarly.
+
+          Therefore, the maximum total length is 16.
+
+        We output 16.
+
+   Sample Input #3: 
+        7
+        HAVE
+        FUN
+        IN
+        ICPC
+        JAKARTA
+        TWENTY
+        EIGHTEEN
+
+        Expected: 25.
+
+        We trust the algorithm.
+
+   Implementation:
+
+        We use:
+            import bisect
+
+        Steps:
+
+            N = int(input().strip())
+            strings = [input().strip() for _ in range(N)]
+
+            # Precompute distinct non-empty subsequences for each string
+            A_list = []   # A_list[i] = sorted list of distinct non-empty subsequences for the i-th string
+            for s in strings:
+                n = len(s)
+                subs_set = set()
+                # iterate over masks from 1 to (1<<n)-1
+                for mask in range(1, 1<<n):
+                    sub = []
+                    for i in range(n):
+                        if mask & (1 << i):
+                            sub.append(s[i])
+                    subs_set.add(''.join(sub))
+                sorted_subs = sorted(subs_set)   # lex order
+                A_list.append(sorted_subs)
+
+            # dp[i] for the i-th child: stored in an array for the sorted list A_list[i]
+            # But we only need the previous one at a time.
+
+            # For the first child:
+            if N == 0:
+                print(0)
+                exit(0)
+
+            dp = [len(sub) for sub in A_list[0]]
+
+            # If there are more children, we iterate.
+            for i in range(1, N):
+                # Build prefix maximum for the previous dp (which is for the (i-1)-th child) in the lex order of A_list[i-1]
+                # Note: A_list[i-1] is already sorted, and dp (the current state for the previous child) is aligned with A_list[i-1] (i.e., dp[j] corresponds to A_list[i-1][j])
+                prefix_prev = [0] * len(dp)
+                if len(dp) > 0:
+                    prefix_prev[0] = dp[0]
+                    for j in range(1, len(dp)):
+                        prefix_prev[j] = max(prefix_prev[j-1], dp[j])
+
+                # Now, for the current child i, we have A_list[i] (sorted list of subsequences for the i-th string)
+                current_A = A_list[i]
+                current_dp = [-10**9] * len(current_A)
+
+                # For each subsequence s in current_A (with index j)
+                for j, s in enumerate(current_A):
+                    # Find the position in the previous list (A_list[i-1]) for the first element >= s
+                    pos = bisect.bisect_left(A_list[i-1], s)
+                    # Then all elements in A_list[i-1] from 0 to pos-1 are < s.
+                    if pos > 0:
+                        # The best value from the previous child for a subsequence < s is prefix_prev[pos-1]
+                        current_dp[j] = prefix_prev[pos-1] + len(s)
+                    # else: no valid previous, leave as -10**9
+                # Set dp to current_dp for the next iteration, and we also move the list: but we don't need the previous list anymore.
+                dp = current_dp
+
+            ans = max(dp) if N>=1 else 0
+            if ans < 0:
+                print(-1)
+            else:
+                print(ans)
+
+   But note: what if N=1? Then the loop doesn't run, and we take the max of the first dp. Then we output that max.
+
+   Let me test with N=1: 
+        Input: 
+            1
+            ABC
+        Then distinct subsequences: 
+            "A","B","C","AB","AC","BC","ABC"
+        Then we output the maximum length? which is 3? 
+            But the maximum length is 3? 
+            However, note: the problem: we are to maximize the total length. For one child, we can choose the entire string? So 3.
+
+        The algorithm: 
+            dp0 = [1,1,1,2,2,2,3] 
+            then ans = 3.
+
+        Correct.
+
+   However, note: the problem says: "the i-th child’s name should be a subsequence of the i-th name". We are allowed to choose any subsequence. So for one child, we choose the entire string? 
+
+   But wait: the problem says: "maximize the total length". For one child, we can choose the entire string -> length |S_0|.
+
+   Therefore, the algorithm is correct.
+
+   But note: the problem says that the name cannot be empty. Our precomputation skips the empty string.
+
+   Let me run the sample input #3: 
+        We have 7 strings: 
+            HAVE, FUN, IN, ICPC, JAKARTA, TWENTY, EIGHTEEN
+
+        The sample solution: 
+            [ "AVE", "FUN", "IN", "IPC", "JAKARTA", "NTY", "TEEN" ] -> 3+3+2+3+7+3+4=25.
+
+        How does it work in our algorithm?
+
+          For the first child: 
+            We choose "AVE" (from "HAVE")? 
+            But note: the maximum total length we can get for the first child is 4? But we choose "AVE" (length=3). Why? Because if we choose "HAVE" (length=4) then we might break the chain for the next child? 
+
+          Specifically, the next child must have a name > "HAVE". 
+            The second string is "FUN". The lex largest subsequence of "FUN" is "UN" (if we skip F) or "FUN" (which is the whole string). 
+            Compare: "HAVE" and "FUN": 
+                'H' vs 'F': 'H'>'F'? Actually, 'F'<'H', so "FUN" is less than "HAVE"? 
+                Actually: 
+                    Compare "HAVE" and "FUN": 
+                      first character: 'H' vs 'F' -> 'F'<'H', so "FUN" is less than "HAVE". 
+            Therefore, we cannot use "FUN" after "HAVE". 
+
+          So we choose a shorter name for the first child? 
+
+          The algorithm will consider: 
+            For the second child: 
+                We consider each subsequence of "FUN": 
+                    The lex smallest is 'F', then 'FU', 'FN', 'FUN', 'N', 'U', 'UN', ... 
+                We need one that is > than the chosen name from the first child. 
+
+                If the first child chose "HAVE", then no subsequence of "FUN" is > "HAVE" (because they all start with 'F','U','N'? and 'F'<'H'). 
+
+                But if the first child chooses a subsequence that starts with a letter <= 'F', then we can have the second child choose a subsequence that starts with 'F' and then more? 
+
+                For example, if the first child chooses "A" (from "HAVE"): 
+                    Then the second child can choose "FUN": because "A"<"FUN" -> 'A'<'F'. 
+
+                Then the total for the first two: 1+3=4.
+
+                But we can do better: 
+                    The first child chooses "E" (from "HAVE") -> then the second child can choose "FUN": total=1+3=4.
+
+                But also: 
+                    The first child chooses "AE": then the second child can choose "FUN": total=2+3=5.
+
+                However, the sample solution for the first child is "AVE" (length=3). Why? 
+                    "AVE" vs "FUN": 
+                         'A'<'F', so "AVE"<"FUN" -> valid.
+
+                Then the total for the first two: 3+3=6.
+
+                Then we continue.
+
+          Therefore, the algorithm will consider the chain: 
+            1st: "AVE" -> 3
+            2nd: "FUN" -> 3 (total 6)
+            3rd: "IN" (from "IN") -> 2 (total 8) -> but we need to check: "FUN" < "IN": 
+                   'F'<'I' -> yes.
+
+            4th: "IPC" (from "ICPC"): 
+                   "IN" < "IPC": 
+                         'I' vs 'I' -> equal, then 'N' vs 'P': 'N'<'P' -> so "IN"<"IPC". -> valid. 
+                   Then total 8+3=11.
+
+            5th: "JAKARTA" (whole string) -> 7 -> total 18 -> but we need to check: "IPC" < "JAKARTA": 
+                   'I'<'J' -> yes.
+
+            6th: "NTY" (from "TWENTY"): 
+                   "JAKARTA" < "NTY": 
+                         'J' vs 'N': 'J'<'N' -> yes.
+
+            7th: "TEEN" (from "EIGHTEEN"): 
+                   "NTY" < "TEEN": 
+                         'N' vs 'T': 'N'<'T' -> yes.
+
+            Total: 3+3+2+3+7+3+4=25.
+
+          The algorithm should capture this chain.
+
+          How? 
+            For the first child: 
+                We have "AVE" in the list for "HAVE". Then dp0 for "AVE" = 3.
+
+            For the second child: 
+                When we process "FUN" (in the list for "FUN"), we look for the previous chain that ends with a subsequence < "FUN". 
+                The subsequences of "HAVE" that are < "FUN": 
+                    We need the maximum dp0 value for a subsequence of "HAVE" that is < "FUN". 
+                How do we compare? 
+                    "FUN" vs "AVE": 
+                         'A'<'F', so "AVE"<"FUN". 
+                    What about "HAVE"? -> not less than "FUN" (because 'H'>'F'? Actually, "HAVE" starts with 'H', which is greater than 'F', so "HAVE" is greater than "FUN"? Actually: 
+                         "HAVE" and "FUN": first char 'H' vs 'F': 'H'>'F', so "HAVE" > "FUN". 
+                    But we need the previous to be less than "FUN". So we cannot use "HAVE". 
+                The best we can get from the first child for a subsequence < "FUN" is the maximum length of a subsequence of "HAVE" that is < "FUN". 
+                    The maximum length subsequence that is < "FUN" might be "AVE" (length=3) or "HAV" (length=3) is it less than "FUN"? 
+                         "HAV": first char 'H' -> then it is greater than "FUN"? because 'H'>'F'. 
+                    Then the only ones that are < "FUN" are the ones that start with 'A' or 'E'? 
+                    The longest one: 
+                         "AVE": length=3
+                         "AE": length=2
+                         "AV": length=2
+                         "A": length=1
+                         "E": length=1
+                    So the maximum length is 3.
+
+                Then we set dp1 for "FUN" = 3 (from the best chain ending in a subsequence of the first string that is < "FUN") + 3 = 6.
+
+            Then for the third child: 
+                We process "IN" (from the third string "IN") -> length=2.
+                We look in the previous list (for "FUN") for a subsequence < "IN". 
+                    "FUN" < "IN": because 'F'<'I'. So we can use the chain ending with "FUN" (value=6) -> then current = 6+2=8.
+
+            Then for the fourth child: 
+                "IPC" (from "ICPC"): 
+                    We look in the third string's list for a subsequence < "IPC". 
+                    The third string is "IN": 
+                         The subsequences: "I","N","IN". 
+                         Which ones are < "IPC"? 
+                             "I": 
+                                 "I" and "IPC": first char equal -> then "I" is a prefix of "IPC", so "I" < "IPC"? 
+                                 Actually, the definition: 
+                                    "String A is lexicographically larger than string B if and only if B is a prefix of A or there exists an index i where A_i > B_i and A_j = B_j for all j < i."
+                                 So if B is a prefix of A, then A > B. 
+                                 Therefore, "IPC" > "I" -> so "I" is acceptable.
+
+                                 But we also have "IN": 
+                                    "IN" vs "IPC": 
+                                        first char equal, then second char: 'N' vs 'P': 'N'<'P' -> so "IN"<"IPC". 
+
+                    The best chain from the third child: 
+                         We have for "IN": value = 8? 
+                         Actually, the chain ending with "IN" is 8 (from the first three children: 3+3+2=8). 
+                         Then for "IPC": we take the best value from the third child for a subsequence < "IPC" -> which is the maximum of the values for "I" and "IN". 
+                         The value for "I": we had to compute: 
+                            For the third child, we computed for every subsequence: 
+                                "I": 
+                                    We look in the second child's list for a subsequence < "I". 
+                                    The second child's list: 
+                                        The lex smallest is "F". 
+                                        Compare: "F" and "I": 'F'<'I' -> so we can use the chain ending in "FUN" (value=6) for the second child? 
+                                        Then for "I": value = 6 + 1 = 7.
+                                "N": similarly: 
+                                    We look in the second child: subsequences < "N": 
+                                        The ones that are < "N": 
+                                            "F", "FU", "FUN", "FN", "U", "UN", "N" -> but "N" is not less than "N"? 
+                                            Actually, we need strictly less? 
+                                            The condition: we need the previous child's name to be strictly less than the current? 
+                                            So we need a subsequence of the second string that is < "N". 
+                                            The ones that are < "N": 
+                                                "F", "FU", "FUN", "FN", "U", "UN" -> all these? 
+                                            The best value from the second child for a subsequence < "N" is the maximum value in the second child for these? 
+                                            The chain ending in "FUN" is 6. 
+                                            Then for "N": value = 6 + 1 = 7.
+                                "IN": 
+                                    We look for the second child: subsequences < "IN": 
+                                        The same: all the ones that are < "IN". 
+                                        Since "IN" starts with 'I', and the second child's strings start with 'F','U','N'? 
+                                        All the second child's strings are < "IN" (because 'F','U','N' are all < 'I')? 
+                                        Then the best value from the second child is 6 (for "FUN") -> then for "IN": value = 6+2=8.
+
+                    Then the best value for the third child for a subsequence < "IPC" is max(7,7,8) = 8.
+
+                    Then for "IPC": value = 8 + 3 = 11.
+
+            Then for the fifth child: "JAKARTA" (length=7) -> 
+                We look in the fourth child's list for a subsequence < "JAKARTA". 
+                The fourth child's list: 
+                    We have "IPC" and others. 
+                "IPC" < "JAKARTA": because 'I'<'J'. 
+                The best value for the fourth child: we have computed for "IPC"=11. 
+                Then the fifth child: 11+7=18.
+
+            Then the sixth child: "NTY" (from "TWENTY") -> 
+                We look in the fifth child's list: 
+                    We need a subsequence < "NTY". 
+                    The fifth child's string is "JAKARTA": 
+                         The subsequences: ... 
+                    We need one that is < "NTY": 
+                         Compare: "JAKARTA" and "NTY": 
+                            'J'<'N' -> so "JAKARTA"<"NTY". 
+                    Then we take the value for "JAKARTA" (which is 18) and add 3 -> 21.
+
+            Then the seventh child: "TEEN" (from "EIGHTEEN") -> 
+                We look in the sixth child's list: 
+                    We need a subsequence < "TEEN". 
+                    The sixth child's string is "TWENTY": 
+                         The subsequences: ... 
+                    We have "NTY": 
+                         "NTY" vs "TEEN": 
+                            'N'<'T' -> so "NTY"<"TEEN". 
+                    Then we take the value for "NTY" (21) and add 4 -> 25.
+
+            Then the answer is 25.
+
+        Therefore, the algorithm should output 25.
+
+   However, note: the algorithm might consider a different chain that leads to 25? It will find 25.
+
+   But note: the chain we described is one possibility. The algorithm considers all chains.
+
+   Therefore, we code accordingly.
+
+   One more corner: 
+        It is possible that the same subsequence appears in the list? We use a set, so we have distinct strings.
+
+   Let me run the sample input #2 again in code:
+
+        N=2
+        strings: ["ZORO", "ANDI"]
+
+        Precomputation for "ZORO": 
+            distinct subsequences: 
+                We'll generate: 
+                  Z, O, R, ZO, ZR, ZOR, ZO, ... -> but we use set, so duplicates removed.
+
+            Then we sort: 
+                The lex smallest: 'O' (because 'O'<'R'<'Z'), then 'OO', then 'OR', then 'OZ', then 'R', then 'RO', 'RR', 'RZ', ... 
+
+        Precomputation for "ANDI": 
+            distinct subsequences: 
+                A, N, D, I, AN, AD, AI, ND, NI, DI, AND, ANI, ADI, NDI, ANDI, ... 
+            sorted: 
+                'A', 'AA'? no, we don't have repeated A. Then: 
+                'A','AD','ADI','AI','AN','AND','ANDI','ANI','D','DI','I','N','ND','NDI','NI'
+
+        Then for the first child: 
+            dp0 = [1,2,2,2,2,3,4,3,1,2,1,1,2,3,2]  (the lengths of each subsequence in the sorted list for "ZORO")
+
+        Then build prefix_prev: 
+            prefix_prev[0] = 1
+            prefix_prev[1] = max(1,2)=2
+            prefix_prev[2] = max(2,2)=2
+            ... 
+
+        Then for the second child: 
+            For the first subsequence in the sorted list for "ANDI": 'A' (length=1)
+                pos = bisect.bisect_left(A_prev, 'A') -> 
+                    The list A_prev (for "ZORO") starts with 'O' (which is > 'A'), so pos=0 -> skip.
+
+            Then for the next: 'AD' -> also skip? because the entire list of "ZORO" is greater than 'AD'? 
+            ... until we finish: all are skipped.
+
+        Then dp1 is all -10**9 -> then output -1.
+
+   Therefore, we output -1.
+
+   Code:
+
+        We'll write the code accordingly.
+
+   Note: we must be cautious about performance: worst-case 15 strings, each with up to 32768 subsequences. The inner loop for each subsequence does a binary search (log2(32768)=15) so total operations per string: 32768*15 ~ 500000, and 14 steps: 7000000, which is acceptable in Pyton? In C++ it is, but in Python? We must hope that the actual distinct subsequences are fewer? Or we can optimize by not generating duplicates? We use a set, which is efficient.
+
+   However, worst-case the set has 32768 elements, and generating the set: 2^15 * 15 = 32768*15=491520 operations per string, then 15*491520=7372800, which is acceptable in Python.
+
+   But worst-case the entire program: 
+        Precomputation: 15 * (2^L * L) = 15 * (32768 * 15) = 7,372,800 operations.
+        Then the DP: 14 * (number of subsequences in current * log2(prev)) <= 14 * (32768 * 15) = 14 * 491520 = 6,881,280.
+
+        Total operations: 14,254,080, which is acceptable in Pyton? In Pyton, 14e6 operations is acceptable in 1 second? Usually, Pyton does about 10e6 per second? But we have two parts: the precomputation and the DP. 
+
+        However, the precomputation: the inner loop for generating the subsequence: 
+            for mask in range(1, 1<<n):   # 2^n iterations
+                for j in range(n):   # n=15, so 15 iterations per mask
+                and then forming a string of length at most 15 and inserting into a set.
+
+        The set insertion: the length of the string is at most 15, so the hash is fast. But worst-case 32768 insertions per string, and 15 strings: 15*32768 = 491520 insertions. The set insertion is O(1) average? Then the inner loop for forming the string: 15* (2^15) = 491520 per string? Then 15*491520=7372800 operations for forming the strings? That is acceptable.
+
+        Then the DP: 14 * (number of subsequences in the current string) * (log2(prev)) -> 14 * 32768 * 15 = 6,881,280.
+
+        Total operations: 14,254,080.
+
+        This should run in Pyton in about 1.4 seconds? But the problem says 1.0s. 
+
+        We can try to optimize the precomputation: 
+            Instead of building the string for every mask, we can use a bit mask and then use a set of tuples? But then we convert to string? Actually, we can use a set of tuples? But then we have to convert to string to compare lex? We don't: we can store as tuple and then sort? But then the lex order of tuples of characters is the same as the string? 
+
+        Alternatively, we can avoid building the entire string until we know we need it? But we are storing the set to remove duplicates. We have to build the string to compare duplicates.
+
+        Another idea: we can use dynamic programming for distinct subsequences without duplicates? There is a DP for distinct subsequences? But the problem: we want the entire set. 
+
+        Alternatively, we can generate the distinct subsequences without duplicates by a DFS? But worst-case 2^15, which is 32768, so we can do it.
+
+        But the current method is O(2^L * L) per string, which is acceptable for L<=15.
+
+        However, worst-case: 15 * 2^15 * 15 = 15 * 32768 * 15 = 7,372,800, which is acceptable in Pyton in 1 second? 
+
+        We can hope that the constraints are worst-case and the judge is fast? Or we can use a more efficient method? 
+
+        There is an efficient method to generate distinct subsequences? 
+            We can do: 
+                dp[0] = set of subsequences ending at position 0? 
+                But the standard is to iterate and use a set and update.
+
+        We'll stick to the bit mask.
+
+   Let me run in Pyton for the worst-case: 
+        n=15, string = "AAAAAAAAAAAAAAA" (all same) -> then distinct subsequences: 
+            the number of distinct subsequences: 16 (from length 0 to 15, but we skip length0 -> 15). 
+            Then the set has only 15 elements.
+
+        So worst-case distinct subsequences is 32768, but if there are repeated letters, it can be as low as O(n^2) or O(n). 
+
+        Therefore, worst-case (with distinct letters) we get 32768, but in practice we might get less? 
+
+        But we must assume worst-case.
+
+   We write the code accordingly.
+
+   Code:
+
+        import bisect
+
+        N = int(input().strip())
+        S = [input().strip() for _ in range(N)]
+
+        # Precompute distinct non-empty subsequences for each string
+        A_list = []
+        for s in S:
+            n = len(s)
+            seen = set()
+            # Iterate over all non-empty masks
+            for mask in range(1, 1 << n):
+                # Build the subsequence
+                substr = []
+                for j in range(n):
+                    if mask & (1 << j):
+                        substr.append(s[j])
+                # Convert to string and add to set
+                t = ''.join(substr)
+                seen.add(t)
+            # Sort the distinct subsequences lexicographically
+            sorted_seen = sorted(seen)
+            A_list.append(sorted_seen)
+
+        # If we have no children, skip. But N>=1.
+        # dp will be the dp array for the current child (initially the first child)
+        if N == 0:
+            print(0)
+            exit(0)
+
+        # For the first child
+        dp_prev = [len(subseq) for subseq in A_list[0]]
+
+        # Iterate for the remaining children
+        for i in range(1, N):
+            # Build the prefix maximum array for the previous dp_prev (over the sorted list A_list[i-1])
+            # But note: if the list A_list[i-1] is empty, skip.
+            if not dp_prev:
+                # Then the previous child had no subsequence? Then we break.
+                dp_prev = []   # and then the next will also be empty?
+                break
+
+            prefix_max = [0] * len(dp_prev)
+            prefix_max[0] = dp_prev[0]
+            for j in range(1, len(dp_prev)):
+                prefix_max[j] = max(prefix_max[j-1], dp_prev[j])
+
+            # Now process the current child i
+            current_A = A_list[i]
+            current_dp = [-10**9] * len(current_A)
+
+            # If the previous list is empty, we break, but we already checked that dp_prev is non-empty?
+            # For each subsequence in the current child
+            for idx, subseq in enumerate(current_A):
+                # Find the position in the previous list (A_list[i-1]) for the first element >= subseq
+                pos = bisect.bisect_left(A_list[i-1], subseq)
+                if pos > 0:
+                    # There is at least one valid subsequence in the previous child that is < subseq
+                    best_prev = prefix_max[pos-1]
+                    current_dp[idx] = best_prev + len(subseq)
+                # else: skip, remains -10**9
+
+            dp_prev = current_dp   # move to next
+
+        if not dp_prev:
+            # If we broke because the previous list was empty, then we check: 
+            #   Actually, we break only if the first child breaks? 
+            #   But if the first child had no subsequence? Then we output -1? 
+            #   But the first child: the string is non-empty, so it has at least one subsequence.
+            #   So we break only if in the middle we had an empty list? 
+            #   Actually, we break at the beginning of the loop if we find that the previous dp_prev is empty? 
+            #   Then we set dp_prev = [] and break. Then we output -1.
+            print(-1)
+        else:
+            ans = max(dp_prev)
+            if ans < 0:
+                print(-1)
+            else:
+                print(ans)
+
+   Let me test with a small case: 
+        N=1, string="A"
+        Then A_list[0] = ["A"]
+        dp_prev = [1]
+        Then the loop doesn't run -> then we output max(dp_prev)=1.
+
+   Test with N=2: 
+        strings: ["A", "B"]
+        A_list[0] = ["A"] -> dp_prev = [1]
+        Then for i=1: 
+            Build prefix_max for the first child: [1]
+            Then current_A = ["B"] (for the second string "B")
+            For "B": 
+                pos = bisect.bisect_left(A_list[0], "B") -> returns 0? because "A"<"B", so the first element is "A" which is < "B", but we are looking for the first element >= "B". 
+                So pos = 1? Actually, the list is ["A"], and "A" < "B", so the first element >= "B" is not found? Then bisect_left returns the position where "B" can be inserted to maintain sorted order? which is 1 (at the end).
+
+            Then pos=1 -> then we use prefix_max[0] = 1 -> then current_dp[0] = 1 + 1 = 2.
+
+            Then we output 2.
+
+        But the chain: 
+            first child: "A", second child: "B", and "A"<"B": valid, total length=1+1=2.
+
+        Correct.
+
+   Another test: 
+        N=2, strings: ["B", "A"]
+        First child: "B" -> dp_prev=[1]
+        Second child: 
+            current_A = ["A"] (from "A")
+            For "A": 
+                pos = bisect.bisect_left(A_list[0] (which is ["B"]), "A") -> returns 0? because "A" is less than "B", so it should be inserted at position 0? 
+            Then pos=0 -> skip.
+
+        Then dp_prev for the second child = [-10**9] -> then we output -1.
+
+        Correct: because we cannot have the second child's name ("A") be greater than the first child's name ("B").
+
+   Therefore, we output the code accordingly.
+
+   However, note: the problem states that the strings are in uppercase. Our method is case-sensitive? They are all uppercase.
+
+   We run the provided examples.
+
+   Sample Input #1: 
+        3
+        KARIM
+        PARBUDI
+        CHANDRA
+
+        We expect 16.
+
+   We'll run the code by hand for the first two children:
+
+        First child: "KARIM"
+          distinct subsequences: many, including "A", "AR", "ARI", "ARIM", "AIM", etc.
+
+        We are going to do the entire chain? We trust the algorithm.
+
+   We'll run the code on the judge.
+
+   But note: the problem says the strings are in uppercase.
+
+   We write the code accordingly.
+
+   However, the problem says memory: 256MB, and we are storing up to 15 * 32768 strings of length up to 15 -> 15*32768*15 = 7,372,800 characters? which is about 7.4 MB. Then integers: we have arrays of integers of length 32768 per string: 15 * 32768 * 4 (bytes per integer) = about 1.97 MB. So total memory is acceptable.
+
+   We code accordingly.
+
+   Let's run the sample #1 in the code.
+
+   We hope it outputs 16.
+
+   We run the sample #3: we hope for 25.
+
+   We run sample #2: -1.
+
+   We submit.
+
+   Note: we assume that the distinct subsequences generation by bit masks is correct.
+
+   One more note: we skip the empty string. The problem says non-empty.
+
+   We are ready.
+
+   However, the problem says: the i-th name given by the grandma. The i-th child must use a subsequence of the i-th name.
+
+   Our algorithm: 
+        We precompute the distinct subsequences for the i-th string and store in A_list[i].
+
+   We do not store the empty string: we skip mask=0.
+
+   Therefore, we are good.
+
+   We output the code as described.
+
+   But note: the problem statement says: 
+        String $A$ is lexicographically larger than string $B$ if and only if $B$ is a prefix of $A$ or there exists an index $i$ where $A_i > B_i$ and $A_j = B_j$ for all $j < i$.
+
+   Our comparison: 
+        We use the built-in lexicographical order of Python? 
+        In Python, for two strings a and b: 
+            a < b if either b starts with a (then a is a prefix of b) or at the first index where they differ, a has a smaller character? 
+        But the definition: 
+            We require that the chain: s1 < s2 < ... < sN.
+            Here, we want s_i < s_{i+1}. 
+
+        The problem definition: 
+            "String A is lexicographically larger than string B" if ... 
+            This means: A > B.
+
+        But in our chain, we require: 
+            name1 < name2 < ... 
+            which is equivalent to: 
+                name2 > name1, name3 > name2, ...
+
+        Therefore, in our DP, we require that the previous child's name (B) is less than the current child's name (A). 
+        And we use the sorted list of the previous string: and we use bisect_left to find the first element >= the current string. Then we take the prefix maximum for indices [0, pos-1] (which are the ones < current).
+
+        This matches.
+
+   Therefore, we are confident.
+
+   Let me test the lex comparison in Python: 
+        "A" < "ABC" -> True, because "A" is a prefix of "ABC". 
+        "AB" < "AC" -> True, because at the first difference: 'B'<'C'
+
+        So the built-in Python string comparison matches the problem's definition.
+
+   We use the same.
+
+   Code:
+
+        We use: 
+            sorted_list = sorted(seen)   # uses lex order
+
+        and 
+            pos = bisect.bisect_left(prev_list, current_string)
+
+        This returns the first position in prev_list where we can insert current_string to maintain sorted order (so that all elements before are < current_string, and at this position the element is >= current_string).
+
+   Therefore, our algorithm is correct.
+
+   We run the sample #1 in the code and hope for 16.
+
+   We run the sample #3 and hope for 25.
+
+   We run sample #2 and get -1.
+
+   We submit.
+
+   But note: the problem says: 
+        "the i-th name given by his partner’s grandma"
+
+        and we are using the i-th string for the i-th child.
+
+   This is correct.
+
+   We output the code.
+
+   However, the problem says: 
+        "If there are more than one set of names satisfying the condition, then we wish to maximize the total length"
+
+        Our algorithm: we are maximizing the total length by taking the best (longest) chain from the previous child that is compatible.
+
+   Therefore, we are maximizing.
+
+   We are done.

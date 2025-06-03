@@ -1,0 +1,171 @@
+To solve this problem, we need to compute the sum of the product of the minimum and maximum elements of every contiguous subarray in a given array of integers. Given the constraints (n ≤ 300,000), a brute-force approach is infeasible. Instead, we use a divide and conquer strategy combined with efficient binary searches and prefix sums to achieve an optimal solution.
+
+### Approach
+1. **Divide and Conquer**: The array is divided into two halves. The solution involves recursively solving the problem for the left and right halves and then combining the results by considering subarrays that cross the midpoint.
+2. **Combining Results**: For subarrays crossing the midpoint, we:
+   - **Precompute Min and Max Arrays**: For the left half (from midpoint to start), we compute arrays `Lmin` and `Lmax` where each element represents the minimum and maximum of the subarray starting at that index and ending at the midpoint. Similarly, for the right half (from midpoint+1 to end), we compute `Rmin` and `Rmax`.
+   - **Binary Search for Thresholds**: For each element in the left half, we use binary search to find the largest indices in the right half where `Rmin` is greater than or equal to the current `Lmin` and where `Rmax` is less than or equal to the current `Lmax`.
+   - **Prefix Sums for Efficient Calculation**: Using prefix sums of `Rmin`, `Rmax`, and their products (`Rmin * Rmax`), we efficiently compute the contributions of subarrays in three regions based on the thresholds obtained from binary searches.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <algorithm>
+using namespace std;
+
+const long long mod = 1000003233;
+const int MAXN = 300000;
+int a[MAXN];
+
+long long compute_cross(int l, int r, int mid) {
+    int lenL = mid - l + 1;
+    int lenR = r - mid;
+    if (lenR == 0) 
+        return 0;
+
+    vector<long long> Lmin_arr(lenL);
+    vector<long long> Lmax_arr(lenL);
+    Lmin_arr[lenL-1] = a[mid];
+    Lmax_arr[lenL-1] = a[mid];
+    for (int i = lenL-2; i >= 0; i--) {
+        int idx = l + i;
+        Lmin_arr[i] = min(static_cast<long long>(a[idx]), Lmin_arr[i+1]);
+        Lmax_arr[i] = max(static_cast<long long>(a[idx]), Lmax_arr[i+1]);
+    }
+
+    vector<long long> Rmin_arr(lenR);
+    vector<long long> Rmax_arr(lenR);
+    vector<long long> Rprod_arr(lenR);
+    vector<long long> PrefRmin(lenR+1, 0);
+    vector<long long> PrefRmax(lenR+1, 0);
+    vector<long long> PrefRprod(lenR+1, 0);
+
+    Rmin_arr[0] = a[mid+1];
+    Rmax_arr[0] = a[mid+1];
+    Rprod_arr[0] = (Rmin_arr[0] % mod) * (Rmax_arr[0] % mod) % mod;
+    PrefRmin[1] = Rmin_arr[0];
+    PrefRmax[1] = Rmax_arr[0];
+    PrefRprod[1] = Rprod_arr[0];
+
+    for (int j = 1; j < lenR; j++) {
+        int global_j = mid + 1 + j;
+        Rmin_arr[j] = min(Rmin_arr[j-1], static_cast<long long>(a[global_j]));
+        Rmax_arr[j] = max(Rmax_arr[j-1], static_cast<long long>(a[global_j]));
+        Rprod_arr[j] = (Rmin_arr[j] % mod) * (Rmax_arr[j] % mod) % mod;
+        PrefRmin[j+1] = PrefRmin[j] + Rmin_arr[j];
+        PrefRmax[j+1] = PrefRmax[j] + Rmax_arr[j];
+        PrefRprod[j+1] = (PrefRprod[j] + Rprod_arr[j]) % mod;
+    }
+
+    long long cross_ans = 0;
+    for (int i = 0; i < lenL; i++) {
+        long long curLmin = Lmin_arr[i];
+        long long curLmax = Lmax_arr[i];
+
+        int low1 = 0, high1 = lenR - 1;
+        int j1 = -1;
+        while (low1 <= high1) {
+            int mid1 = (low1 + high1) / 2;
+            if (Rmin_arr[mid1] >= curLmin) {
+                j1 = mid1;
+                low1 = mid1 + 1;
+            } else {
+                high1 = mid1 - 1;
+            }
+        }
+
+        int low2 = 0, high2 = lenR - 1;
+        int j2 = -1;
+        while (low2 <= high2) {
+            int mid2 = (low2 + high2) / 2;
+            if (Rmax_arr[mid2] <= curLmax) {
+                j2 = mid2;
+                low2 = mid2 + 1;
+            } else {
+                high2 = mid2 - 1;
+            }
+        }
+
+        int j_low, j_high;
+        if (j1 == -1 && j2 == -1) {
+            j_low = -1;
+            j_high = -1;
+        } else if (j1 == -1) {
+            j_low = -1;
+            j_high = j2;
+        } else if (j2 == -1) {
+            j_low = -1;
+            j_high = j1;
+        } else {
+            j_low = min(j1, j2);
+            j_high = max(j1, j2);
+        }
+
+        long long S1 = 0, S2 = 0, S3 = 0;
+
+        if (j_low >= 0) {
+            long long count1 = j_low + 1;
+            long long temp = (curLmin % mod) * (curLmax % mod) % mod;
+            S1 = (count1 % mod) * temp % mod;
+        }
+
+        if (j_high >= j_low + 1) {
+            if (j1 <= j2) {
+                long long sumRmin = PrefRmin[j_high+1] - PrefRmin[j_low+1];
+                S2 = (sumRmin % mod) * (curLmax % mod) % mod;
+            } else {
+                long long sumRmax = PrefRmax[j_high+1] - PrefRmax[j_low+1];
+                S2 = (curLmin % mod) * (sumRmax % mod) % mod;
+            }
+        }
+
+        if (j_high + 1 <= lenR - 1) {
+            S3 = (PrefRprod[lenR] - PrefRprod[j_high+1] + mod) % mod;
+        }
+
+        long long total_i = (S1 + S2 + S3) % mod;
+        cross_ans = (cross_ans + total_i) % mod;
+    }
+    cross_ans %= mod;
+    if (cross_ans < 0) cross_ans += mod;
+    return cross_ans;
+}
+
+long long solve(int l, int r) {
+    if (l == r) {
+        return (static_cast<long long>(a[l]) * a[l]) % mod;
+    }
+    int mid = (l + r) / 2;
+    long long left_ans = solve(l, mid);
+    long long right_ans = solve(mid+1, r);
+    long long cross_ans = compute_cross(l, r, mid);
+    long long ans = (left_ans + right_ans + cross_ans) % mod;
+    if (ans < 0) ans += mod;
+    return ans;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(0);
+    int n;
+    cin >> n;
+    for (int i = 0; i < n; i++) {
+        cin >> a[i];
+    }
+    long long ans = solve(0, n-1);
+    cout << ans << endl;
+    return 0;
+}
+```
+
+### Explanation
+1. **Divide and Conquer**: The array is split into two halves recursively until base cases (single elements) are reached. For each base case, the product of the element with itself is returned.
+2. **Combining Results**: For each recursive call, results from left and right halves are combined by considering subarrays that cross the midpoint. 
+3. **Efficient Calculation**: 
+   - **Left and Right Arrays**: For the left half, arrays `Lmin` and `Lmax` store the minimum and maximum values from each index to the midpoint. Similarly, for the right half, `Rmin` and `Rmax` store values from the midpoint+1 to each index.
+   - **Binary Search**: For each element in the left half, binary searches determine the ranges in the right half where the min and max conditions are met.
+   - **Prefix Sums**: Prefix sums of `Rmin`, `Rmax`, and their products allow efficient calculation of contributions from different regions defined by the binary search results.
+4. **Modulo Handling**: All intermediate results are computed modulo 1,000,003,233 to prevent overflow and ensure correctness.
+
+This approach efficiently handles the problem by leveraging divide and conquer, binary search, and prefix sums, reducing the time complexity to O(n log² n), which is feasible for large inputs.

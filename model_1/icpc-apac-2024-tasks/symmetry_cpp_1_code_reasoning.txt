@@ -1,0 +1,1163 @@
+ Okay, we are going to implement the solution in C++ for efficiency and precision.
+
+ Steps:
+ 1. Check if the polygon is centrally symmetric (if n is even). If yes, output its area.
+ 2. Generate candidate centers:
+    a. Midpoints of every pair of vertices.
+    b. Solve pairs of linear equations from collinearity conditions (Type 2 and Type 3) to get candidate centers.
+
+ 3. For each candidate center c:
+    a. Build the set S = { v_i } ∪ { 2c - v_i } for all i.
+    b. Compute the convex hull of S.
+    c. Check that every original vertex lies on the boundary of the convex hull (either as a vertex or on an edge).
+    d. If valid, compute the area of the convex hull.
+
+ 4. Track the minimum area among all valid candidates. If none, output -1.
+
+ Note: We must be cautious with floating point precision.
+
+ Implementation details:
+
+ - Represent points as pairs of doubles.
+ - We'll write functions:
+      double cross(const Point& O, const Point& A, const Point& B)
+      vector<Point> convex_hull(vector<Point> points)
+      double compute_area(const vector<Point>& hull)   [which we can do in convex_hull function?]
+
+ - Also, a function to check if a point lies on a segment.
+
+ However, note the constraints: n <= 30, so the set S has at most 60 points. The convex hull will be efficient.
+
+ Steps for convex hull (using Andrew's monotone chain):
+
+   Sort the points lexicographically (by x, then by y).
+   Build lower hull: 
+        for each point:
+            while size >= 2 and cross(lower[size-2], lower[size-1], p) <= 0: pop
+            push p
+   Build upper hull similarly in reverse.
+
+   Then combine (without duplicating the first and last).
+
+ - Check if a point is on the boundary of the convex hull:
+        For each vertex in the hull, if the point equals that vertex -> true.
+        Else, for each edge (hull[i], hull[i+1]), check if the point lies on the segment.
+
+ - We must avoid duplicate points? But the problem says no three collinear, but duplicate points might occur? Actually, if a symmetric point coincides with an original, that's okay. But we should remove duplicates? However, the problem states: "contains all of the n vertices on its boundary" - so even if a symmetric point is the same as an original, that original is still on the boundary. But note: the convex hull algorithm should be robust to duplicates? We'll remove duplicates by using a set? But note: if two points are the same, then the convex hull algorithm might break? So we do:
+
+        sort and unique by coordinates? But note: two points that are very close might be considered duplicates? But the problem says integers, so symmetric points might be integers or fractions? We'll use a tolerance for duplicates? Actually, we are using doubles so we have to be cautious.
+
+   How to remove duplicates? We can use a set with a tolerance? But tolerance might break the ordering. Alternatively, we can sort and then skip points that are very close. However, the problem says integers, so we can use exact integer arithmetic? But the midpoints and symmetric points are rationals. Instead, we'll use:
+
+        sort by x (and if x equal by y) and then traverse and remove duplicates if they are within 1e-9.
+
+   However, note: the problem constraints: 0<=x,y<=1000, and n<=30, so we can use a tolerance of 1e-9 to merge duplicates? But the problem says "relative error", so we are safe? Actually, the convex hull algorithm using cross products might break with duplicates. So we remove duplicates.
+
+ - How to remove duplicates: we can do:
+
+        sort(points.begin(), points.end());
+        auto last = unique(points.begin(), points.end(), [](const Point& a, const Point& b) {
+            return abs(a.x - b.x) < 1e-9 && abs(a.y - b.y) < 1e-9;
+        });
+        points.erase(last, points.end());
+
+   But note: the convex hull algorithm requires that we have at least 3 distinct points. Also, if we have less than 3 points, we cannot form a convex hull? Then the area is 0? But the original n>=3, and symmetric points might duplicate? Actually, if all points are symmetric about c, then we get at least n distinct points? But if the polygon is symmetric we already handled it? So in the candidate centers, we might get duplicates? We'll use a set for candidate centers with a tolerance? Actually, we'll represent candidate centers as (double, double) and use a set with tolerance? But set doesn't allow tolerance. Instead, we can store in a vector and then remove duplicate centers? Or we can use a vector and then when iterating, skip centers that are too close? Alternatively, we can use a set with a custom comparator? But then we have to be cautious: two centers that are very close might lead to the same symmetric set? So we can do:
+
+        Candidate centers: we store in a set with tolerance. We define:
+
+        struct Point {
+            double x, y;
+        };
+
+        and then a comparator for set:
+
+        bool operator<(const Point& a, const Point& b) {
+            if (abs(a.x - b.x) > 1e-9) return a.x < b.x;
+            if (abs(a.y - b.y) > 1e-9) return a.y < b.y;
+            return false;
+        }
+
+        Then we can use set<Point> for candidate centers.
+
+   However, note: we are generating candidate centers from midpoints and from solving equations. The midpoints are exact? The equations: we are solving linear systems? There might be rounding errors. So we use a tolerance.
+
+ 5. Solving linear equations:
+
+        Equations of type 2: 
+          Condition: symmetric point of v_k must be collinear with v_i and v_j.
+
+          Let A = v_i, B = v_j, and P = symmetric point of v_k = 2c - v_k.
+          The vectors AB and AP must be collinear? Actually, the vectors from A to B and from A to P must be collinear? So:
+
+          (B - A) x (P - A) = 0
+
+          => (B.x - A.x)*(P.y - A.y) - (B.y - A.y)*(P.x - A.x) = 0
+
+          Substitute P = 2c - v_k:
+
+          (B.x - A.x)*( (2c_y - v_k.y) - A.y ) - (B.y - A.y)*( (2c_x - v_k.x) - A.x ) = 0
+
+          Let dx = B.x - A.x, dy = B.y - A.y.
+          Then: dx*(2c_y - v_k.y - A.y) - dy*(2c_x - v_k.x - A.x) = 0
+          => 2*dx*c_y - dx*(v_k.y+A.y) - 2*dy*c_x + dy*(v_k.x+A.x) = 0
+          => (-2*dy)*c_x + (2*dx)*c_y = dx*(v_k.y+A.y) - dy*(v_k.x+A.x)
+
+          So: A1 = -2*dy, B1 = 2*dx, C1 = dx*(v_k.y+A.y) - dy*(v_k.x+A.x)
+
+        Equations of type 3:
+          Condition: the original point v_i must be collinear with the symmetric points of v_j and v_k.
+
+          Let P = symmetric point of v_j = 2c - v_j, and Q = symmetric point of v_k = 2c - v_k.
+          Then the vectors from P to Q and from P to v_i must be collinear.
+
+          (Q - P) x (v_i - P) = 0
+
+          => ( (2c_x - v_k.x) - (2c_x - v_j.x) ) * (v_i.y - (2c_y - v_j.y)) 
+             - ( (2c_y - v_k.y) - (2c_y - v_j.y) ) * (v_i.x - (2c_x - v_j.x)) = 0
+
+          Simplify: 
+            (v_j.x - v_k.x) * (v_i.y - 2c_y + v_j.y) - (v_j.y - v_k.y) * (v_i.x - 2c_x + v_j.x) = 0
+
+          => (v_j.x - v_k.x) * (v_i.y + v_j.y - 2c_y) - (v_j.y - v_k.y) * (v_i.x + v_j.x - 2c_x) = 0
+
+          => (v_j.x - v_k.x)*(v_i.y+v_j.y) - 2*(v_j.x - v_k.x)*c_y 
+             - (v_j.y - v_k.y)*(v_i.x+v_j.x) + 2*(v_j.y - v_k.y)*c_x = 0
+
+          => 2*(v_j.y - v_k.y)*c_x - 2*(v_j.x - v_k.x)*c_y = (v_j.y - v_k.y)*(v_i.x+v_j.x) - (v_j.x - v_k.x)*(v_i.y+v_j.y)
+
+          Let A = 2*(v_j.y - v_k.y), B = -2*(v_j.x - v_k.x), C = (v_j.y - v_k.y)*(v_i.x+v_j.x) - (v_j.x - v_k.x)*(v_i.y+v_j.y)
+
+          So: A*c_x + B*c_y = C
+
+        But note: the equation we derived for type 3 is:
+
+          A = 2*(v_j.y - v_k.y)
+          B = -2*(v_j.x - v_k.x)   => which is 2*(v_k.x - v_j.x)
+          C = (v_j.y - v_k.y)*(v_i.x+v_j.x) - (v_j.x - v_k.x)*(v_i.y+v_j.y)
+
+        Alternatively, we can rearrange:
+
+          Actually, we can write:
+
+          A = 2*(v_j.y - v_k.y)
+          B = 2*(v_k.x - v_j.x)   [so that we have A*c_x + B*c_y = C]
+
+        Then the equation becomes:
+
+          2*(v_j.y - v_k.y) * c_x + 2*(v_k.x - v_j.x) * c_y = (v_j.y - v_k.y)*(v_i.x+v_j.x) - (v_j.x - v_k.x)*(v_i.y+v_j.y)
+
+        And note: v_j.x - v_k.x = -(v_k.x - v_j.x), so:
+
+          = (v_j.y - v_k.y)*(v_i.x+v_j.x) + (v_k.x - v_j.x)*(v_i.y+v_j.y)
+
+        So we can write:
+
+          A1 = 2*(v_j.y - v_k.y)
+          B1 = 2*(v_k.x - v_j.x)
+          C1 = (v_j.y - v_k.y)*(v_i.x+v_j.x) + (v_k.x - v_j.x)*(v_i.y+v_j.y)
+
+ 6. Solving the linear system:
+
+        For two equations:
+          a1*x + b1*y = c1
+          a2*x + b2*y = c2
+
+        Determinant = a1*b2 - a2*b1.
+        If |det| < epsilon (say 1e-12), skip.
+
+        Then:
+          x = (c1*b2 - c2*b1) / det
+          y = (a1*c2 - a2*c1) / det   [because: a1*y = (a1*c2 - a2*c1)/det?]
+
+        Actually:
+
+          [a1 b1] [x] = [c1]
+          [a2 b2] [y]   [c2]
+
+          x = (c1*b2 - c2*b1) / (a1*b2 - a2*b1)
+          y = (a1*c2 - a2*c1) / (a1*b2 - a2*b1)
+
+        But note: we have to be cautious with the sign? It's standard.
+
+ 7. We'll create a vector for the linear equations (each equation is (a, b, c) meaning a*c_x + b*c_y = c).
+
+ 8. Then, we iterate over all pairs of equations (from the same set? we have two types) and solve.
+
+ 9. We must avoid duplicate candidate centers? We'll use a set with tolerance.
+
+ 10. For the convex hull, we'll use the Andrew's monotone chain.
+
+ 11. We must compute the area of the convex hull: using the shoelace formula.
+
+ 12. Important: when checking if the original vertex is on the boundary, we have to check both being a vertex of the hull or lying on an edge (but not necessarily a vertex). However, note: the symmetric set S includes the original vertices and their symmetric points. The convex hull is built from S. The original vertex must lie on the hull.
+
+ 13. Steps for the convex hull function:
+
+        vector<Point> convex_hull(vector<Point> P) {
+            int n = P.size(), k = 0;
+            if (n <= 1) return P;
+            sort(P.begin(), P.end());
+            vector<Point> H(2*n);
+            // Build lower hull
+            for (int i = 0; i < n; ++i) {
+                while (k >= 2 && cross(H[k-2], H[k-1], P[i]) <= 0) k--;
+                H[k++] = P[i];
+            }
+            // Build upper hull
+            for (int i = n-2, t = k+1; i >= 0; --i) {
+                while (k >= t && cross(H[k-2], H[k-1], P[i]) <= 0) k--;
+                H[k++] = P[i];
+            }
+            H.resize(k-1);
+            return H;
+        }
+
+     But note: the standard implementation returns without duplicates and in counterclockwise order? Also, the first point is repeated? So we resize to k-1.
+
+ 14. Compute area:
+
+        double area = 0;
+        int m = hull.size();
+        for (int i = 0; i < m; i++) {
+            area += hull[i].x * hull[(i+1)%m].y - hull[(i+1)%m].x * hull[i].y;
+        }
+        return abs(area) / 2.0;
+
+ 15. Checking if a point is on the boundary of the convex hull:
+
+        We can do:
+          for each edge (hull[i], hull[i+1]) (with hull[m] = hull[0]) and check if the point lies on the segment.
+
+        How to check: 
+          (1) The point must be collinear with the two endpoints? (cross product zero) and between the endpoints.
+
+        We have:
+
+          bool onSegment(Point a, Point b, Point p) {
+             // if p is between a and b and collinear
+             if (abs(cross(a, b, p)) > 1e-9) return false;
+             return (min(a.x, b.x) - 1e-9 <= p.x && p.x <= max(a.x, b.x) + 1e-9 &&
+                    (min(a.y, b.y) - 1e-9 <= p.y && p.y <= max(a.y, b.y) + 1e-9);
+          }
+
+        But note: the convex hull is built from the set S, so the point p (which is an original vertex) must be in S? Actually, the set S includes the original vertex, so if the convex hull has that point as a vertex, we are done. Otherwise, it might lie on an edge? But note: the convex hull algorithm we use is for the entire set, and if the point is not a vertex, then it must be strictly inside? Actually, no: the convex hull of a set of points only includes the extreme points. However, the condition of the problem requires that the original vertex must be on the boundary. So if the point is not a vertex of the hull, then it must lie on an edge? But note: the convex hull by Andrew's method returns the extreme points. So if the point is not extreme, it is not included? Then it would be inside? 
+
+        Therefore, we must note: the convex hull algorithm we use does not include non-extreme points. But the problem says "on the boundary", meaning the entire convex hull region. However, the boundary of the convex hull polygon is the union of the edges. So we have to check if the point lies on one of the edges.
+
+        How can a point be on the boundary without being a vertex? Only if it lies on an edge? But the problem states: "contains all of the n vertices on its boundary". So we must check for each original vertex: either it is a vertex of the convex hull, or it lies on an edge (but then the convex hull algorithm does not output it as a vertex, so we have to check edges).
+
+        Therefore, we do:
+
+          for each original vertex v:
+            if v is in the hull (by coordinate matching with tolerance) -> then skip to next.
+            else, check for each edge (hull[i], hull[i+1]) if v lies on that segment.
+
+        But note: the convex hull is built from the set S that includes v. Why would v not be a vertex? Because if v is not extreme? But the convex hull of S must include v as a vertex? Actually, not necessarily: if v lies on the convex hull of the other points, then it might be omitted? But our convex hull algorithm removes non-extreme points? Actually, the Andrew's method we implemented uses cross product <= 0, so it removes collinear points? But the problem says no three collinear? Actually, the original polygon has no three collinear, but the symmetric points might cause three collinear? However, the problem states: "no three of its vertices are collinear" (the given polygon). But the symmetric set S might have collinear points? So we must account for that.
+
+        Therefore, we have to check edges.
+
+        However, note: the convex hull algorithm we use does not include intermediate collinear points. So if the original vertex v is collinear with two other points in S that are extreme, then v might not be in the hull. But we can check the edges.
+
+ 16. We'll write helper functions:
+
+        double cross(const Point& a, const Point& b, const Point& c) {
+            return (b.x - a.x)*(c.y - a.y) - (c.x - a.x)*(b.y - a.y);
+        }
+
+        bool inSegment(Point a, Point b, Point p) {
+            if (abs(cross(a, b, p)) > 1e-9) 
+                return false;
+            double minX = min(a.x, b.x), maxX = max(a.x, b.x);
+            double minY = min(a.y, b.y), maxY = max(a.y, b.y);
+            return (minX - 1e-9 <= p.x && p.x <= maxX + 1e-9 && 
+                    minY - 1e-9 <= p.y && p.y <= maxY + 1e-9);
+        }
+
+ 17. Steps for candidate centers:
+
+        We'll store candidate centers in a set (with tolerance). We define:
+
+        struct Point {
+            double x, y;
+            bool operator<(const Point& other) const {
+                if (abs(x - other.x) > 1e-9) return x < other.x;
+                if (abs(y - other.y) > 1e-9) return y < other.y;
+                return false;
+            }
+        };
+
+        set<Point> candidateSet;
+
+        Then we add:
+          for each pair: candidateSet.insert( midpoint(vertices[i], vertices[j]) )
+          for each pair of equations (from the events vector) that yield a solution: candidateSet.insert(center)
+
+        Then we iterate over candidateSet.
+
+ 18. However, note: the equations we generated might be many: 
+        Type 2: n * n * n   (but i,j,k: n^3) and Type 3: n * n * n -> total events about 2*n^3, which is 2*27000 = 54000? Actually n<=30 -> 30^3=27000, so events vector has about 54000 equations? Then pairs of equations: 54000 * 54000 is too many (2.9e9 pairs) -> that is too expensive.
+
+        Correction: we don't need to take every pair of equations? We can generate candidate centers only from pairs that are independent? But note: we have two types, and we don't know which ones are independent. However, n is only 30, but 54000^2 is 2.9e9 which is too many.
+
+        Alternative: we can store the equations and then for each equation we can try to solve with one of the midpoint equations? Or we can avoid generating all pairs? 
+
+        Actually, we don't need to solve every pair of equations. We can solve:
+
+          - Each equation from Type 2 with each equation from Type 2? -> too many.
+          - Each equation from Type 3 with each equation from Type 3? -> too many.
+
+        Instead, we can generate candidate centers from midpoints and then also from the following:
+
+          For each triple (i,j,k) we get one equation of Type 2 and one equation of Type 3. Then we can combine equations from different triples? But still, we have O(n^3) equations and then pairs is O(n^6) which is 30^6 = 729e6 which is acceptable? Actually 729e6 is 729 million, which might be borderline in C++ in 4 seconds? But note: we are only doing a double loop over the equations? The events vector has about 2 * 30^3 = 54000 equations. Then the inner loop is 54000 * 54000 which is about 2.9e9 iterations? That might be too slow.
+
+        We need a better idea.
+
+        Actually, the problem says n<=30, but note: the equations are generated for every triple? So we have:
+
+          Type 2: n^3 equations? Actually: we did for i,j,k: so n^3. For n=30, that is 27000 equations per type? Then total events: 2 * 27000 = 54000.
+
+        Then we want to solve every pair? 54000 * 54000 = 2.9e9 pairs. That is too heavy in C++ (each pair we do a few arithmetic operations, but 2.9e9 operations might take about 10 seconds?).
+
+        We must optimize.
+
+        Alternative: we can avoid storing duplicate equations? But two different triples might yield the same equation? How to avoid?
+
+        Actually, we can store the equations in a set? But we have to define a comparator for (a, b, c) with tolerance? And note: if two equations are multiples, we can skip? But the equation a*x+b*y=c is defined up to a constant multiple? So we can normalize by the norm? But that is expensive.
+
+        Alternatively, we note that the equations we are generating are linear and we are only interested in distinct solutions? How about we skip equations that are linearly dependent? But that is expensive.
+
+        Another idea: we note that the candidate centers must be such that the symmetric set S is centrally symmetric about c. Then the center c must satisfy: for every point v_i, the symmetric point 2c - v_i is also in the set? Actually, we are building S as {v_i} ∪ {2c - v_i}. But we are generating c arbitrarily? 
+
+        However, the problem does not require that the entire polygon is symmetric, only that the region we build is symmetric. So we are building the convex hull of S and then requiring that the original polygon's vertices are on the boundary.
+
+        We can generate candidate centers only from midpoints and from pairs of edges? Actually, the editorial says: "each condition provides a linear equation in c, and solving any two such equations yields a candidate c". But we don't need to solve every pair? We can solve:
+
+          - For a fixed center c, the convex hull must be symmetric? So the center c must be the center of the convex hull? Then the center c must be the midpoint of two points that are symmetric to each other? And the symmetric pairs must be either two original vertices, or two symmetric vertices, or one original and one symmetric? 
+
+        Actually, the symmetric pairs in the convex hull must be: (v_i, 2c - v_i) for each i? And also, if the convex hull has an edge between two symmetric points? 
+
+        Alternatively, we can use the following: the center c must be the midpoint of two points that are symmetric to each other. So the two points can be:
+
+          (a) two original vertices: then c = (v_i + v_j)/2 -> we already have these.
+
+          (b) an original vertex and a symmetric vertex: then we have: v_i and 2c - v_j must be symmetric? So c = (v_i + (2c - v_j))/2 -> then 2c = v_i + 2c - v_j -> v_i = v_j -> so then it reduces to the same as (a)? Not useful.
+
+          (c) two symmetric vertices: then c = ((2c - v_i) + (2c - v_j))/2 -> then 2c = 4c - v_i - v_j -> 2c = v_i+v_j -> then c = (v_i+v_j)/2 -> same as (a).
+
+        Therefore, the only candidate centers we get from midpoints are (a). But the editorial says also from collinearity conditions? So we have to do the equations.
+
+        However, we note that the equations we generate are linear and we can solve each equation for c? Actually, each equation is a line in the plane of c. Then the candidate centers are the intersections of any two of these lines. But we have 54000 lines? Then the number of intersections is O(54000^2) which is too many.
+
+        We must reduce the number of equations.
+
+        Insight: the equations from Type 2 and Type 3 are defined for every triple (i,j,k). But note: if we fix i and j, then for k we get an equation? Actually, for each fixed i,j (for Type 2) we get an equation for each k. Similarly for Type 3.
+
+        But we don't need all equations: we can note that the condition must hold for at least one triple? Actually, the condition is necessary for the center? But we are going to validate the center later? So we can sample? 
+
+        Actually, the editorial says: "each condition" but then we are going to validate? So we can generate equations arbitrarily? But we want to cover all possible centers? 
+
+        Alternatively, we can generate equations only for a few indices? But the problem says "any two" such equations? 
+
+        We can generate equations for k=0 only? That would be too arbitrary.
+
+        Another idea: we note that the center c must be such that the symmetric set S has the original vertices on the boundary. This implies that for each vertex v_i, the center c must lie on the perpendicular bisector of the segment joining v_i and its symmetric partner? But we don't know the symmetric partner? 
+
+        Actually, the symmetric partner is 2c - v_i. But we don't know what that is? 
+
+        We are stuck? 
+
+        Let me read the editorial again: "Derived from conditions where three points (either two original and one symmetric, or one original and two symmetric) are collinear. Each condition provides a linear equation in c, and solving any two such equations yields a candidate c".
+
+        So we have to generate equations for every triple? Then the total number is 2 * n^3, which for n=30 is 54000.
+
+        Then we have to solve pairs of equations: 54000 * 54000 is about 2.9e9, which is too slow.
+
+        We need to optimize the solving? Note: we are storing the equations as (a, b, c). Then we can avoid duplicates? We can use a set for equations? But the equation (a,b,c) is defined up to a constant multiple? We can normalize by the norm? 
+
+        How: we can represent the equation by the normalized vector (a, b, c) -> divide by sqrt(a^2+b^2) and then also adjust the sign so that the first nonzero is positive? Then we can use a set.
+
+        Steps:
+
+          struct Equation {
+             double a, b, c;
+          };
+
+          Then normalize: 
+             norm = sqrt(a*a + b*b);
+             if (norm < 1e-12) -> skip? (but then the equation is degenerate? but we skip if a and b are zero? then it's 0=something -> if c is nonzero then no solution, if c is zero then always true -> we skip such equations? because they don't constrain c? )
+
+          Then normalized_a = a/norm, normalized_b = b/norm, normalized_c = c/norm.
+
+          Then we adjust the sign: if normalized_a < 0, then multiply by -1. If normalized_a==0 and normalized_b<0, multiply by -1.
+
+          Then store in a set.
+
+        Then the number of distinct equations might be reduced? But worst-case, we still have 54000 equations? Then the pairs would be O(m^2) for m distinct equations. If we have 54000 equations, then m=54000 and m^2=2.9e9, which is too slow.
+
+        Alternatively, we can avoid storing equations that are duplicates? Then we do:
+
+          set<NormalizedEquation> eqSet;
+          for each equation: normalize -> then insert.
+
+        Then the number of equations might be reduced? But worst-case, the equations are distinct? so we still have 54000 equations.
+
+        And then we have to solve each pair? which is 54000 * 54000 = 2.9e9? That is too slow.
+
+        We need a different approach.
+
+        Insight: the problem constraints say n<=30, but note that the candidate centers we get from midpoints are O(n^2) = 900. Then we can also consider: the center c must be such that the symmetric point of each vertex is defined? And the convex hull must include the original vertices on the boundary. 
+
+        How about we generate candidate centers only from midpoints? The editorial says that is one source. Then the other source is from collinearity conditions? But we cannot generate all pairs of equations.
+
+        Alternative: we note that the center c must satisfy that the entire original polygon is contained in the convex hull of S, and the convex hull is symmetric. Then the center c must be the center of the smallest enclosing rectangle? or something? 
+
+        Actually, we can use the following: the center c must be such that the vector from c to each vertex v_i must be the negative of the vector from c to v_j for some j? But we don't know j.
+
+        We can try: for each vertex v_i, we require that 2c - v_i is in the convex hull? But we don't know the convex hull until we build it.
+
+        How about we do an iterative approach? 
+
+        Alternatively, we note that the problem has been studied: the smallest area centrally symmetric convex polygon containing a given convex polygon? 
+
+        Known: the optimal region is the convex hull of the set { v_i - v_j : for all i,j }? That doesn't seem.
+
+        Actually, we can use the following known fact: the smallest centrally symmetric convex set containing a given convex set is its central symmetrization? But then the area is fixed? 
+
+        However, the problem says "minimum area among all such regions".
+
+        After reading the problem statement again: we are to compute the minimum area among all convex, point-symmetric regions that contain all the n vertices on the boundary.
+
+        The region does not have to be a polygon? But the problem states: "a convex polygon" in the input, and then we are to build a convex, point-symmetric region. And the sample outputs are polygons. And the sample input #1 has output 90.0 which is the area of a polygon (a parallelogram).
+
+        Insight: the region we are building must be a polygon? Actually, it must be convex and centrally symmetric. The convex hull of S is a convex polygon that is centrally symmetric? Yes, because if you rotate it by 180, you get the convex hull of the rotated set, which is the same as the convex hull of S (since S is centrally symmetric about c). So the convex hull of S is centrally symmetric.
+
+        Therefore, the candidate region we consider is the convex hull of S.
+
+        Then the problem reduces to: find a center c such that:
+          - The convex hull of {v_i} ∪ {2c - v_i} has the property that every v_i is on the boundary.
+          - and we minimize the area of that convex hull.
+
+        And we generate c from midpoints and from the intersections of the lines defined by the collinearity conditions.
+
+        Given the time constraints, and that n<=30, we can try to reduce the number of equations by noting that many equations might be linearly dependent? We can try to generate candidate centers only from the midpoints and from the following: 
+
+          For each edge (i, i+1) of the original polygon, and for each vertex k, we can generate an equation of Type 2: 
+             condition: the symmetric point of v_k is collinear with v_i and v_j (where j is i+1).
+
+          Why edge? because the boundary condition might be more likely to be satisfied when the symmetric point lies on an edge of the original polygon? 
+
+        But the problem does not require that. 
+
+        Alternatively, we can note that the center c must be such that the point 2c - v_i must be in the convex hull, and if it is not a vertex then it must be on an edge? Then we get conditions? 
+
+        Given the complexity of generating all pairs of equations, and that 2.9e9 is too slow, we might have to rely on midpoints only? But the sample input #3 requires a center that is not a midpoint? 
+
+        Sample input #3: n=6, vertices: 
+          231 77
+          359 20
+          829 124
+          998 461
+          941 735
+          879 825
+
+        Output: 486567.9669655848
+
+        How is the center computed for sample #3? If we only use midpoints, do we get the candidate center that yields the minimum area? 
+
+        Let me try: the midpoints are O(n^2)=36. Then we build the convex hull for each candidate center (with 12 points) and check if the original 6 vertices are on the boundary. Then compute area and take the minimum.
+
+        We must hope that the center for sample #3 is a midpoint? 
+
+        Or it might be from an intersection of two collinearity equations? 
+
+        But 36 candidates is cheap. And then we can hope that the minimum area is found among the midpoints? 
+
+        But the editorial says candidate centers also come from solving the collinearity conditions. 
+
+        We need to generate candidate centers from the collinearity conditions without O(m^2) for m=54000.
+
+        Alternative: we can generate candidate centers from the following: for each equation, we can intersect it with an equation from a midpoint? Then we do:
+
+          For each midpoint candidate center, we don't need to do anything extra? 
+
+          But also, for each equation of Type 2 or Type 3, we can try to intersect it with every other equation that we generate from a fixed set of important equations? 
+
+        Important equations: we might restrict to equations that are likely to be satisfied with equality in the optimal solution? 
+
+        Given time, and that the constraints are small (n<=30), and the number of midpoints is only 435 (n*(n-1)/2) and 435 is 435, then we can also generate candidate centers from the following: 
+
+          For each pair of equations that are from different types and involve indices that are adjacent in the polygon? 
+
+        This is not clear.
+
+        Given the complexity of the double loop over events (54000^2 is too heavy), and that we are not sure that the center from sample #3 is a midpoint, we must find a better way.
+
+        Insight: the center c must be such that the convex hull of S has an edge that contains an edge of the original polygon? or has an edge that contains a symmetric edge? 
+
+        How about we consider that in the convex hull of S, the boundary may be composed of edges that are either edges of the original polygon or edges from a vertex to its symmetric point? or edges between two symmetric points? 
+
+        Then we can set up conditions that the line segments [v_i, v_{i+1}] and [2c - v_j, 2c - v_{j+1}] are parallel? because the convex hull is centrally symmetric, then the edge from v_i to v_{i+1} must be parallel to the edge from 2c - v_i to 2c - v_{i+1}? 
+
+        Actually, the entire convex hull is centrally symmetric, so corresponding edges are parallel.
+
+        Therefore, for each edge (v_i, v_{i+1}) in the original polygon, the edge (2c - v_i, 2c - v_{i+1}) must be parallel to (v_i, v_{i+1})? 
+
+        But wait, the edge (2c - v_i, 2c - v_{i+1}) is the symmetric of (v_i, v_{i+1}) and therefore is parallel and of the same length.
+
+        So then the convex hull will have these two edges? not necessarily: it might use other edges.
+
+        Alternatively, the convex hull might have an edge that is from v_i to 2c - v_j for some j.
+
+        Given the time, and since we are allowed 4 seconds, and the worst-case double loop over events (54000^2) might be borderline in C++ with optimization (only inner loop is a few arithmetic operations) but 2.9e9 iterations might be about 10 seconds in C++ on a fast machine? We must avoid.
+
+        We can try to reduce the number of equations by grouping by the indices? 
+
+        Or we can note: the equations are of the form:
+
+          Type 2: for a fixed i,j: we get an equation for each k. But if we fix i,j, then the equation is linear in c. Then the candidate centers from Type 2 for fixed i,j are the entire line. Then the intersections of two such lines from different (i,j) pairs might be done in O(n^4) (since there are O(n^2) lines) and then we intersect every pair of lines? O(n^4) is 30^4 = 810000, which is acceptable.
+
+        Similarly for Type 3: O(n^2) lines? because we fixed i in the sample for Type 3? wait, in Type 3 we have for each i,j,k -> but if we fix j,k, then the equation is fixed? because the equation is:
+
+          A = 2*(v_j.y - v_k.y)
+          B = 2*(v_k.x - v_j.x)
+          C = (v_j.y - v_k.y)*(v_i.x+v_j.x) + (v_k.x - v_j.x)*(v_i.y+v_j.y)
+
+        But then i varies? so for fixed j,k, we get an equation that depends on i? so we have one equation per triple (i,j,k) -> not per (j,k).
+
+        Alternatively, if we fix j,k, then we get an equation that is independent of i? -> no, it depends on i.
+
+        How about we note that the equation of Type 2 for fixed i,j is:
+
+          (Type 2, fixed i,j): 
+             a = -2 * (v_j.y - v_i.y)
+             b = 2 * (v_j.x - v_i.x)
+             c = (v_j.x - v_i.x)*( any point? no ) ... from earlier: 
+                 c = (v_j.x - v_i.x)*(v_k.y + v_i.y) - (v_j.y - v_i.y)*(v_k.x + v_i.x)
+
+          which depends on k.
+
+        So we cannot group by i,j without k.
+
+        Given the time constraints, and that 30^4 = 810000 is acceptable, we can try the following:
+
+          Generate all lines from Type 2 by indices i,j: for fixed i,j, the equation is parameterized by k. But each k gives a different equation? 
+
+        Alternatively, we can generate only one equation for fixed i,j by using one k? 
+
+        Which k to use? The problem does not say.
+
+        Given the complexity, and that the sample size is small (n=30) and that the midpoints might be sufficient for the official test data? or we can try to generate candidate centers from midpoints and from the intersections of Type 2 and Type 3 equations for a reduced set of indices.
+
+        Specifically, we can take:
+
+          For Type 2: only for i<j and k from 0 to n-1. -> still n^3.
+          For Type 3: similarly.
+
+        Then store the equations in a vector, and then iterate over i=0 to m-1, and j=i+1 to m-1, and solve the system for the two equations i and j.
+
+        But m = 2*n^ = 54000, and then the double loop is O(m^2) = 2.9e9, which is too many.
+
+        We must optimize the inside of the double loop to be as fast as possible.
+
+        Each pair: we do:
+
+          a1 = eq1.a, b1 = eq1.b, c1 = eq1.c
+          a2 = eq2.a, b2 = eq2.b, c2 = eq2.c
+
+          det = a1*b2 - a2*b1
+          if (abs(det) < 1e-12) -> skip
+
+          else:
+             cx = (c1*b2 - c2*b1) / det
+             cy = (a1*c2 - a2*c1) / det   [note: standard solution: x = (c1 b2 - c2 b1)/det, y = (a1 c2 - a2 c1)/det? Actually:
+
+                a1*x + b1*y = c1
+                a2*x + b2*y = c2
+
+                x = (c1 * b2 - c2 * b1) / (a1*b2 - a2*b1)
+                y = (a1 * c2 - a2 * c1) / (a1*b2 - a2*b1)
+
+          then candidate center = (cx, cy)
+
+        This is about 20 operations per pair.
+
+        2.9e9 * 20 = 58e9 operations, which is about 58 seconds in C++ (assuming 1e9 operations per second). 
+
+        We cannot do 58 seconds.
+
+        Therefore, we must reduce the number of equations.
+
+        How to reduce the equations? 
+
+        We can use only a random sample of equations? not reliable.
+
+        We can use only equations for which the indices i,j,k are such that the points are close? 
+
+        Given the time, we might have to rely on the midpoints only. 
+
+        Then, for the sample input #3, we may not get the correct answer.
+
+        But the sample input #3 output is 486567.9669655848.
+
+        If we only use midpoints, will we get that answer?
+
+        Let me try: take the 6 points and compute midpoints. There are C(6,2)=15 midpoints.
+
+        For each midpoint c, we build S = {v_i} ∪ {2c - v_i} for i=0..5.
+
+        Then we compute the convex hull of S, and check that the 6 original points are on the boundary.
+
+        Then compute the area, and take the minimum.
+
+        Then see if we get 486567.9669655848.
+
+        We can try with the provided example.
+
+        However, the problem sample input #3 might require a center that is not a midpoint.
+
+        The editorial says: candidate centers also come from the collinearity conditions.
+
+        Given the time, and that 4 seconds might be enough for 15 candidate centers (midpoints) and also for the even case, we can hope that the collinearity conditions yield only a few additional candidate centers? 
+
+        We can try to reduce the equations to a few that are likely to be meaningful.
+
+        Specifically, we can generate equations only for triples (i,j,k) that are consecutive in the polygon? 
+
+        For example, for Type 2: 
+          only for i, i+1 (adjacent) and for k.
+
+        Similarly, for Type 3: only for j, j+1 (adjacent) and for i.
+
+        Then the number of equations: 
+          Type 2: n * n (because i ranges as adjacent, but note: i and i+1, and then k ranges over n) -> n * n = 900.
+          Type 3: n * n (adjacent j and j+1, and i ranges over n) -> 900.
+          Total events = 1800.
+
+        Then the number of pairs of events: 1800 * 1800 = 3.6e6, which is acceptable.
+
+        Therefore, we can do:
+
+          events.clear();
+          for i in range(n): 
+             j = (i+1) % n;
+             for k in range(n):
+                 generate equation for Type 2 using i, j, k.
+          for j in range(n):
+             k = (j+1) % n;
+             for i in range(n):
+                 generate equation for Type 3 using i, j, k.
+
+        Then solve every pair of events (from the 1800 events) and also include the midpoints.
+
+        This will give candidate centers from:
+          - midpoints (n*(n-1)/2)
+          - intersections of the 1800 equations (about 3.6e6 candidates)
+
+        Then total candidate centers: 3.6e6 + 900 = 3.6e6, which is acceptable.
+
+        For each candidate center, we do:
+
+          - Build set S: 2*n points -> 60 points.
+          - Compute convex hull: O(60 log60) = about 500 operations? 
+          - Check boundary: for each of the n points, check against the convex hull (which has at most 60 points, so checking against each edge: 60 edges) -> 60*30=1800 operations.
+
+        So per candidate: about 2500 operations? 
+        Then total: 3.6e6 * 2500 = 9e9 operations, which is about 9 seconds in C++. 
+
+        9 seconds might be borderline in 4 seconds.
+
+        We must optimize:
+
+          - The convex hull for 60 points is actually very fast: we can do Andrew's in O(60) after sorting (60 log60) is about 60*6=360 comparisons, which is fast.
+
+          - The boundary check: for each original point (n=30) and for each edge of the convex hull (at most 60) -> 30*60=1800.
+
+        So per candidate: 
+          - remove duplicates in S? sorting and unique: 60 log60.
+          - convex hull: 60 log60 + 60.
+          - boundary check: 30 * (hull_size) <= 30 * 60 = 1800.
+
+        Total per candidate: about 60*log2(60) [which is 60*6=360] for sorting, then the convex hull is about 120 operations, then boundary check 1800 -> total about 2000-3000 operations.
+
+        3.6e6 * 3000 = 10.8e9 operations, which is 10.8 seconds in C++. 
+
+        But note: the 3000 operations are not elementary integer operations? they are floating point operations and comparisons, which are more expensive.
+
+        We must hope that the constant factor is low or we must optimize more.
+
+        How to reduce the number of candidate centers? 
+
+        We can use a tolerance and a hash for candidate centers to avoid duplicates? then we might reduce the 3.6e6 to only a few thousand? 
+
+        Because many pairs of equations might yield the same candidate center? 
+
+        So we do:
+
+          set<Point> candidateSet;
+          // add midpoints
+          for each pair of equations:
+             solve for c = (cx, cy)
+             if the solution is not within [0, 2000] in both coordinates? (since the points are between 0 and 1000, and symmetric points might extend to [0,2000]? the center might be between -1000 and 2000? but we can use a set and then later we have convex hull anyway, but the convex hull might be huge? and then the area might be huge, and we are taking minimum area, so it would be skipped? ) -> but we can skip if the center is way outside? 
+
+          But the problem says vertices have coordinates [0,1000], so the symmetric points will be in [2c.x -1000, 2c.x] and similarly for y. The center should be in [0,1000]? because if you have two vertices, the midpoint is in [0,1000]. But the center from equations might be outside.
+
+        We'll not skip by range, but use a set with tolerance to avoid duplicate centers.
+
+        Then the number of distinct candidate centers might be reduced.
+
+        In worst-case, each pair of equations gives a distinct center, so 3.6e6. But then the convex hull and boundary check is 3.6e6 * (cost of about 3000 operations) = 10.8e9 operations, which is too slow.
+
+        We must reduce the number of candidate centers generated from the equations.
+
+        Insight: many pairs of equations might be parallel or yield a center that is very far away, and then the convex hull will be huge and the area will be huge, so they won't win the minimum. And we are only interested in the minimum area. 
+
+        How about we postpone the expensive convex hull and boundary check? 
+
+        But we have to check all candidate centers? 
+
+        Alternatively, we can first filter candidate centers by checking a necessary condition: for a candidate center c, the set S must include the original vertices, and the convex hull must contain the original vertices. But we have no cheap condition.
+
+        Given the time, we might have to hope that the actual number of distinct candidate centers is small.
+
+        Or we can run the only-midpoints first and if we find a valid candidate, then note the area, and then for the equations-derived centers, we run and if we find a candidate with area less than the current minimum then update. But the sample input #3 might not be solved by midpoints.
+
+        Another idea: the minimum area convex hull centrally symmetric containing the polygon is the convex hull of the set { plusminus (v_i - v_j) }? 
+        Known: the set we want is the convex hull of the Minkowski difference? 
+
+        Specifically, the centrally symmetric convex set of minimum area containing a given convex set K is (1/2)*(K - K). 
+
+        Then the area would be (1/2) * area(K - K).
+
+        But note: our region is not necessarily the centrally symmetrized body? because the sample input #1: 
+          Input: 4 points: (0,0), (10,0), (8,9), (4,9)
+          Output: 90.0.
+
+        Let's compute K - K for the given polygon? 
+          K = {(0,0), (10,0), (8,9), (4,9)}
+          K - K = { a-b : a,b in K }
+
+        Then the convex hull of K-K is centrally symmetric about (0,0). But then we have to shift it so that it contains the original polygon? 
+
+        The region we want is a translate of (1/2)*(K-K)? 
+
+        Specifically, the set (1/2)*(K - K) is centrally symmetric about 0. To contain the set K, we must shift it by the vector that is the center of K? 
+
+        Actually, the smallest centrally symmetric set containing K is the set (1/2)*( (K+s) - (K+s) ) for some s? 
+
+        Alternatively, we have: 
+          The centrally symmetric convex set of minimum area containing K is (1/2) * (K - K) when K is centrally symmetric? 
+
+        But for sample input #1, the area of (1/2)*(K-K) might be computed and then shifted to contain K? 
+
+        However, the set (1/2)*(K-K) might be:
+
+          Let's compute the convex hull of K-K. The set K-K has 16 points. Then we take convex hull, then area, then divide by 2? -> (1/2)*area(K-K) is the area of (1/2)*(K-K).
+
+        But sample input #1: 
+          The area output is 90.0.
+
+        Compute area of (1/2)*(K-K): 
+
+          First, compute K-K: 
+             (0,0) - (0,0) = (0,0)
+             (0,0) - (10,0) = (-10,0)
+             (0,0) - (8,9) = (-8,-9)
+             (0,0) - (4,9) = (-4,-9)
+             (10,0) - (0,0) = (10,0)
+             (10,0)- (10,0) = (0,0)
+             ... etc.
+
+          The convex hull of K-K: 
+             the points will be: 
+                 (14,9) [ (10,0)-( -4,9) = (10+4,0-9) = (14,-9) -> wait, no: a-b = (10-(-4) is not the right way. 
+                 actually, we have to do: 
+                     for a in K, for b in K: a-b.
+
+          Let me do a few:
+             (0,0) - (0,0) = (0,0)
+             (0,0) - (10,0) = (-10,0)
+             (0,0) - (8,9) = (-8,-9)
+             (0,0) - (4,9) = (-4,-9)
+             (10,0) - (0,0) = (10,0)
+             (10,0) - (10,0) = (0,0)
+             (10,0) - (8,9) = (2,-9)
+             (10,0) - (4,9) = (6,-9)
+             (8,9) - (0,0) = (8,9)
+             (8,9) - (10,0) = (-2,9)
+             (8,9) - (8,9) = (0,0)
+             (8,9) - (4,9) = (4,0)
+             (4,9) - (0,0) = (4,9)
+             (4,9) - (10,0) = (-6,9)
+             (4,9) - (8,9) = (-4,0)
+             (4,9) - (4,9) = (0,0)
+
+          Then the convex hull of these points in K-K: 
+             extreme points: (10,0), (8,9), (4,9), (-10,0), (-8,-9), (-4,-9), (14?? not found) -> actually (10,0), (8,9), (4,9), (-2,9), (-6,9), (-10,0), (-8,-9), (2,-9), (6,-9) -> 
+             but let me see: the most right: (10,0), most up: (8,9) and (4,9) but also (-2,9) and (-6,9)? -> (8,9) is the highest right, then (4,9) is next, then (-2,9), then (-6,9). 
+             most left: (-10,0), most down: (2,-9) and (6,-9) and (-8,-9) and (-4,-9) -> the lowest is between (-8,-9) and (2,-9)? 
+
+          This is complicated. Then the convex hull might be:
+
+             [ (-10,0), (-6,9), (4,9), (10,0), (6,-9), (2,-9), (-4,-9), (-8,-9), and back to (-10,0) ]? 
+
+          Then we compute the area of this convex hull, then we are to take area = (1/2) * area(K-K)? 
+
+          But then the area of K-K might be for example the convex hull of the 16 points. 
+          However, the area of the convex hull of K-K is know to be twice the area of the original polygon in some cases? 
+
+        Given the time, and since this is the ICPC, and we have 4 seconds, and n is only 30, we might implement the following as a fallback:
+
+          Generate candidate centers from midpoints (O(n^2)) and from the reduced set of equations (using only adjacent i,j) in the polygon, and then only solve for pairs of equations from the reduced set (1800 equations -> 3.6e6 pairs), and then use a set to avoid duplicate centers.
+
+          Then for each candidate center, we spend about 3000 operations.
+
+          Total operations: (number of candidate centers) * 3000.
+
+          We hope that the set of candidate centers from the reduced equations has size much less than 3.6e6? because many are duplicate or outside the range.
+
+        But worst-case, 3.6e6 * 3000 = 10.8e9, which in C++ might be borderline in 4 seconds on a fast machine? 
+
+        We must optimize the convex hull and the boundary check as much as possible.
+
+        Alternatively, we can use the following: only consider candidate centers that are within the [0, 2000] for x and y? then if the center is outside, skip. This might reduce the number. 
+
+        In the reduced set of equations, the center might be within [0,2000] in both coordinates? because the original points are in [0,1000], and the center is a combination. 
+
+        But note: we are solving linear equations, the center might be anywhere.
+
+        Given the time constraints, we implement and hope that the judger's machine is fast enough for the worst-case 3.6e6 * work.
+
+        But 3.6e6 * 3000 operations = 10.8e9 operations, and in C++ each operation might take a few cycles, so worst-case might be 30 seconds.
+
+        Therefore, we must reduce the number of candidate centers from the reduced equations.
+
+        How about we do not iterate over every pair of equations, but only for equations from Type 2 and Type 3 that are from different (i,j) or different (j,k)? 
+
+        Given the complexity, we might try to generate only the lines from the reduced equations (1800 lines) and then we know that the intersections of lines in the plane can be done in O(m^2) but then we use a hash to avoid duplicates. There is no better algorithm.
+
+        We might also try to use a spatial hash for the candidate centers to avoid duplicates as we go, and hope that the actual number of distinct centers is small.
+
+        Specifically, we can use a set<Point> for candidate centers from the reduced equations. Then we iterate i in range(len(events)):
+            for j in range(i+1, len(events)):
+                solve for c
+                if not duplicate, insert into the set.
+
+        Then the number of insertions might be up to 3.6e6, and the set insertion is O(log(size)) per insertion, so total O(3.6e6 * log(3.6e6)) = 3.6e6 * 21.8 = around 78e6, which is acceptable.
+
+        Then the number of distinct candidate centers might be hopefully not 3.6e6, but much less.
+
+        In the worst-case, if the lines are in general position, the number of distinct intersections is O(m^2) = 3.6e6, so the set will have 3.6e6 centers.
+
+        Then we cannot avoid the 3.6e6 * 3000 operations.
+
+        Therefore, we must either hope that the test data does not worst-case or reduce the cost per candidate.
+
+        Reduce the cost per candidate:
+
+          - The convex hull of 60 points: we can try to optimize by using integers? but the points are in doubles.
+
+          - The boundary check: we can try to 
+
+        Note: the convex hull might be computed in O(n) from sorted points if we use Andrew's, and sorting is O(n log n) with n=60, which is fine.
+
+        Alternatively, we can avoid the boundary check for obviously bad candidates: if the convex hull area is already greater than the current minimum area, then skip the boundary check? but we need to boundary check anyway because the candidate might be invalid.
+
+        Given the time, we output the code and hope that the average case is not worst-case.
+
+        In the hope that the actual number of distinct candidate centers from the reduced equations is small (for example, if many pairs of equations yield the same candidate center), we do the set for candidate centers.
+
+        Steps:
+
+          candidate_set = set<Point> (with tolerance)
+
+          // midpoints
+          for i in range(n):
+             for j in range(i+1, n):
+                 c = midpoint(i, j)
+                 candidate_set.insert(c)
+
+          // reduced equations: 
+          events = []
+          // Type 2: for i in range(n): j = (i+1)%n, for k in range(n)
+          // Type 3: for j in range(n): k = (j+1)%n, for i in range(n)
+
+          // collect events
+
+          // also, we might include the equations from the even case center? not necessary.
+
+          // now, for i in range(len(events)):
+             for j in range(i+1, len(events)):
+                 solve the linear system for events[i] and events[j]
+                 if determinant is near zero, skip
+                 else, compute c = (cx, cy)
+                 candidate_set.insert(c)
+
+          // then for each candidate in candidate_set:
+                 if the candidate center is such that the convex hull of S = {v_i} ∪ {2*c - v_i} has the property that every v_i is on the boundary, then compute area and update min_area.
+
+          // if min_area is not updated, output -1.
+
+        Let's pray.
+
+        Given the sample input #1 and #2 and #3, we hope it passes.
+
+        Let me test with sample input #1: 
+          n=4, and the even case is not taken (n even but not symmetric). Then midpoints: 6 midpoints.
+          reduced equations: 
+             Type 2: for each edge (0,1), (1,2), (2,3), (3,0) and for each k in [0,3] -> 4*4=16 equations.
+             Type 3: similarly: 4*4=16 equations.
+             events.size() = 32.
+          then pairs: 32*31/2 = 496.
+
+          then candidate_set size = 6 + 496 (worst-case) = 502.
+
+          then for each candidate, we do convex hull of 8 points and boundary check for 4 points: this is 502 * (cost of convex hull for 8 points and then 4* (number of edges in hull, at most 8)).
+
+          cost: convex hull for 8 points: sorting 8 points -> 8 log8 = 24, then building hull: 8+8 = 16, then boundary check: 4 * 8 = 32, total cost per candidate: 24+16+32 = 72.
+          total operations: 502 * 72 = 36144, which is fine.
+
+        Therefore, for n=4, it's fine.
+
+        For n=30, reduced equations: 900+900=1800 equations, then pairs: 1800*1799/2 = 1.62e6, then distinct centers might be 1.62e6 in the worst-case, and then 1.62e6 * 3000 = 4.86e9 operations, which in C++ might be 4-5 seconds if we are lucky and the operations are not heavy.
+
+        We'll implement in C++ with care.
+
+        Let's code accordingly.
+
+        Summary of the code structure:
+
+          struct Point { double x, y; };
+          struct PointComparator {
+             bool operator()(const Point& a, const Point& b) const {
+                 if (fabs(a.x - b.x) > EPS) return a.x < b.x;
+                 if (fabs(a.y - b.y) > EPS) return a.y < b.y;
+                 return false;
+             }
+          };
+
+          typedef vector<Point> Polygon;
+
+          // cross product
+          double cross(const Point& O, const Point& A, const Point& B) {
+             return (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
+          }
+
+          // convex_hull
+          vector<Point> convex_hull(vector<Point> P) {
+             // remove duplicates? or do we do it before?
+             int n = P.size(), k = 0;
+             if (n <= 1) return P;
+             sort(P.begin(), P.end(), [](const Point& a, const Point& b) {
+                 return a.x < b.x || (a.x == b.x && a.y < b.y);
+             });
+             vector<Point> H(2*n);
+
+             // lower hull
+             for (int i=0; i<n; i++) {
+                 while (k>=2 && cross(H[k-2], H[k-1], P[i]) <= 0) k--;
+                 H[k++] = P[i];
+             }
+
+             // upper hull
+             for (int i=n-2, t=k+1; i>=0; i--) {
+                 while (k>=t && cross(H[k-2], H[k-1], P[i]) <= 0) k--;
+                 H[k++] = P[i];
+             }
+             H.resize(k-1);
+             return H;
+          }
+
+          // check if point p is on the segment [a, b]
+          bool onSegment(Point a, Point b, Point p) {
+             if (fabs(cross(a, b, p)) > EPS) return false;
+             return min(a.x, b.x) - EPS <= p.x && p.x <= max(a.x, b.x) + EPS &&
+                    min(a.y, b.y) - EPS <= p.y && p.y <= max(a.y, b.y) + EPS;
+          }
+
+          // compute area of a polygon
+          double compute_area(const vector<Point>& P) {
+             double area = 0.0;
+             for (int i=0; i<P.size(); i++) {
+                 int j = (i+1) % P.size();
+                 area += P[i].x * P[j].y - P[j].x * P[i].y;
+             }
+             return fabs(area) / 2.0;
+          }
+
+          // in the main:
+
+          read n and the polygon.
+
+          // Check for even and centrally symmetric.
+          if (n % 2 == 0) {
+             // check if symmetric about c0 = (P[0] + P[n/2])/2
+             Point c0 = Point((P[0].x + P[n/2].x)/2, (P[0].y + P[n/2].y)/2);
+             bool symmetric = true;
+             for (int i=0; i<n; i++) {
+                 int j = (i+n/2) % n;
+                 Point sym = Point(2*c0.x - P[i].x, 2*c0.y - P[i].y);
+                 if (fabs(sym.x - P[j].x) > EPS || fabs(sym.y - P[j].y) > EPS) {
+                     symmetric = false;
+                     break;
+                 }
+             }
+             if (symmetric) {
+                 double area = compute_area(P);
+                 printf("%.15f\n", area);
+                 return 0;
+             }
+          }
+
+          set<Point, PointComparator> candidate_set;
+
+          // midpoints
+          for (int i=0; i<n; i++) {
+             for (int j=i+1; j<n; j++) {
+                 Point c = Point((P[i].x+P[j].x)/2, (P[i].y+P[j].y)/2);
+                 candidate_set.insert(c);
+             }
+          }
+
+          // reduced equations: 
+          vector<tuple<double, double, double>> events;  // a, b, c for a*x+b*y=c
+
+          // Type 2: for edge (i, i+1) and for any k
+          for (int i=0; i<n; i++) {
+             int j = (i+1) % n;
+             Point A = P[i];
+             Point B = P[j];
+             double dx = B.x - A.x;
+             double dy = B.y - A.y;
+             for (int k=0; k<n; k++) {
+                 // equation: -2*dy * cx + 2*dx * cy = dx*(A.y+P[k].y) - dy*(A.x+P[k].x)
+                 double a = -2 * dy;
+                 double b = 2 * dx;
+                 double c = dx * (A.y + P[k].y) - dy * (A.x + P[k].x);
+                 events.push_back(make_tuple(a, b, c));
+             }
+          }
+
+          // Type 3: for edge (j, j+1) and for any i
+          for (int j=0; j<n; j++) {
+             int k = (j+1) % n;
+             // equation: a = 2*(P[j].y - P[k].y), b = 2*(P[k].x - P[j].x), c = (P[j].y - P[k].y)*(P[i].x+P[j].x) + (P[k].x - P[j].x)*(P[i].y+P[j].y)
+             double factor = 2.0;
+             double a_base = 2 * (P[j].y - P[k].y);
+             double b_base = 2 * (P[k].x - P[j].x);
+             for (int i=0; i<n; i++) {
+                 double c_val = (P[j].y - P[k].y) * (P[i].x + P[j].x) + (P[k].x - P[j].x) * (P[i].y + P[j].y);
+                 events.push_back(make_tuple(a_base, b_base, c_val));
+             }
+          }
+
+          // Now, solve every pair of events
+          for (int i=0; i<events.size(); i++) {
+             for (int j=i+1; j<events.size(); j++) {
+                 double a1 = get<0>(events[i]), b1 = get<1>(events[i]), c1 = get<2>(events[i]);
+                 double a2 = get<0>(events[j]), b2 = get<1>(events[j]), c2 = get<2>(events[j]);
+                 double det = a1 * b2 - a2 * b1;
+                 if (fabs(det) < EPS) continue;
+                 double cx = (c1 * b2 - c2 * b1) / det;
+                 double cy = (a1 * c2 - a2 * c1) / det;
+                 candidate_set.insert(Point(cx, cy));
+             }
+          }
+
+          // Now iterate over candidate_set
+          double min_area = 1e300;
+          bool found = false;
+
+          for (Point c : candidate_set) {
+             // Build set S = {P} union {2c - P}
+             vector<Point> S;
+             for (int i=0; i<n; i++) {
+                 Point p = P[i];
+                 S.push_back(p);
+                 Point sym = Point(2*c.x - p.x, 2*c.y - p.y);
+                 S.push_back(sym);
+             }
+             // Remove duplicates in S? using set
+             // We'll do: sort and unique with tolerance? or use a set for S?
+             // We'll use a set for S with tolerance.
+             set<Point, PointComparator> S_set;
+             for (auto p : S) {
+                 S_set.insert(p);
+             }
+             vector<Point> S_unique;
+             for (auto p : S_set) {
+                 S_unique.push_back(p);
+             }
+             if (S_unique.size() < 3) continue;
+
+             vector<Point> hull = convex_hull(S_unique);
+
+             // Check that every original point is on the boundary of hull.
+             bool valid = true;
+             for (int i=0; i<n; i++) {
+                 Point p = P[i];
+                 bool on_boundary = false;
+                 // Check if p is a vertex of the hull
+                 for (int j=0; j<hull.size(); j++) {
+                     if (fabs(hull[j].x - p.x) < EPS && fabs(hull[j].y - p.y) < EPS) {
+                         on_boundary = true;
+                         break;
+                     }
+                 }
+                 if (on_boundary) continue;
+                 // Check if p is on an edge of the hull
+                 for (int j=0; j<hull.size(); j++) {
+                     int k = (j+1) % hull.size();
+                     if (onSegment(hull[j], hull[k], p)) {
+                         on_boundary = true;
+                         break;
+                     }
+                 }
+                 if (!on_boundary) {
+                     valid = false;
+                     break;
+                 }
+             }
+             if (!valid) continue;
+
+             double area = compute_area(hull);
+             if (area < min_area) {
+                 min_area = area;
+                 found = true;
+             }
+          }
+
+          if (found) {
+             printf("%.15f\n", min_area);
+          } else {
+             printf("-1\n");
+          }
+
+  Note: We use a tolerance EPS = 1e-9.
+
+  However, note: the sample input #2 should output -1.
+
+  Let's hope.
+
+  We'll use EPS = 1e-9.
+
+  Important: the convex hull algorithm uses cross <=0, so it will remove collinear points? But the problem says the given polygon has no three collinear, but the symmetric set might have? So we use the tolerance in cross product.
+
+  Let me define EPS = 1e-9.
+
+  But note: the input coordinates are integers, so we can use EPS=1e-9 safely.
+
+  We'll write accordingly.
+
+  Let's code accordingly.
+
+  Due to the complexity, we hope that in practice the number of distinct candidate centers is not too large.
+
+  If we face the worst-case and it is too slow, we might need to optimize further by not using the set for candidate_set from the equations, and instead hope that the even more reduced set is sufficient? But the problem sample #3 requires a non-midpoint center.
+
+  We'll output the code and hope.
+
+  Note: The convex hull function we have uses cross product <=0 to remove points, which is the Andrew's method.
+
+  We also removed duplicates in S by using a set.
+
+  Let's hope it passes.

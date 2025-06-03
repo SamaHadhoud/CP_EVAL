@@ -1,0 +1,252 @@
+ We are going to use Dijkstra's algorithm. The key is to compute the waiting time at a city for a road that has a time window.
+ The problem: 
+   We start at city 1 at time 0 (which is the start of a day, day 0?).
+   Each road i from u to v: 
+        - Takes T_i seconds to traverse.
+        - Can only be entered between L_i and R_i (inclusive) in any day.
+
+ When we are at a city u at time t (which is in seconds, and we can think of it as t mod C for the current day phase),
+ we consider an edge (u, v, T_i, L_i, R_i).
+
+ How to compute the earliest time we can start traversing the road?
+   Let current time at u: t (in absolute seconds).
+   Let current time mod C = rem = t % C.
+
+   Case 1: If rem <= R_i:
+        - We can potentially use the road on the same day if rem is at least L_i? 
+          But if rem < L_i, we have to wait until L_i.
+        - If rem is within [L_i, R_i], then we can start immediately (so we start at time t + (L_i - rem) if rem < L_i? Actually, we wait until L_i if rem < L_i, but if rem>=L_i we don't wait?).
+        So: 
+            if rem <= R_i:
+                if rem < L_i:
+                    wait_time = L_i - rem
+                else:
+                    wait_time = 0
+                start_time = t + wait_time   # which is t + max(0, L_i - rem)
+
+   Case 2: If rem > R_i:
+        - Then we have to wait until the next day. The next window starts at L_i of the next day.
+        - How long? We have to wait until the next day: from rem to the end of the day: (C - rem) and then the next day until L_i: so total (C - rem) + L_i.
+        - Then start_time = t + (C - rem) + L_i.
+
+   Then the arrival time at v is: start_time + T_i.
+
+ However, note: the above can be written in one formula?
+        wait_time = 0
+        if rem <= R_i:
+            wait_time = max(0, L_i - rem)
+        else:
+            wait_time = (C - rem) + L_i
+
+        start_time = t + wait_time
+
+ But note: the problem says we can wait arbitrarily in cities. So we are allowed to wait.
+
+ We are going to use Dijkstra: 
+   We maintain an array `dist` for the earliest absolute time we can arrive at each city.
+
+ Steps:
+   Initialize:
+        dist[1] = 0
+        dist[i] = INF for i from 2 to N.
+
+   Use a priority queue (min-heap) of (time, city).
+
+   While the heap is not empty:
+        pop the smallest time node u.
+        For each edge from u to v (with T, L, R):
+            current time = dist[u] = t
+            rem = t % C
+            if rem <= R: 
+                wait = max(0, L - rem)
+            else:
+                wait = (C - rem) + L
+            candidate = t + wait + T   # arrival time at v
+
+            if candidate < dist[v]:
+                dist[v] = candidate
+                push (candidate, v) into the heap.
+
+   Then output dist[N].
+
+ Important: The constraints: 
+        N up to 100000, M up to 200000, and C up to 10^9, T_i up to 10^9.
+
+   The algorithm is O((M+N) log N) which is acceptable.
+
+ Let's test with the sample: 
+        "3 3 10"
+        Road1: 1-2: T=3, L=0, R=5
+        Road2: 1-3: T=1, L=7, R=8
+        Road3: 3-2: T=4, L=3, R=3
+
+   Start: city1 at time 0.
+
+   From city1:
+        For road1 (1->2): 
+            t=0, rem=0 -> rem<=5 -> wait = max(0,0-0)=0 -> candidate = 0+0+3 = 3 -> so we set dist[2]=3.
+
+        For road2 (1->3):
+            t=0, rem=0 -> since 0<=8? yes, but 0 is not in [7,8]? Actually, 0<7 -> wait = 7-0 = 7 -> candidate = 0+7+1 = 8.
+
+        So we have two options: (2:3) and (3:8). We push both.
+
+   Then we pop city2 at time 3.
+        From city2: 
+            It has edges to 1 and 3 (via road1 and road3? note road1 is 1-2, road3 is 3-2).
+
+        Edge to 1: we don't need to consider? but we can. However, we are doing Dijkstra so we relax only when we get a better time? 
+        But we started at 1 with time 0, so going back to 1 from 2 would be 3 + ... which is worse? so skip.
+
+        Edge to 3: 
+            Road3: from 2 to 3: T=4, L=3, R=3.
+            current time at 2: t=3 -> rem = 3 % 10 = 3 -> which is within [3,3] -> wait = max(0, 3-3)=0.
+            candidate = 3 + 0 + 4 = 7.
+
+        Now we update city3: current dist[3] was 8, now we found 7 -> so we update and push (7,3).
+
+   Then we pop city3 at time 7. 
+        From city3: 
+            Edges to 1 and 2.
+
+        For 1: 
+            Road2: from 3 to 1: T=1, L=7, R=8.
+            rem = 7 % 10 = 7 -> within [7,8] -> wait=0 -> candidate=7+0+1=8 -> which is not better than the current 0 at city1.
+
+        For 2:
+            Road3: from 3 to 2: T=4, L=3, R=3.
+            rem=7 -> which is >3 -> so wait = (10-7)+3 = 3+3=6 -> candidate=7+6+4=17 -> which is worse than the current 3 at city2.
+
+   Then we pop city3 at time 7 (only one) and then we have nothing? 
+        Then we output dist[N] = dist[3]? but wait, we want to go to city N which is 3? Actually, the sample output is 7.
+
+   However, note: the problem says Robert wants to get to city N. In the sample, N=3? 
+        But the sample input says "3 3 10", so N=3.
+
+   So we output 7.
+
+   But wait, what if we go from 1 to 3 via road2? we had 8, but we found a better way: 7.
+
+   So the algorithm works for the sample.
+
+   Let's try the second sample? 
+        Input: "5 5 10" and the roads.
+
+   We'll simulate briefly:
+        Start at city1 at time0.
+
+        From city1:
+            Road1: 1->2: T=1, L=6, R=8 -> rem=0 -> 0<=8 -> but 0<6 -> wait=6 -> candidate=0+6+1=7 -> so city2=7.
+            Road2: 1->3: T=4, L=3, R=5 -> rem=0 -> wait=3 -> candidate=0+3+4=7 -> so city3=7.
+
+        Then we process the smallest (city2 and city3 both at 7?).
+
+        From city2 (at time7):
+            Road3: 2->4: T=4, L=1, R=5 -> rem=7%10=7 -> which is >5 -> wait=(10-7)+1=4 -> candidate=7+4+4=15 -> city4=15.
+
+        From city3 (at time7):
+            Road4: 3->4: T=2, L=2, R=6 -> rem=7%10=7 -> >6 -> wait=(10-7)+2=5 -> candidate=7+5+2=14 -> so city4 becomes 14.
+
+        Then from city4 (at time14) we have:
+            Road5: 4->5: T=6, L=3, R=7 -> rem=14%10=4 -> which is in [3,7]? yes -> wait=0 -> candidate=14+0+6=20.
+
+        Then we update city5 to 20.
+
+        So output 20.
+
+   This matches sample 2.
+
+ However, note: there might be a better path? 
+        For example, from city1 to city3 (arrive at 7) then to city4 at 14, then to city5 at 20.
+
+        But also from city1 to city2 at 7, then to city4 at 15 (which is worse than 14) and then to city5 at 21.
+
+        Also, from city1 to city3 at 7, then we might have an edge to city2? 
+            Road: 3->2: T=4, L=3, R=3? But the input for sample2 doesn't have that. 
+        Actually, the input for sample2 is:
+            1 2 1 6 8
+            1 3 4 3 5
+            2 4 4 1 5
+            3 4 2 2 6
+            4 5 6 3 7
+
+        So from city3: we have only to city1 and city4? and from city2: to city1 and city4.
+
+   So the algorithm should be correct.
+
+ But note: what if the waiting time causes the next day to be added? The absolute time might be very large, but we are using modulo arithmetic only for the current day at the moment of departure.
+
+ However, the absolute time is stored as an integer (which can be as large as 10^9 * (number of days)). But note: the total time might be huge? but the problem says output the minimum amount of time in seconds. Our algorithm uses absolute seconds.
+
+ We use INF = 10**18, which is safe because worst-case: 
+        The journey might go through at most 100000 cities? and each edge might add at most (C + T) which is about 2e9? and then 100000 * 2e9 = 2e15, which is less than 10**18.
+
+ But worst-case, we have 200000 edges? and we traverse each edge at most once? Actually, Dijkstra may push multiple times for a node, but in practice we relax only when we get a better time. The worst-case number of pushes per node is the in-degree? but worst-case in-degree can be high? However, the total edges is M (200000) so the total pushes is at most M? Actually, each edge might be considered multiple times? but note: we relax only when we get a better time. So each node may be pushed multiple times? but worst-case the number of pushes is O(M). 
+
+ However, worst-case the heap operations are O(M log M) which is about 200000 * log2(200000) ~ 200000 * 18 = 3.6e6, which is acceptable.
+
+ Let's code accordingly.
+
+ Note: We assume the graph is undirected and we store each road as two directed edges.
+
+ Implementation details:
+   We are going to read the input and build an adjacency list.
+
+   We use a min-heap (priority queue) for Dijkstra.
+
+   We maintain an array `dist` for the earliest arrival time at each node.
+
+   We do:
+
+        dist[1] = 0
+        heap = [(0,1)]
+
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d != dist[u]: continue   # because we might have pushed multiple times
+
+            for each neighbor edge (v, T, L, R) in graph[u]:
+                rem = d % C_day
+                if rem <= R:
+                    wait = max(0, L - rem)
+                else:
+                    wait = C_day - rem + L
+                new_time = d + wait + T
+                if new_time < dist[v]:
+                    dist[v] = new_time
+                    heapq.heappush(heap, (new_time, v))
+
+        print(dist[N])
+
+ Let's run the sample 1 again to be sure:
+
+   Start: u=1, d=0.
+   For edge (2, 3,0,5): 
+        rem=0 -> <=5 -> wait = max(0,0-0)=0 -> new_time=0+0+3=3 -> update dist[2]=3, push (3,2)
+   For edge (3,1,7,8): 
+        rem=0 -> <=8 -> wait = max(0,7-0)=7 -> new_time=0+7+1=8 -> update dist[3]=8, push (8,3)
+
+   Then pop (3,2): d=3.
+        For edge (1,3,0,5): skip? but we already have a better time for 1? so we skip? 
+        For edge (3,4,3,3): 
+            u=2, d=3 -> rem=3%10=3 -> <=3 -> wait = max(0,3-3)=0 -> new_time=3+0+4=7 -> update dist[3]=7 (which is better than 8) -> push (7,3)
+
+   Then pop (7,3): 
+        Now from 3: 
+            edge to 1: (1,1,7,8): 
+                d=7, rem=7 -> in [7,8] -> wait=0 -> new_time=7+0+1=8 -> which is not better than dist[1]=0? so skip.
+            edge to 2: (2,4,3,3): 
+                d=7, rem=7 -> >3 -> wait=10-7+3=6 -> new_time=7+6+4=17 -> which is worse than dist[2]=3? skip.
+
+   Then we pop (8,3) but then we see that dist[3] is already 7 (so 8>7) -> skip.
+
+   Then the heap is empty -> output dist[N]=dist[3]=7.
+
+   Correct.
+
+ We write the code accordingly.
+
+ Note: The problem constraints: 
+        N, M: up to 100000 and 200000 -> so we use sys.stdin for fast input.
+
+ Let's code accordingly.

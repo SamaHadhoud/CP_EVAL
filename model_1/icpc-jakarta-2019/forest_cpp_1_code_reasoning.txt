@@ -1,0 +1,1400 @@
+ Okay, we are going to solve the problem by following the editorial guidelines.
+
+ Steps:
+ 1. Read the input and build the graph.
+ 2. Precompute the divisors of (N-1) that are at least 2? Actually, we can iterate over nodes and check if the degree k is at least 2 and (N-1) is divisible by k. So we don't need to precompute all divisors for the entire N-1, but for each node we check k (its degree) as a divisor of N-1.
+
+ However, note: the condition is that the removal of node u (which has degree k) must yield k connected components, each of size (N-1)/k.
+
+ 3. For each node u (with deg[u]>=2 and (N-1)%deg[u]==0):
+    - Remove u and do BFS/DFS to get k connected components (each starting from a neighbor of u). But note: the removal of u breaks the graph into exactly deg[u] components? Actually, if u is connected to deg[u] neighbors, then we get deg[u] connected components? But note: the entire graph without u might break into more than deg[u] if there are cycles? But the original graph is a tree. So removal of u will break into exactly deg[u] components? Actually, no: if u has an edge to a neighbor, then each neighbor is the root of a component? Actually, yes: the tree breaks into exactly deg[u] components because each edge from u to a neighbor leads to a distinct connected component.
+
+    - Check that each component has the same size: s = (N-1) / deg[u]. If any component has a different size, skip.
+
+    - For each component, we need to compute a canonical hash that is invariant under isomorphism. How?
+        a. Find the center(s) of the component (by peeling leaves until we have 1 or 2 nodes).
+        b. Root the tree at each center and compute a hash for the rooted tree. The canonical hash for the component is the minimum (or maximum) of the hashes from the centers? (We take min of the two if two centers, and if one center then that one).
+
+    - How to compute the hash?
+        We traverse the tree in BFS order (from leaves up). For each node, we sort the hashes of its children (to make the representation independent of the order of children) and then combine them.
+
+ 4. If for a node u, all k components have the same canonical hash, then we have a candidate. We want the maximum k (which is the number of trees we get) among all good cutting points.
+
+ 5. If we find at least one candidate, output the maximum k. Otherwise, output -1.
+
+ Implementation details:
+
+ - We note that the entire graph has n nodes, and we are going to remove u. Then we have k components, each of size s = (n-1)/k.
+
+ - We have to do this for every candidate node u? How expensive?
+
+    For each candidate u:
+        k = deg[u]
+        s = (n-1)/k
+
+        Then we do BFS for each neighbor to form the component? Actually, we do one BFS that covers the entire graph without u? We can do one BFS that starts from all neighbors? Actually, we can do:
+
+        visited array (size n), mark u as visited. Then for each neighbor v of u, if not visited, do BFS from v (ignoring u) to get the entire component.
+
+        Then we get k components. Then we check the size of each component: if any component has size != s, skip.
+
+        Then for each component, we have to build a subgraph? Actually, we have the entire tree and we know which nodes are in the component. Then we can build the graph for the component? But note: we have the original graph. For edges, we can use the original graph: an edge (x,y) is in the component if both x and y are in the component and x != u and y != u? Actually, we have the component set. Then the edges within the component are the edges of the original graph that connect two nodes in the component.
+
+        Alternatively, we can build the graph for the component by taking the induced subgraph.
+
+    However, we don't want to build a new graph for each component? We can work with the global graph and a set of nodes.
+
+    Steps for one component (with set `comp`):
+
+        - Build the degree for each node in the component: we traverse each node in the comp, and for each neighbor of that node that is also in the comp (and not u) we count. Actually, we can precompute the graph for the component? But note: we are going to do center finding and then BFS for the entire component.
+
+        - To find the center(s) of the tree (component):
+
+            We can use the leaf removal method:
+
+            Let deg_temp for nodes in the comp (only considering edges within the comp).
+
+            Steps:
+                - Create a queue of leaves (nodes with deg_temp = 1).
+                - Then remove leaves layer by layer until we have 1 or 2 nodes.
+
+            How?
+
+            total_nodes = s
+            deg_temp = [0] * n (for the entire graph, but we care only about the comp)
+
+            Actually, we can do:
+
+            deg_temp = [0] * n
+            for each node in comp:
+                count = 0
+                for neighbor in graph[node]:
+                    if neighbor in comp: # and neighbor != u? but u is not in comp, so we don't need to worry?
+                    count += 1
+                deg_temp[node] = count
+
+            Then:
+            leaves = deque()
+            for node in comp:
+                if deg_temp[node] == 1:
+                    leaves.append(node)
+
+            remaining = s
+            while remaining > 2:
+                num_leaves = len(leaves)
+                remaining -= num_leaves
+                for i in range(num_leaves):
+                    node = leaves.popleft()
+                    for neighbor in graph[node]:
+                        if neighbor in comp and deg_temp[neighbor] > 1:
+                            deg_temp[neighbor] -= 1
+                            if deg_temp[neighbor] == 1:
+                                leaves.append(neighbor)
+
+            Then the centers are the nodes left in the leaves? Actually, at the end we break when remaining<=2. Then the centers are the nodes that are still in the queue? Actually, after the while loop, the leaves queue contains the centers.
+
+        - Then we compute the hash for the component by rooting at each center.
+
+        How to compute the hash?
+
+            We do a BFS from the center to assign parent/children? Actually, we can do a BFS to get the order (from root to leaves). Then we process from leaves to the root.
+
+            Steps for a center `c`:
+
+                Build the tree: 
+                    parent[center] = -1
+                    children: for each node, we know its children (neighbors that are in the comp and not the parent).
+
+                We can do a BFS starting at `c` to set the parent and children.
+
+                Then we traverse the nodes in reverse BFS order (from leaves to the root). For each node, we collect the hashes of its children, sort them (because order of children does not matter for isomorphism), and then combine them to form the parent's hash.
+
+            We use two mod bases to reduce collision? The problem constraints are up to 4000 nodes, so we do two mods.
+
+            The hash function for a leaf (no children) is defined as a base value? For example, we can start with 1.
+
+            Then for a node with children, we do:
+
+                child_hashes = sorted list of (h1, h2) for each child? But note: we have two mods.
+
+                Then we combine: 
+                    h1[node] = base1 * (some combination) 
+                    Actually, we can do: 
+                    h1 = 1
+                    for each child_hash in sorted_child_hashes (by h1 then h2?):
+                        h1 = (h1 * base + child_hash.h1) % mod1
+
+                    Similarly for h2 with a different base? Actually, we can use the same base? But we use two mods to reduce collision.
+
+            Actually, the editorial uses:
+
+                h1 = [1] * n
+                h2 = [1] * n
+
+                Then for node in reversed(BFS_order):
+                    Let child_hashes = []
+                    for each child of node:
+                        child_hashes.append( (h1[child], h2[child]) )
+                    sort child_hashes by h1 then h2? (or lexicographically)
+
+                    Then for each (ch1, ch2) in child_hashes:
+                         h1[node] = (h1[node] * base + ch1) % mod1
+                         h2[node] = (h2[node] * base + ch2) % mod2
+
+            Then the hash for the tree rooted at c is (h1[c], h2[c])
+
+            Then the canonical hash for the component is the minimum of the hashes for the centers? (if two centers, then we compute two hashes and take min).
+
+        - Then we collect the canonical hash for each component.
+
+        - Compare: if all components have the same canonical hash, then candidate u is good and we update ans = max(ans, deg[u])
+
+ 6. However, note: the problem says "output the maximum number of disconnected trees that can be obtained by removing exactly one good cutting point". So we are looking for the maximum k (the degree of the node) for which the condition holds.
+
+ 7. We must note: it's possible that there are multiple candidate nodes, and we want the maximum k (which is the number of trees) we can get from one removal.
+
+ 8. Implementation note: we are iterating over nodes u. For each u, we do:
+
+        k = deg[u]
+        s = (n-1) // k   (we know n-1 is divisible by k)
+
+        Then we build k components by BFS (each BFS is O(s) and k * s = n-1, so total for one u: O(n))
+
+        Then for each component (size s), we do:
+
+            Build the induced subgraph? Actually, we don't build the graph explicitly, but we have the global graph and the set of nodes in the comp.
+
+            Then we compute the degree for each node in the comp: O(deg(node)) for each node? Then total O(n) for the entire component.
+
+            Then we do the center finding: O(s)
+
+            Then for each center (1 or 2 centers), we do a BFS to build the tree and then a BFS-order processing: O(s)
+
+        So one component takes O(s). Then k components: k * s = n-1, so O(n) per candidate u.
+
+        How many candidate u? The degree k must be a divisor of n-1 and at least 2. The number of divisors of n-1 is O(sqrt(n-1)). But note: the condition also requires that the node has degree k. So the candidate nodes are those with deg[u] being a divisor of n-1 and at least 2. The total number of candidate nodes is at most the number of divisors of n-1? Actually, no: because a node's degree might not be a divisor of n-1. So we iterate over all nodes, and if the condition fails, we skip. The worst-case: if n-1 has many divisors, but each candidate u we do O(n). Then worst-case total O(n * d) where d is the number of divisors of n-1. Since d is about O(sqrt(n)), and n<=4000, then worst-case n * sqrt(n) ~ 4000 * 63 = 252000, which is acceptable.
+
+ 9. But note: when we do BFS for the entire graph without u, we mark the entire graph? Actually, we break the graph without u into k components. Then we do k BFS? Actually, we do one global BFS that covers the entire graph without u? How? We start from u's neighbors. But we can do:
+
+        visited = [False] * n
+        visited[u] = True
+        comps = []
+        for each neighbor v of u:
+            if not visited[v]:
+                do BFS from v (only traversing nodes that are not u) to get the entire component.
+
+        This is O(n) per candidate u.
+
+ 10. We must be cautious: if the graph is big, but note n<=4000 and the total number of candidate u is at most n (which is 4000) but we skip most. Actually, worst-case the number of candidate nodes is the number of divisors of n-1? Actually, no: the candidate nodes must have degree k such that k is a divisor of n-1. The same divisor k might appear in multiple nodes? For example, if n-1=12, then k can be 2,3,4,6,12. Then we consider every node with degree 2,3,4,6,12. The total candidate nodes might be O(n) in the worst-case? Actually, worst-case the entire tree is a star: one center node of degree n-1 (which is a divisor of n-1) and then the other nodes are leaves (degree 1). Then we only have one candidate node (the center). So worst-case the total number of candidate nodes is O(n) but the condition (deg[u] being divisor) is strict. So worst-case we might have O(n) candidate nodes? Then the total time would be O(n * n) = 16e6 which is acceptable for n=4000? Actually, worst-case 4000 * 4000 = 16e6, which might be borderline in C++? But note: the inner BFS for the entire graph without u is O(n). Then for each candidate u, we also do:
+
+        k = deg[u] (which can be up to 4000) and then we break the graph into k components, each of size s = (n-1)/k. Then for each component we do:
+
+            - Build the degree array: for each node in the component, we traverse its neighbors? Then total cost for building the degree arrays for all components: sum_{each component} (number of nodes in the component * (their degree in the original graph))? Actually, we are only considering edges that are within the component? How to compute the degree for each node in the component? We can do:
+
+                For each node in the component, we look at its neighbors. For each neighbor, if the neighbor is in the component, then we count.
+
+            But note: we have the global graph. And the entire graph has n-1 edges. So the total cost for building the degrees for all components for one candidate u is O(n). Then the center finding for each component: O(s) per component and total for k components is O(n). Then the hashing for each component: we do a BFS for each center? And each center in a component: we do a BFS that traverses the entire component. And the total for one component is O(s). Then for k components: O(k * s) = O(n). So per candidate u: O(n) for the entire process.
+
+        Then worst-case we have O(n) candidate u? Actually, worst-case the number of candidate u is the number of nodes that have deg[u] being a divisor of n-1. How many such nodes? In the worst-case, n-1 has about O(sqrt(n)) divisors? Actually, the maximum divisors for numbers up to 4000 is about 48 (for 3600). So the number of candidate nodes is at most 48? Actually, no: because the candidate nodes are the ones that have a degree that is one of the divisors. There could be multiple nodes with the same divisor? For example, if we have a star tree: only the center has degree n-1 (which is a divisor) and the others have degree 1 (which is not a divisor because we require at least 2). So only one candidate node. In a balanced tree? We don't know. But worst-case the number of candidate nodes is bounded by the number of divisors? Actually, no: because multiple nodes can have the same degree? Then if there are many nodes with the same degree k (which is a divisor of n-1) then we consider each one. So worst-case we might have O(n) candidate nodes? But note: the total degrees in a tree is 2*(n-1). So the sum of the degrees is fixed. How many nodes can have a particular degree? In the worst-case, we can have a star tree: one node has degree n-1 and the rest have degree 1. So the candidate node is only the center. The maximum number of candidate nodes is the number of nodes that have a degree that is a divisor of n-1 and at least 2. Since the divisors of n-1 are O(sqrt(n)), and each divisor k can appear in multiple nodes? Actually, the maximum number of nodes with a particular degree k is O(n). Then worst-case total candidate nodes: O(n) * O(sqrt(n))? Actually, no: we are iterating over each candidate node. The total candidate nodes is the set of nodes u such that deg[u] is a divisor of n-1 and deg[u]>=2. The total number of such nodes is at most n. Then worst-case we do O(n * n) = 16e6, which is acceptable for n=4000? In C++? Let me check: 4000*4000 = 16e6, and each candidate u we do an entire BFS to break the graph (which is O(n)), and then for each component we do O(s) for center finding and hashing (which we argued is O(n) total for all components). So per candidate u: O(n). Then worst-case total time: O(n^2) = 16e6, which is acceptable.
+
+ 11. But note: when we build the set for each component, we are storing the set of nodes. Then for each node in the component, we check its neighbors to see if they are in the component. How to check quickly? We can have a boolean array for the entire graph? Actually, we can have a global visited array for the entire candidate u? Then for the component, we have a boolean array? Actually, we are already storing the set of nodes. We can create a boolean array `in_comp` for the entire graph? For each candidate u, we can create a new boolean array for the entire graph? That would be O(n) per candidate u? Then worst-case total O(n^2) in memory? n=4000 -> 4000*4000 = 16e6 booleans? 16e6 booleans is about 16e6 bytes = 16MB? But we have 256MB, so acceptable.
+
+    Alternatively, we can avoid creating a new array for each candidate u by using a global visited array and then storing the component as a set? But the set operations (checking membership) is O(log n) per check? Then the total cost for building the degree for the component: for each node in the component, we iterate over its neighbors (which is deg(node)) and for each neighbor we check if it is in the component (using set? which is O(log n)). Then the total cost per component is O( sum_{node in comp} deg(node) * log(n) ). But note: the entire graph has n-1 edges. The edges that are incident to the component: some edges go to u and some go to other nodes in the component. The edges that are entirely within the component: we are counting both endpoints? Actually, the entire graph without u: the edges incident to the component are the ones that connect two nodes in the comp and the ones that connect a node in the comp to u (but we ignore u). So the total cost for building the degrees for one component: we traverse each node in the comp and for each neighbor that is in the comp (we check by set membership). The total number of edges within the component is (size of comp - 1). But we are traversing all neighbors? The entire graph has n-1 edges. The edges incident to the comp: some go to u (which we ignore) and the rest are within the comp. So the total edges we consider per component is (size of comp) in terms of the node's entire adjacency list? Actually, we traverse all neighbors of each node in the comp. The total number of edges incident to the comp is: for each node in the comp, we look at all its neighbors (which includes u and nodes in the comp and nodes in other comps? Actually, no: because the graph is a tree and the removal of u disconnects the comps. So the comp is connected and the only edges leaving the comp are to u. Therefore, for a node in the comp, its neighbors are: 
+        - u (if the node is adjacent to u) -> skip
+        - other nodes in the comp
+        - nodes in other comps? -> no, because the graph is broken by removing u.
+
+        Actually, the node in the comp is only adjacent to: u (which we skip) and other nodes in the comp. So the total edges incident to the comp is (size of comp - 1) * 2? Actually, the entire comp is a tree? Actually, the comp is a connected tree? Yes, because the original graph is a tree and we removed one node. So the comp is a tree? Then it has |comp| - 1 edges.
+
+        Therefore, the total cost for building the degree for the entire comp is: for each node in the comp, we traverse its neighbors and check if the neighbor is in the comp? Actually, we can skip u by design? But we have the set of nodes in the comp. We can do:
+
+            deg_temp[node] = 0
+            for neighbor in graph[node]:
+                if neighbor != u and neighbor in comp_set:   # comp_set is the set for the comp?
+                    deg_temp[node] += 1
+
+        How to check "neighbor in comp_set"? If comp_set is a set (which is a hash set), then O(1) per check. Then total for the comp: we traverse all neighbors of each node in the comp. The total number of edges incident to the comp is (|comp| - 1) * 2? Actually, each edge is counted twice? But we are only considering edges that are within the comp? Actually, the entire graph has n-1 edges. The edges that are entirely within the comp are |comp| - 1. Then the total cost for building the deg_temp for the entire comp is O(|comp| + number of edges incident to the comp) = O(|comp|). Actually, we are traversing each node and then each neighbor. The total over the entire comp: the sum of degrees of the nodes in the comp (in the original graph) is 2*(number of edges within the comp) + (edges from the comp to u). The edges to u: each node in the comp that is adjacent to u? Actually, u is adjacent to each neighbor that we started with? And we started with one neighbor per comp? Actually, the comp was built from one neighbor? But the node that is adjacent to u: that neighbor is in the comp? Then the edges to u: exactly one? Actually, no: the node u is connected to multiple nodes? But in the comp, we have exactly one edge from u to the comp? The root of the comp (the neighbor of u) is the starting point. But the comp might have multiple nodes adjacent to u? Actually, no: because we started the BFS from one neighbor v, and we get the entire component. Then the only edge from the comp to u is the one from v to u? Then the total edges incident to the comp: (|comp| - 1) edges within the comp and 1 edge to u. So the total degree for the comp nodes: 
+            For each node in the comp: 
+                the node v (adjacent to u) has one extra edge (to u) and the others have no edge to u? Actually, the comp is built without u, so the entire comp is connected by the edges that are not incident to u? Then the only edge leaving the comp is the one from v to u? So the entire comp has |comp| nodes and |comp| - 1 edges? Then the total degree in the original graph for the nodes in the comp: 
+                    deg_original = (for each node: the number of neighbors in the comp) + (1 if the node is v, and 0 otherwise? Actually, only v is connected to u? But what if the comp has multiple nodes adjacent to u? 
+
+        Actually, no: the comp was built by starting at v and then traversing without going to u. So the comp does not include u. And the only connection from the comp to u is the edge (v, u). Therefore, for the entire comp, each node has:
+            - v: has an edge to u and also edges to other nodes in the comp.
+            - others: only edges to nodes in the comp.
+
+        Therefore, the total degree in the original graph for a node in the comp: 
+            for v: deg_original = (number of neighbors in the comp) + 1 (for u)
+            for others: deg_original = (number of neighbors in the comp)
+
+        But note: the number of neighbors in the comp is the internal degree? Then when we build the comp, we want the degree in the comp: which is the number of neighbors that are in the comp (so we ignore u). Then we can precompute:
+
+            We know the global graph. For each node in the comp, the degree in the comp is:
+                deg_in_comp = deg_global - (1 if the node is adjacent to u? But note: the node might be adjacent to u? Actually, the comp was built from one neighbor v? How do we know if a node in the comp is adjacent to u? 
+
+        Actually, we know: the comp is connected to u only via the starting neighbor? But the original tree: the node u is adjacent to several nodes (the neighbors). The comp was built by starting at v (a neighbor of u) and then traversing without u. Then the only node in the comp that is adjacent to u is v. So for v, we have one extra edge to u. For others, no.
+
+        Therefore, we can compute the degree in the comp for a node as:
+
+            if node == v: deg_in_comp = deg_global[node] - 1
+            else: deg_in_comp = deg_global[node]
+
+        But wait: what if the node is adjacent to u but not v? Actually, the comp was built from v. Then the comp includes only the nodes that are connected to v without going through u. Therefore, a node in the comp that is adjacent to u must be v? Actually, yes: because if there were another node w in the comp adjacent to u, then we would have two paths: from v to w: one via u and one via the tree? But the tree is acyclic. Contradiction? Actually, the comp is connected and the entire tree is connected. The removal of u disconnects the graph. The comp is the connected component that contains v. So if w is adjacent to u, then w must be in the same comp as v? Only if there is a path from v to w that doesn't go through u? Then w would have been included in the comp? Then the comp would include w? Then we have two edges from the comp to u: from v and from w? Then the comp is connected to u by two edges? Then the entire graph would have a cycle? Because we have u connected to v and w, and then a path from v to w in the comp? Then we have a cycle: u->v->...->w->u. But the original graph is a tree. So that cannot happen.
+
+        Therefore, the comp has exactly one edge to u: the one from v.
+
+        Therefore, we can compute the degree in the comp for each node:
+
+            deg_in_comp[node] = (deg_global[node] - 1) if (node == v) else deg_global[node]
+
+        But wait: what if the node has other edges to nodes not in the comp? Actually, the comp is the entire connected component without u. So the node's neighbors that are not u and not in the comp? Then that node would have been included? Actually, no: because the comp is built by BFS from v without u. Then the comp includes all nodes connected to v without going through u. So if a node has a neighbor that is in the comp, then that neighbor is included? Actually, the BFS would have included it. So the comp is the entire connected component. Therefore, the node has no neighbors outside the comp except u? So the degree in the comp for a node is:
+
+            deg_in_comp[node] = deg_global[node] - (1 if node is adjacent to u else 0)
+
+        How to know if a node is adjacent to u? We can precompute: for each node, we know u is adjacent to v? Actually, we can check: for each node in the comp, we check if u is in graph[node]? Then:
+
+            deg_in_comp[node] = deg_global[node] - 1   if u is in the neighbors of node? But note: the global graph: the edge (node, u) exists? We can precompute an adjacency set? Or we can note: the comp is built without u. And the only node in the comp that is adjacent to u is the one that we started with? Actually, no: we started with v, but what if the comp has multiple neighbors of u? That cannot happen as argued.
+
+        Therefore, we can do:
+
+            deg_in_comp[node] = deg_global[node] - (1 if node is the starting neighbor v? But what if the comp has multiple starting points? Actually, we built the comp starting from v. Then the comp has one and only one edge to u: the one from v.
+
+        Alternatively, we can avoid this by building the comp and then for each node, we count the neighbors that are in the comp? Then we do:
+
+            deg_in_comp[node] = 0
+            for neighbor in graph[node]:
+                if neighbor != u and neighbor in comp_set:   # comp_set is the set of nodes in the comp
+                    deg_in_comp[node] += 1
+
+        We can precompute comp_set as a boolean array for the entire graph? Actually, we are building the comp_set as a set? Then we can use a boolean array `in_comp` of size n? We can create an array for the entire candidate u? Then for each candidate u, we create an array `in_comp` of size n, initially false. Then we set in_comp[x]=True for each x in the comp.
+
+        Then the cost: per candidate u, we do:
+
+            We have k components. For each component, we set the in_comp for each node? Then we reset? Then total cost for one candidate u: O(n) to reset? Actually, we can use a global array that we reset? But then we do multiple candidate u? We can do:
+
+                Let's have a global `mark` array that we reset for each candidate u? Actually, we can use a visited array for the entire candidate u that we already used to break the graph? Then we can use the same visited array to mark the comp? Actually, we have the comp sets stored? We can create a new boolean array for each candidate u? Then worst-case memory: O(n) per candidate u? And we have O(d) candidate u? Then worst-case memory O(n * d) = 4000 * 63 = 252000? which is acceptable.
+
+            Alternatively, we can avoid by using a global array and then resetting it for each candidate u? Then we do:
+
+                For candidate u:
+                    visited = [False] * n   (local for this candidate u)
+                    we mark u as visited.
+                    then for each neighbor, we do BFS and mark the comp.
+
+                Then we have an array `in_comp` that is the same as visited? Actually, the visited array marks every node that is not u and is connected to the starting neighbor? Then we can use the visited array as in_comp? But note: we have k comps? Actually, the entire graph without u is broken into k comps. Then we are processing one comp at a time? Actually, we build all comps at once? Then we have a visited array that marks every node in the entire graph without u? Then we cannot distinguish between different comps? We need to process each comp individually? Actually, we built the comps and stored each comp as a set? Then we can build an in_comp array for the entire candidate u: we don't need to reset per comp? Actually, we are building the comps one by one? Then we can use a global in_comp array for the entire candidate u and set it to false initially? Then for each comp, we set in_comp[node]=True for each node in the comp? Then after processing the comp, we set them back to false? Or we don't need to reset until we finish candidate u? Actually, we process one comp at a time. Then we can have:
+
+                    in_comp = [False] * n   # for candidate u, we'll use this array for each comp
+
+                Then for the first comp: we set the nodes in the comp to True. Then we build the deg_in_comp for that comp. Then after we finish the comp, we set them back to False? Or we can avoid by building the deg_in_comp without an in_comp array? We know the comp set? Then we can use:
+
+                    deg_in_comp[node] = 0
+                    for neighbor in graph[node]:
+                        if neighbor != u and neighbor in comp_set:   # comp_set is a set? Then we can do set lookup in O(1) if we use a hash set.
+
+                Then we store each comp as a set? Then the total memory for candidate u is O(n) for storing the sets? Then the total memory for all candidate u: worst-case O(n^2) which is 16e6 integers? 16e6 * 4 = 64MB? acceptable.
+
+        So we do:
+
+            comps = []   # list of sets
+            visited = [False] * n   # for candidate u: mark nodes that we've visited (without u)
+            visited[u] = True
+            for v in graph[u]:
+                if not visited[v]:
+                    comp = set()
+                    queue = deque([v])
+                    visited[v] = True
+                    comp.add(v)
+                    while queue:
+                        node = queue.popleft()
+                        for neighbor in graph[node]:
+                            if not visited[neighbor] and neighbor != u:
+                                visited[neighbor] = True
+                                comp.add(neighbor)
+                                queue.append(neighbor)
+                    comps.append(comp)
+
+            Then for each comp in comps, we build a set (comp_set) and then compute deg_in_comp for each node in the comp? 
+
+            But note: we have to reset the visited array for the next candidate u? Actually, we are doing this inside a loop for candidate u. Then we create a new visited array for each candidate u? Then memory: O(n) per candidate u? Then worst-case total memory: O(n^2) which is 16e6 booleans? 16e6/8 = 2e6 bytes? Actually, 16e6 bits? 16e6/8 = 2e6 bytes? 2MB? acceptable.
+
+        Alternatively, we can avoid by using a global visited array and then for each candidate u, we do:
+
+            We use a global visited array? But we are iterating over candidate u? Then we need to reset the entire visited array for each candidate u? Then we do:
+
+                global_visited = [False] * n   # we can use this for the entire algorithm? Then for each candidate u, we set global_visited[u] = True? Then we reset after candidate u? Then total time for reset: O(n) per candidate u? Then worst-case total O(n^2) = 16e6? acceptable.
+
+        Actually, we are iterating over all candidate u? The total number of candidate u is at most the number of divisors? Actually, worst-case O(n) candidate u? Then resetting the visited array for each candidate u: O(n) per candidate -> total O(n^2). Then 4000*4000=16e6? acceptable.
+
+        However, we can avoid resetting the entire array by using a time stamp? Or we can use a local visited array per candidate u? Then we do:
+
+            visited = [False] * n   # local for candidate u
+
+        Then memory: O(n) per candidate u? Then worst-case total memory: O(n^2) = 16e6 booleans = 2e6 bytes? acceptable.
+
+ 12. We'll code accordingly.
+
+ Steps in code:
+
+    Precompute global_deg: deg_global[i] = len(graph[i])
+
+    ans = -1
+
+    For u in range(n):
+        k = deg_global[u]
+        if k < 2: continue
+        if (n-1) % k != 0: continue
+
+        s = (n-1) // k   # the size of each component
+
+        visited = [False] * n
+        visited[u] = True
+        comps = []   # list of sets for the components
+        for v in graph[u]:
+            if not visited[v]:
+                comp = set()
+                queue = deque([v])
+                visited[v] = True
+                comp.add(v)
+                while queue:
+                    node = queue.popleft()
+                    for neighbor in graph[node]:
+                        if not visited[neighbor] and neighbor != u:
+                            visited[neighbor] = True
+                            comp.add(neighbor)
+                            queue.append(neighbor)
+                comps.append(comp)
+
+        # If we didn't get k components? Actually, we break the graph into k components? But we started at each neighbor? And we traverse all neighbors? Then we should get k components? But if we have less? Then skip.
+        if len(comps) != k:
+            continue
+
+        valid = True
+        for comp in comps:
+            if len(comp) != s:
+                valid = False
+                break
+
+        if not valid:
+            continue
+
+        # Now check if all comps are identical (isomorphic)
+        comp_hashes = []   # canonical hash for each comp
+
+        # We'll create a visited array for the entire candidate u? Actually, we don't need to reset between comps? We are going to use a set for each comp? Then we can use a set for membership.
+
+        for comp in comps:
+            # Build the set for this comp: we have the set `comp`
+            # Step 1: Build the internal degree for each node in the comp (only counting edges within the comp and without u)
+            # But note: we can compute the degree by:
+            #   deg_in_comp[node] = number of neighbors that are in the comp and not u? Actually, we can do:
+            deg_temp = [0] * n   # we can use an array of zeros? n=4000, and we do for each comp? Then total for candidate u: k * n = n? (since k*s = n-1) so k * n = n * (k) = (n-1)/s * n = n * (n-1)/s. But s = (n-1)/k, so k * n = n * k? Then worst-case k can be 4000? Then k * n = 4000 * 4000 = 16e6? acceptable.
+
+            # Alternatively, we can create a list for the comp? We know the nodes.
+
+            # We'll compute the degree for each node in the comp by:
+            #   for each node in comp:
+            #       count = 0
+            #       for neighbor in graph[node]:
+            #           if neighbor != u and neighbor in comp:
+            #               count += 1
+            #       deg_temp[node] = count
+            #
+            # But we can do without the set lookup? Actually, we have the set `comp`. Then we can do:
+
+            for node in comp:
+                count = 0
+                for neighbor in graph[node]:
+                    if neighbor != u and neighbor in comp:
+                        count += 1
+                deg_temp[node] = count
+
+            # Now, find the centers by peeling leaves.
+            leaves = deque()
+            # We are going to use a working copy of deg_temp? We have deg_temp, and we will modify it.
+            deg_work = deg_temp[:]   # copy: O(n)
+            for node in comp:
+                if deg_work[node] == 1:
+                    leaves.append(node)
+
+            total_nodes = len(comp)
+            while total_nodes > 2:
+                num_leaves = len(leaves)
+                total_nodes -= num_leaves
+                for i in range(num_leaves):
+                    node = leaves.popleft()
+                    for neighbor in graph[node]:
+                        if neighbor != u and neighbor in comp and deg_work[neighbor] > 1:
+                            deg_work[neighbor] -= 1
+                            if deg_work[neighbor] == 1:
+                                leaves.append(neighbor)
+
+            centers = list(leaves)   # the centers of this comp
+
+            # Now, for each center, we compute the tree hash.
+            center_hashes = []   # list of (h1, h2) for each center
+            for center in centers:
+                # Build the tree rooted at center: we know the comp and the edges (without u)
+                parent = [-1] * n
+                children = [[] for _ in range(n)]
+                order = []
+                q = deque([center])
+                parent[center] = -1
+                while q:
+                    node = q.popleft()
+                    order.append(node)
+                    for neighbor in graph[node]:
+                        if neighbor != u and neighbor in comp and neighbor != parent[node]:
+                            parent[neighbor] = node
+                            children[node].append(neighbor)
+                            q.append(neighbor)
+
+                # Now, we traverse in reverse order (from leaves to root)
+                h1 = [1] * n
+                h2 = [1] * n
+                # We traverse from last to first in order (which is BFS order: root first, then children, then grandchildren) -> reverse: from leaves to root.
+                for node in reversed(order):
+                    # Collect the hashes of the children, then sort by (h1, h2)
+                    child_hashes = []
+                    for child in children[node]:
+                        child_hashes.append( (h1[child], h2[child]) )
+                    # Sort lexicographically: first by h1 then h2
+                    child_hashes.sort(key=lambda x: (x[0], x[1]))
+                    for a, b in child_hashes:
+                        h1[node] = (h1[node] * base + a) % mod1
+                        h2[node] = (h2[node] * base + b) % mod2
+                center_hashes.append( (h1[center], h2[center]) )
+
+            # The canonical hash for the comp: if one center, then that one. If two centers, then min of the two? 
+            if len(center_hashes) == 1:
+                comp_hash = center_hashes[0]
+            else:
+                comp_hash = min(center_hashes)   # lexicographic min: first by h1 then by h2
+
+            comp_hashes.append(comp_hash)
+
+        # Check if all comp_hashes are the same?
+        same = True
+        for i in range(1, len(comp_hashes)):
+            if comp_hashes[i] != comp_hashes[0]:
+                same = False
+                break
+
+        if same:
+            if k > ans:
+                ans = k
+
+    if ans == -1:
+        print(-1)
+    else:
+        print(ans)
+
+ 13. But note: the problem says "output the maximum number of disconnected trees", which is k (the degree of u). So we update ans = max(ans, k).
+
+ 14. We must be cautious: the center_hashes for two centers: we compute two hashes and take min? Why min? To have a canonical representation: the representation should be the same for isomorphic trees. And if the tree has two centers, then we have two possible roots? Then we take the representation that is lexicographically smallest? That way, two isomorphic trees will have the same min hash.
+
+ 15. Let's test with a simple tree: a line of 4 nodes: 1-2-3-4. The centers? The center is node 2 and 3? Then we root at 2 and at 3? The two rooted trees:
+
+        Rooted at 2:
+            children: 1 and 3.
+            Then 3 has a child 4.
+
+        Then the hash for 2: 
+            h1[1] = 1, h1[4]=1, then h1[3] = (1 * base + h1[4]) % mod = base+1.
+            Then h1[2] = (1 * base + h1[1]) * base + h1[3]? Actually, we do:
+
+                For node 1: child_hashes = [] -> so h1[1] = 1.
+                For node 4: same -> 1.
+                For node 3: child_hashes = [ (h1[4]) ] -> then h1[3] = (1 * base + 1) % mod = base+1.
+                For node 2: child_hashes = [ (h1[1], h1[3]) ] -> we sort: (1,?) and (base+1,?) -> then sorted: [ (1, ...), (base+1, ...) ]
+
+                Then h1[2] = (1 * base + 1) * base + (base+1) ? 
+
+            Actually, the algorithm:
+
+                h1[2] = 1
+                then for the first child (1): h1[2] = (1 * base + h1[1]) = base+1
+                then for the second child (3): h1[2] = (base+1)*base + h1[3] = (base+1)*base + (base+1) = base^2 + base + base + 1 = base^2 + 2*base + 1
+
+        Rooted at 3:
+            children: 4 and 2. Then 2 has a child 1.
+
+            Then:
+                node 4: 1
+                node 1: 1
+                node 2: (1 * base + 1) = base+1   [because we sort the children of 2: we have only one child? Actually, the children of 2: only 1? Then we don't sort? Then h1[2] = base+1.
+                node 3: we have two children: 4 and 2? Then we sort by hash? The hash of 4 is (1, ...) and the hash of 2 is (base+1, ...). Then we sort: [ (1, ...), (base+1, ...) ]
+
+                Then h1[3] = ( (1 * base + 1) * base + (base+1) ) % mod = (base+1)*base + (base+1) = base^2+base+base+1 = base^2+2*base+1 -> same as above.
+
+            So the two roots yield the same hash? Then we don't need min? Actually, they yield the same? Then min would be the same.
+
+        But what if we have a symmetric tree? For example, a star with center 0 and leaves 1,2,3. Then the center is 0? Then we root at 0: the hash is the same no matter what? Then if we have two centers? Actually, a star has one center? Then we don't have two.
+
+        Another example: a tree with two centers? Actually, a tree of even diameter: two centers. Then the two roots? They are symmetric? Then the hash computed from one center should be the same as the other? Actually, no: the tree rooted at one center is the mirror of the other? Then the hash algorithm we have (sorting the child hashes) should yield the same hash? Because the children of the center are the same? Then the sorted list of child hashes is the same? Then the hash for the root is the same.
+
+        Therefore, we can also use the hash from one center? Then why take min? Actually, in the above example the two centers yield the same hash. Then min is the same as the other.
+
+        But what if the tree is asymmetric? Then we have one center? So we don't have two.
+
+        Therefore, we can simply take the set of center_hashes? And then the canonical hash is the min? Or if the two centers yield the same hash, then min is that hash. So it's safe.
+
+ 16. We'll code accordingly.
+
+ 17. Let me test with the sample input:
+
+        n=13, and we remove node 4 (which is index 3). Then we get 3 components? Each of size (13-1)/3 = 4.
+
+        Then we compute the hash for each component? They should be the same.
+
+        Each component is a line of 4 nodes? Actually, the example: 
+            A: 5,1,7,13 -> 5-1-7-13? Actually, the edges: 
+                Input: 
+                    1 5 -> (0,4)
+                    1 7 -> (0,6)
+                    4 7 -> (3,6) -> but when we remove 3 (node4), then the component A: 
+                        nodes: 0 (node1), 4 (node5), 6 (node7), 12 (node13)
+                The edges: 
+                    0-4, 0-6, 6-12? 
+                Then the tree: 
+                    node0 is connected to node4 and node6, and node6 is connected to node12.
+                So it's a chain: 4-0-6-12? 
+
+                Similarly, the other two components: 
+                    B: nodes: 1 (node2), 7 (node8), 10 (node11), 5 (node6?) -> wait, the input: 
+                        2 4 -> (1,3) -> removed? 
+                        2 8 (1,7) -> so node1 (node2) is connected to node7 (node8) and node10 (node11) is connected via 2->11? Actually, the input has "2 11" and "6 11" -> but node6 is node11? Actually, we have to reindex.
+
+        Actually, the nodes in the input are 1-indexed. Our code uses 0-indexed.
+
+        The sample input:
+
+            1 5 -> (0,4)
+            1 7 -> (0,6)
+            2 4 -> (1,3)
+            2 8 -> (1,7)
+            2 11 -> (1,10)
+            3 12 -> (2,11)
+            4 7 -> (3,6)
+            4 12 -> (3,11)
+            6 11 -> (5,10)
+            7 13 -> (6,12)
+            9 10 -> (8,9)   -> actually, 9 10: node8 and node9? 
+            9 12 -> (8,11)
+
+        Then the tree:
+
+            We remove node4 (index 3). Then the components:
+
+            Component starting from node0 (node1): 
+                edges: 
+                    node0: connected to node4 and node6? 
+                Then from node4: no edge to node3? so stop? 
+                Then from node6: connected to node12? Then from node12: connected to node11? But node11 is connected to node3? no, we removed 3. Actually, node12 (index11) is connected to node2? (via 3 12 -> (2,11))? But node2 is index1? and we haven't visited? Actually, we started from node0? Then we traverse: 
+                    node0: add node4, node6 -> then from node6: connected to node12? Then node12: then from node12: connected to node11? (via 9 12 -> node8 and node11) -> but node8 is index8? Then we add node11? Then from node11: connected to node10? (via 6 11 -> node5 and node10) -> but wait, the edge "6 11": that is node6 (index6) and node11 (index10)? Then we have:
+
+                    node0 -> node4 (index4) -> then node0->node6 (index6) -> node6->node12 (index12) -> but wait, the edge 7 13: node6 to node12? Actually, the edge 7 13: node6 (node7) to node12 (node13)? Then we have node0->node6->node12 (node13). Then what about node11? 
+
+                Actually, the component starting at node0: 
+                    nodes: 0,4,6,12 -> and edges: (0,4), (0,6), (6,12). Then the tree is:
+
+                        4  12
+                         \ /
+                          0
+                           \
+                            6
+                            |
+                            12
+
+                    That is not a chain. Actually, it's a star? 
+
+                Actually, the edges: 
+                    1 5: 0-4
+                    1 7: 0-6
+                    7 13: 6-12
+
+                So the tree: 
+                    node0 (1) is connected to 4 (5) and 6 (7). Then 6 (7) is connected to 12 (13).
+
+                Then the tree is: 
+                      0
+                     / \
+                    4   6
+                         \
+                          12
+
+                That is not a chain. Actually, the example says the three trees are line graphs? How?
+
+                The example says:
+                    A: {5,1,7,13} -> which is nodes 5,1,7,13 -> 0-indexed: 4,0,6,12.
+
+                    The edges: 
+                        1-5: 0-4
+                        1-7: 0-6
+                        7-13: 6-12
+
+                    So the tree A is: 
+                        0 is connected to 4 and 6, and 6 is connected to 12.
+
+                    Then the tree A is not a chain? Then how can it be isomorphic to a chain?
+
+                Actually, the example says the bijection: 
+                    A: 5,1,7,13 -> bijection to B: 8,2,11,6 -> which is 7,1,10,5? 
+                    The edges in B: 
+                        2 8: 1-7
+                        2 11: 1-10
+                        6 11: 5-10? -> so the tree for B: 
+                            node1 (2) is connected to 7 (8) and 10 (11), and 10 (11) is connected to 5 (6)? 
+                        Then the tree: 
+                            node1
+                           /    \
+                         7       10
+                                  \
+                                   5
+
+                    This is the same as A? So they are isomorphic? 
+
+                So our hashing method should give the same hash for A and B.
+
+        How to compute the hash for A?
+
+            The tree A: nodes: 0,4,6,12.
+
+            The edges: 
+                0-4, 0-6, 6-12.
+
+            The center? 
+                We do leaf peeling: 
+                    Leaves: 4,12 -> then remove them, then the edges: 
+                        0: deg becomes 1 (from 2: because we removed 4 and 12? Actually, the edges: 
+                            node0: connected to 4 and 6 -> after removing 4, it has edge to 6 -> deg=1? 
+                            node6: connected to 0 and 12 -> after removing 12, deg=1? 
+                    Then we remove 0 and 6? Then we have no nodes? Actually, we break when total_nodes<=2? Then we break at the first step? 
+
+                Actually, we start with leaves: 
+                    Leaves: nodes with deg_in_comp=1: 
+                        4: deg=1 -> leaf
+                        12: deg=1 -> leaf
+                        0: deg=2 -> not leaf
+                        6: deg=2 -> not leaf
+
+                Then we remove 4 and 12. Then update:
+                    For 4: its neighbor 0: deg0 becomes 1? -> then 0 becomes leaf.
+                    For 12: its neighbor 6: deg6 becomes 1? -> then 6 becomes leaf.
+                Then we remove 0 and 6? Then total_nodes=0? Then the centers? Actually, the centers are the last two leaves? Then the centers are 0 and 6.
+
+            Then we root at 0 and at 6.
+
+            Root at 0:
+                Children: 4 and 6? Then 6 has a child 12.
+                Then:
+                    h1[4]=1, h1[12]=1.
+                    Then for node6: 
+                        children: [12] -> sorted: [ (1, ...) ]
+                        h1[6] = (1 * base + 1) % mod = base+1
+                    Then for node0:
+                        children: 4 and 6 -> sort: by hash: (1, ...) and (base+1, ...) -> so [ (1, ...), (base+1, ...) ]
+                        h1[0] = (1 * base + 1) * base + (base+1) = base^2 + base + base + 1 = base^2 + 2*base + 1
+
+            Root at 6:
+                Children: 0 and 12? Then 0 has a child 4.
+                Then:
+                    h1[12]=1, h1[4]=1.
+                    Then for node0: 
+                        children: [4] -> h1[0] = base+1
+                    Then for node6:
+                        children: 0 and 12 -> sort: by hash: (base+1, ...) and (1, ...) -> then we sort: first 1 then base+1? -> then [ (1, ...), (base+1, ...) ] -> then h1[6] = (1 * base + 1) * base + (base+1) = base^2+2*base+1
+
+            Then the canonical hash = min( (base^2+2*base+1, ...), (base^2+2*base+1, ...) ) = same.
+
+        So the three components (A, B, C) should have the same hash.
+
+ 18. Therefore, we code accordingly.
+
+ 19. Note: the base and mods: we use base=131, mod1=10**9+7, mod2=10**9+9.
+
+ 20. We'll write the code in C++ for speed? But the problem says time limit 1.0s and n=4000, worst-case O(n^2) which is 16e6, which might be acceptable in C++.
+
+ 21. However, worst-case 16e6 per candidate u? Actually, per candidate u we do O(n) work? Then worst-case total O(n^2) = 16e6? Actually, worst-case the total number of candidate u is the number of nodes that have a degree that is a divisor of n-1 and at least 2. The worst-case the number of candidate nodes is O(n). Then worst-case total operations: O(n^2) = 16e6? which is acceptable in C++? Yes.
+
+ 22. Let me code accordingly.
+
+ 23. We'll use:
+
+        #include <iostream>
+        #include <vector>
+        #include <queue>
+        #include <algorithm>
+        #include <cstring>
+        #include <set>
+        #include <cmath>
+        #include <map>
+        using namespace std;
+
+        typedef long long ll;
+        const ll mod1 = 1000000007;
+        const ll mod2 = 1000000009;
+        const ll base = 131;
+
+        int main() {
+            int n;
+            cin >> n;
+            vector<vector<int>> graph(n);
+            vector<int> deg(n, 0);
+            for (int i = 0; i < n-1; i++) {
+                int a, b;
+                cin >> a >> b;
+                a--; b--;
+                graph[a].push_back(b);
+                graph[b].push_back(a);
+                deg[a]++;
+                deg[b]++;
+            }
+
+            int ans = -1;
+
+            // Precompute total = n-1
+            int total_nodes_minus_one = n-1;
+
+            // We iterate over each node u
+            for (int u = 0; u < n; u++) {
+                int k = deg[u];
+                // Condition: k>=2 and (n-1) divisible by k
+                if (k < 2) continue;
+                if (total_nodes_minus_one % k != 0) continue;
+                int s = total_nodes_minus_one / k; // size of each component
+
+                // We'll do BFS without u to get the k components
+                vector<bool> visited(n, false);
+                visited[u] = true;
+                vector<set<int>> comps;
+                // For each neighbor of u
+                for (int v : graph[u]) {
+                    if (visited[v]) continue;   // should not happen? Because we mark when we start BFS from v?
+                    set<int> comp;
+                    queue<int> q;
+                    q.push(v);
+                    visited[v] = true;
+                    comp.insert(v);
+                    while (!q.empty()) {
+                        int node = q.front();
+                        q.pop();
+                        for (int neighbor : graph[node]) {
+                            if (neighbor == u) continue;
+                            if (!visited[neighbor]) {
+                                visited[neighbor] = true;
+                                comp.insert(neighbor);
+                                q.push(neighbor);
+                            }
+                        }
+                    }
+                    comps.push_back(comp);
+                }
+
+                // If the number of components is not k, then skip.
+                if (comps.size() != k) {
+                    continue;
+                }
+
+                // Check the size of each component
+                bool valid_size = true;
+                for (auto& comp : comps) {
+                    if (comp.size() != s) {
+                        valid_size = false;
+                        break;
+                    }
+                }
+                if (!valid_size) {
+                    continue;
+                }
+
+                // Now check isomorphism for the comps
+                vector<pair<ll, ll>> comp_hashes;   // canonical hash for each comp
+
+                // We'll create a temporary array for deg_in_comp? We can use a vector of size n for deg_work? But we will reset per comp.
+                for (auto& comp : comps) {
+                    // Build a set for quick lookup? We have the set `comp`.
+                    // Step 1: Compute the internal degree for each node in the comp (ignoring u and edges outside comp)
+                    vector<int> deg_in_comp(n, 0);
+                    for (int node : comp) {
+                        int cnt = 0;
+                        for (int neighbor : graph[node]) {
+                            // neighbor must not be u and must be in comp
+                            if (neighbor != u && comp.find(neighbor) != comp.end()) {
+                                cnt++;
+                            }
+                        }
+                        deg_in_comp[node] = cnt;
+                    }
+
+                    // Now, find centers: leaf peeling
+                    queue<int> leaves;
+                    vector<int> deg_work = deg_in_comp;   // copy
+                    int total_comp = comp.size();
+                    // Enqueue leaves
+                    for (int node : comp) {
+                        if (deg_work[node] == 1) {
+                            leaves.push(node);
+                        }
+                    }
+
+                    while (total_comp > 2) {
+                        int num_leaves = leaves.size();
+                        total_comp -= num_leaves;
+                        for (int i = 0; i < num_leaves; i++) {
+                            int node = leaves.front();
+                            leaves.pop();
+                            for (int neighbor : graph[node]) {
+                                if (neighbor == u) continue;
+                                // If neighbor is in the comp and deg_work[neighbor] > 1?
+                                if (comp.find(neighbor) != comp.end() && deg_work[neighbor] > 1) {
+                                    deg_work[neighbor]--;
+                                    if (deg_work[neighbor] == 1) {
+                                        leaves.push(neighbor);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Now, leaves queue has the centers (1 or 2)
+                    vector<int> centers;
+                    while (!leaves.empty()) {
+                        centers.push_back(leaves.front());
+                        leaves.pop();
+                    }
+
+                    // Now, for each center, we build the tree and compute hash.
+                    vector<pair<ll, ll>> center_hashes; // (h1, h2) for each center
+                    for (int center : centers) {
+                        // Build the tree rooted at center: we do BFS to set parent and children
+                        vector<int> parent(n, -1);
+                        vector<vector<int>> children(n);
+                        vector<int> order;
+                        queue<int> q;
+                        q.push(center);
+                        parent[center] = -1;
+                        while (!q.empty()) {
+                            int node = q.front();
+                            q.pop();
+                            order.push_back(node);
+                            for (int neighbor : graph[node]) {
+                                if (neighbor == u) continue;
+                                if (neighbor == parent[node]) continue;
+                                if (comp.find(neighbor) == comp.end()) continue;
+                                parent[neighbor] = node;
+                                children[node].push_back(neighbor);
+                                q.push(neighbor);
+                            }
+                        }
+
+                        // Now, compute the hash from leaves to root (reverse order)
+                        vector<ll> h1(n, 1);
+                        vector<ll> h2(n, 1);
+                        // Traverse in reverse order
+                        for (int idx = order.size()-1; idx >= 0; idx--) {
+                            int node = order[idx];
+                            // Collect the hashes of the children
+                            vector<pair<ll, ll>> child_hashes;
+                            for (int child : children[node]) {
+                                child_hashes.push_back({h1[child], h2[child]});
+                            }
+                            // Sort by lexicographical order: first by h1 then h2
+                            sort(child_hashes.begin(), child_hashes.end());
+                            for (auto& p : child_hashes) {
+                                h1[node] = (h1[node] * base + p.first) % mod1;
+                                h2[node] = (h2[node] * base + p.second) % mod2;
+                            }
+                        }
+                        center_hashes.push_back({h1[center], h2[center]});
+                    }
+
+                    // Canonical hash for this comp: min of center_hashes (if two centers, then min; if one, then that one)
+                    pair<ll, ll> comp_hash;
+                    if (center_hashes.size() == 1) {
+                        comp_hash = center_hashes[0];
+                    } else {
+                        comp_hash = min(center_hashes[0], center_hashes[1]);
+                        // Actually, we have two centers? Then we take the min of the two? But the vector might have two in arbitrary order? Then we take the min of the entire vector?
+                        // We can do: sort the vector and take the first? Or use std::min?
+                        // But note: we have only two? Then we can do min(center_hashes[0], center_hashes[1])
+                    }
+                    comp_hashes.push_back(comp_hash);
+                }
+
+                // Check if all comp_hashes are the same
+                bool all_same = true;
+                for (int i = 1; i < comp_hashes.size(); i++) {
+                    if (comp_hashes[i] != comp_hashes[0]) {
+                        all_same = false;
+                        break;
+                    }
+                }
+
+                if (all_same) {
+                    if (k > ans) {
+                        ans = k;
+                    }
+                }
+            }
+
+            if (ans == -1) {
+                cout << -1 << endl;
+            } else {
+                cout << ans << endl;
+            }
+
+            return 0;
+        }
+
+ 24. But note: the above code uses set for each component. The set lookup in the inner loop for building deg_in_comp and for building the tree? That might be O(log n) per lookup? Then the total cost for building deg_in_comp for one component: O( |comp| * deg(node) * log(|comp|) )? Actually, the set lookup is O(1) on average? Actually, we are using set which is a balanced BST? Then O(log |comp|). But |comp| can be up to 4000? Then log is about 12. Then worst-case total for one candidate u: O(n * 12) = O(12*n) which is acceptable? But we are building deg_in_comp: for each node in the comp, we iterate over all its neighbors. The total over the entire comp is the sum of the degrees of the nodes in the comp (in the global graph). The global graph has n-1 edges. Then the total cost for one candidate u: O(n) for the entire graph? Actually, the entire graph without u: we are traversing each edge at most twice? But we are using a set for each comp? Then the total cost for building deg_in_comp for all comps: O( (n-1) * log(s) )? Because each edge (x,y) that is not incident to u is in one comp, and we check for each endpoint: we check if the other endpoint is in the comp? Actually, for each edge (x,y) (x,y != u) we do two checks: when at x: we check y in comp? and at y: we check x in comp? Then the total cost: O( (n-1) * 2 * log(s) ) = O(n log n). Then that is acceptable.
+
+ 25. But we have already built the comp set? Then we can avoid by storing an array `in_comp` per candidate u? Then we can do:
+
+        We have an array in_comp of size n, initially false.
+        For each comp we set: for each node in the comp, in_comp[node]=true.
+        Then we can do: 
+            for (int node : comp) {
+                int cnt = 0;
+                for (int neighbor : graph[node]) {
+                    if (neighbor != u && in_comp[neighbor]) {
+                        cnt++;
+                    }
+                }
+                deg_in_comp[node] = cnt;
+            }
+
+        And then after processing the comp, we set in_comp for the nodes in the comp to false? But we are going to use the same array for the next comp? Then we can reset.
+
+        This avoids the set lookup.
+
+        Similarly, in the center peeling and in the tree building, we can use the array `in_comp`? 
+
+        Let me change to use an array `in_comp` for each candidate u? Then we don't use the set `comp` for membership? We use the array.
+
+        How?
+
+            We create an array `in_comp` of size n, initially false for the entire candidate u.
+            Then for each comp:
+                For each node in the comp: in_comp[node] = true.
+                Then we do the deg_in_comp and center peeling and tree building using this array.
+                Then after the comp, we set all these nodes to false.
+
+        Then the cost for setting: O(|comp|) per comp, and total for candidate u: O(n).
+
+        Then we avoid the set lookup.
+
+ 26. We'll modify the code accordingly.
+
+ 27. Also note: the centers: we break the loop when total_comp>2? But the condition: we break when the number of nodes in the current layer of leaves is such that after removing them the total_comp becomes <=2? Then we stop and the centers are the remaining leaves? Actually, the algorithm:
+
+        total_comp = |comp|
+        while total_comp>2:
+            remove the current leaves -> total_comp -= num_leaves
+            then if total_comp<=2, break.
+
+        Then the centers are the leaves that are left? Actually, the leaves queue at the end of the while loop.
+
+ 28. We'll do accordingly.
+
+ 29. Let me run on a line of 4 nodes? 
+
+        Nodes: 0-1-2-3, remove the center? Actually, we are testing candidate u? But let's test on a simple tree.
+
+        However, we are confident.
+
+ 30. We'll code accordingly.
+
+ 31. One more thing: the sample input #2: 
+        Input: 
+            6
+            1 2
+            1 3
+            2 4
+            3 5
+            3 6
+
+        We should output -1.
+
+        Why? 
+            The tree: 
+                node0: connected to 1 and 2
+                node1: connected to 0 and 3
+                node2: connected to 0, 4,5
+                node3: connected to 1
+                node4: connected to 2
+                node5: connected to 2
+
+            Candidate nodes? 
+                node0: deg=2 -> then (n-1)=5 -> 5 % 2 !=0 -> skip.
+                node1: deg=2 -> 5%2 !=0 -> skip.
+                node2: deg=3 -> 5%3 !=0 -> skip.
+                others: deg=1 -> skip.
+
+            Then no candidate -> output -1.
+
+ 32. Therefore, we are good.
+
+ 33. However, note: the sample input #2: 
+        6
+        1 2
+        1 3
+        2 4
+        3 5
+        3 6
+
+        The tree: 
+            node0 (1) is connected to node1 (2) and node2 (3)
+            node1 (2) is connected to node0 and node3 (4)
+            node2 (3) is connected to node0, node4 (5), node5 (6)
+
+        Then the degrees:
+            node0: 2
+            node1: 2
+            node2: 3
+            node3:1, node4:1, node5:1.
+
+        Then no candidate node? 
+
+ 34. So we output -1.
+
+ 35. We'll run the code on the sample inputs.
+
+ 36. Due to the constraints (n=4000) and worst-case O(n^2)=16e6, we hope it passes.
+
+ 37. We'll code accordingly.
+
+ 38. One more note: the center_hashes vector for a comp with two centers: we take the min of the two? But what if we have more than two centers? Actually, the center of a tree has at most two centers. So the leaves queue at the end has either 1 or 2 nodes.
+
+ 39. Therefore, we can do:
+
+        vector<int> centers;
+        while (!leaves.empty()) {
+            centers.push_back(leaves.front());
+            leaves.pop();
+        }
+
+        Then if centers.size()==1, then use that center's hash.
+        else, use min(center_hashes[0], center_hashes[1])? But we have computed two hashes? Then we take the min of the two.
+
+        Actually, we computed the hashes for each center and stored in center_hashes? Then we take min(center_hashes[0], center_hashes[1])? Or we can do:
+
+            pair<ll,ll> canonical_hash = center_hashes[0];
+            if (center_hashes.size()>1 && center_hashes[1] < canonical_hash) {
+                canonical_hash = center_hashes[1];
+            }
+
+        But the problem: if we have two centers, we have two hashes? Then we take the min? Then we store that as the comp_hash.
+
+ 40. We'll do:
+
+        pair<ll,ll> comp_hash = center_hashes[0];
+        for (int i=1; i<center_hashes.size(); i++) {
+            if (center_hashes[i] < comp_hash) {
+                comp_hash = center_hashes[i];
+            }
+        }
+
+ 41. Then we add comp_hash to comp_hashes.
+
+ 42. Now, we write the code accordingly.
+
+ 43. We'll use an array `in_comp` for the entire candidate u? Then we can reuse over the comps.
+
+        For candidate u:
+            vector<bool> in_comp(n, false);
+            ... then when we build a comp, we set in_comp for each node in that comp to true.
+            Then after processing the comp, we set them back to false.
+
+ 44. We'll do that.
+
+ 45. Code:
+
+        for (auto& comp_set : comps) {
+            // Mark the nodes in in_comp
+            for (int node : comp_set) {
+                in_comp[node] = true;
+            }
+
+            // ... do the work for this comp ...
+
+            // Then unmark:
+            for (int node : comp_set) {
+                in_comp[node] = false;
+            }
+        }
+
+ 46. But note: we have stored the comps as a vector of sets? Actually, we built the comps as sets? Then we can avoid storing the set if we use the array `in_comp`? Actually, we need the set to unmark? So we keep the set.
+
+        Alternatively, we can store the comps as a vector of vectors? Then we build the comps as vectors? Then we can use:
+
+            vector<vector<int>> comps_vec;
+            ... when building: 
+                vector<int> comp_vec;
+                ... then push_back the nodes to comp_vec and mark in_comp[node]=true at the same time?
+            Then we store comps_vec.
+
+        But then we lose the set? Then for building the deg_in_comp and the tree, we need to know which nodes are in the comp? We have the array `in_comp` and the vector of nodes? Then we don't need the set? 
+
+        Actually, we can avoid the set if we use the array `in_comp` for membership? Then we don't need the set? 
+
+        How to build the comps? We can use the array `visited` to mark the entire graph without u? Then for each neighbor, we do BFS and store the nodes in a vector? Then we mark in_comp for those nodes? Then we push the vector to comps_vec.
+
+        Then we do:
+
+            vector<vector<int>> comps_vec;
+            vector<bool> visited(n, false);
+            visited[u] = true;
+            vector<bool> in_comp(n, false);   // we'll use this for the entire candidate u, and reset after the candidate u? Actually, we can reuse for the comps.
+            for (int v : graph[u]) {
+                if (visited[v]) continue;
+                vector<int> comp_vec;
+                queue<int> q;
+                q.push(v);
+                visited[v] = true;
+                comp_vec.push_back(v);
+                in_comp[v] = true;
+                while (!q.empty()) {
+                    int node = q.front();
+                    q.pop();
+                    for (int neighbor : graph[node]) {
+                        if (neighbor == u) continue;
+                        if (!visited[neighbor]) {
+                            visited[neighbor] = true;
+                            comp_vec.push_back(neighbor);
+                            in_comp[neighbor] = true;
+                            q.push(neighbor);
+                        }
+                    }
+                }
+                comps_vec.push_back(comp_vec);
+            }
+
+        Then for each comp_vec in comps_vec:
+            // Then we compute deg_in_comp for each node in comp_vec using the array in_comp.
+            // Then after processing the comp_vec, we set in_comp for each node in comp_vec to false.
+
+        Then we don't store sets.
+
+ 47. We'll do that.
+
+ 48. Final code structure:
+
+        for (int u=0; u<n; u++) {
+            if (deg[u] < 2 || (n-1) % deg[u] != 0) continue;
+            int k = deg[u];
+            int s = (n-1) / k;
+
+            vector<bool> visited(n, false);
+            vector<bool> in_comp(n, false);   // for the entire candidate u: marks nodes that are in the current comp? Actually, we are going to build one comp at a time and then unmark after processing the comp.
+            vector<vector<int>> comps_vec;
+            visited[u] = true;
+            for (int v : graph[u]) {
+                if (visited[v]) continue;
+                vector<int> comp_vec;
+                // BFS to get the comp
+                queue<int> q;
+                q.push(v);
+                visited[v] = true;
+                comp_vec.push_back(v);
+                in_comp[v] = true;
+                while (!q.empty()) {
+                    int node = q.front(); q.pop();
+                    for (int neighbor : graph[node]) {
+                        if (neighbor == u) continue;
+                        if (!visited[neighbor]) {
+                            visited[neighbor] = true;
+                            comp_vec.push_back(neighbor);
+                            in_comp[neighbor] = true;
+                            q.push(neighbor);
+                        }
+                    }
+                }
+                comps_vec.push_back(comp_vec);
+            }
+
+            if (comps_vec.size() != k) continue;
+
+            bool valid_size = true;
+            for (auto& comp : comps_vec) {
+                if (comp.size() != s) {
+                    valid_size = false;
+                    break;
+                }
+            }
+            if (!valid_size) continue;
+
+            vector<pair<ll,ll>> comp_hashes;
+            // We'll use the array in_comp: we have already set in_comp for the nodes in the comps? Actually, we built comps_vec one by one and set in_comp for each comp? But we haven't unmarked the previous comp? 
+            // Actually, we built the comps_vec in a loop and set in_comp for each comp as we built it? Then we have in_comp set for the entire graph without u? Then we have to unmark after each comp? Actually, we are going to process each comp and then unmark.
+
+            for (auto& comp : comps_vec) {
+                // Build deg_in_comp for each node in comp
+                vector<int> deg_in_comp(n, 0);
+                for (int node : comp) {
+                    int cnt = 0;
+                    for (int neighbor : graph[node]) {
+                        if (neighbor != u && in_comp[neighbor]) {
+                            cnt++;
+                        }
+                    }
+                    deg_in_comp[node] = cnt;
+                }
+
+                // Find centers
+                queue<int> leaves;
+                vector<int> deg_work = deg_in_comp;   // copy
+                int total_comp = comp.size();
+                for (int node : comp) {
+                    if (deg_work[node] == 1) {
+                        leaves.push(node);
+                    }
+                }
+
+                while (total_comp > 2) {
+                    int num_leaves = leaves.size();
+                    total_comp -= num_leaves;
+                    for (int i=0; i<num_leaves; i++) {
+                        int node = leaves.front(); leaves.pop();
+                        for (int neighbor : graph[node]) {
+                            if (neighbor == u) continue;
+                            if (in_comp[neighbor] && deg_work[neighbor] > 1) {
+                                deg_work[neighbor]--;
+                                if (deg_work[neighbor] == 1) {
+                                    leaves.push(neighbor);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                vector<int> centers;
+                while (!leaves.empty()) {
+                    centers.push_back(leaves.front());
+                    leaves.pop();
+                }
+
+                vector<pair<ll,ll>> center_hashes;
+                for (int center : centers) {
+                    // Build tree: BFS from center
+                    vector<int> parent(n, -1);
+                    vector<vector<int>> children(n);
+                    vector<int> order;
+                    queue<int> q;
+                    q.push(center);
+                    parent[center] = -1;
+                    while (!q.empty()) {
+                        int node = q.front(); q.pop();
+                        order.push_back(node);
+                        for (int neighbor : graph[node]) {
+                            if (neighbor == u) continue;
+                            if (!in_comp[neighbor]) continue;
+                            if (neighbor == parent[node]) continue;
+                            parent[neighbor] = node;
+                            children[node].push_back(neighbor);
+                            q.push(neighbor);
+                        }
+                    }
+
+                    vector<ll> h1(n, 1);
+                    vector<ll> h2(n, 1);
+                    for (int i = order.size()-1; i>=0; i--) {
+                        int node = order[i];
+                        vector<pair<ll,ll>> child_hashes;
+                        for (int child : children[node]) {
+                            child_hashes.push_back({h1[child], h2[child]});
+                        }
+                        sort(child_hashes.begin(), child_hashes.end());
+                        for (auto& p : child_hashes) {
+                            h1[node] = (h1[node] * base + p.first) % mod1;
+                            h2[node] = (h2[node] * base + p.second) % mod2;
+                        }
+                    }
+                    center_hashes.push_back({h1[center], h2[center]});
+                }
+
+                pair<ll,ll> comp_hash = center_hashes[0];
+                for (int i=1; i<center_hashes.size(); i++) {
+                    if (center_hashes[i] < comp_hash) {
+                        comp_hash = center_hashes[i];
+                    }
+                }
+                comp_hashes.push_back(comp_hash);
+
+                // Unmark the comp in in_comp: but note, we are going to use the same in_comp for the next comp? Then we must unmark.
+                for (int node : comp) {
+                    in_comp[node] = false;
+                }
+            }
+
+            // Then check if all comp_hashes are the same
+            bool all_same = true;
+            for (int i=1; i<comp_hashes.size(); i++) {
+                if (comp_hashes[i] != comp_hashes[0]) {
+                    all_same = false;
+                    break;
+                }
+            }
+            if (all_same) {
+                if (k > ans) ans = k;
+            }
+        }
+
+ 49. We note: the array `visited` is per candidate u? Then we don't need to reset `in_comp` at the end of candidate u? Actually, we unmark each comp after processing. Then the in_comp array is all false at the end of the candidate u.
+
+ 50. We'll run on the sample input #1.
+
+ 51. Due to the complexity, we hope it passes.
+
+ 52. Let me test with the sample input #1: n=13, and u=3 (node4) -> then we get k=3, and then three comps, and then the comp_hashes should be the same.
+
+ 53. We output 3.
+
+ 54. We write the code accordingly.
+
+ 55. One more note: the graph might be big, so we use vector<> for the graph.
+
+ 56. We'll submit the code.
+
+ 57. But note: the center_hashes for a comp: we use `center_hashes` vector to store the hashes for the centers of that comp. Then we take the min.
+
+ 58. We are confident.
+
+ 59. We'll code accordingly.
+
+ 60. Note: the node u is 0-indexed. The input: the node4 is index 3? The input says node4 is the good cutting point? Then u=3.
+
+ 61. In the sample input: 
+        "2 4" -> 1 and 3? Then u=3.
+
+ 62. Then we do:
+
+        k = deg[3] -> what is deg[3]? 
+            The node3: 
+                edges: 
+                    2 4 -> (1,3)
+                    4 7 -> (3,6)
+                    4 12 -> (3,11)
+                    3 12 -> (2,11) -> wait, the input: 
+                        "3 12" -> that is node3 and node12? -> 0-indexed: 2 and 11? Then node3 (index3) is not connected to 2? 
+                Actually, the input: 
+                    "2 4" -> 1 and 3 -> so node1 and node3: index1 and index3.
+                    "4 7" -> 3 and 6 -> index3 and index6.
+                    "4 12" -> 3 and 11 -> index3 and index11.
+                Then deg[3]=3? Then k=3, and (n-1)=12, divisible by 3 -> s=4.
+
+        Then we break into 3 components.
+
+ 63. We are good.
+
+ Let's run the code on the sample input #1 and hope for 3.
+
+ But due to time constraints, we assume correctness.
+
+ We output the code accordingly.
+
+ However, note: the center_hashes vector for a comp might have more than two centers? Actually, no: the center of a tree has at most two nodes.
+
+ But what if the tree has three centers? Then our algorithm would break? Actually, the center of a tree is either 1 or 2 nodes. The leaf removal algorithm always ends with 1 or 2 nodes.
+
+ We are safe.
+
+ Final code in C++:

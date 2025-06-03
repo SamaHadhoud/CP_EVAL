@@ -1,0 +1,7 @@
+There are multiple ways to get CORRECT in this problem. To make sure the output $B$ has $\geq N$ total difference with $A$, we may need to shuffle $A$ such that no element in $A$ remains in its position (also called a _derangement_ of $A$), i.e. $A_i \neq B_i$ for all $i = 1..N$. One easy method to achieve this is simply by shifting $A$ one element to the right (or left). For example, let $A = \{1,2,3,4,5\}$, then $B = \{2,3,4,5,1\}$. Using this method, it is guaranteed that no element in $A$ remains in its position.
+
+Several WRONG-ANSWER solutions:
+
+- **Reversing $A$**. When $|A|$ is odd, then reversing $A$ will leave exactly one element (at the center) remains in its position. It is possible to design cases such that the total difference is less than $N$. For example, $A = \{2,4,3,5,1\}$ and $B = reverse(A) = \{1,5,3,4,2\}$, then the total difference is $1 + 1 + 0 + 1 + 1 = 4$ which is less than $N = 5$.
+
+- **Random shuffling $A$**. It is tempting to simply random shuffle the input to solve this problem, however, such a solution would not work. There is no guarantee that random shuffling $A$ will produce $B$ such that $A_i \neq B_i$ for all $i$, thus, the total difference might be less than $N$. The test data is designed such that a _plain_ random shuffle (e.g., C++ `random_shuffle()`, Java `Collections.shuffle()`, Python `random.shuffle()`) solution only has $< 0.02\%$ chance of getting CORRECT. Moreover, if a fixed random seed is used, then it has $0\%$ chance of getting CORRECT.

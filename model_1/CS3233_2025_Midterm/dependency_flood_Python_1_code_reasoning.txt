@@ -1,0 +1,493 @@
+ We are given: N, M, K, then M edges, then Q queries.
+ The graph is on courses 1..N, and edges are from a lower-indexed course to a higher-indexed course (u < v).
+ Since the graph is a DAG and the natural order (by course number) is a topological order, we can compute dp_in and dp_out by traversing in increasing and decreasing order, respectively.
+
+ Important: The initial graph is acceptable. We have to process Q queries: each is an edge (c,d) to add.
+
+ However, note: the propagation after adding an edge must be done if the new edge might extend a chain, but note that we are bounded by K: we only propagate if the new chain length is at most K (and if it is greater than the current value).
+
+ Steps:
+
+ Precomputation:
+   - Build the initial graph (adj_out for outgoing edges, adj_in for incoming edges) and a set of edges for existence check.
+   - dp_in[i]: the length of the longest chain ending at i.
+        We can compute by iterating i from 1 to N:
+            dp_in[i] = 1
+            for each j in adj_in[i] (which are courses j that must be taken before i, and j < i):
+                dp_in[i] = max(dp_in[i], dp_in[j] + 1)
+
+   - dp_out[i]: the length of the longest chain starting at i.
+        We can compute by iterating i from N down to 1:
+            dp_out[i] = 1
+            for each j in adj_out[i] (which are courses j that depend on i, and j>i):
+                dp_out[i] = max(dp_out[i], dp_out[j] + 1)
+
+ Query processing:
+   For each query (c,d):
+        If (c,d) is already in the set: output "accept" (and we don't add it again, but it's already there so no change).
+
+        Else, we check: if dp_in[c] + dp_out[d] >= K+1, then adding (c,d) would create a chain of length (chain ending at c) + (chain starting at d) + the new edge -> which is dp_in[c] (chain ending at c) and then d and then the chain from d: so total length = dp_in[c] + (1 + dp_out[d] - 1) = dp_in[c] + dp_out[d]? 
+        Actually, note: 
+            chain ending at c: has length dp_in[c] (which includes c)
+            chain starting at d: has length dp_out[d] (which includes d)
+            The new chain: [chain ending at c] -> d -> [chain starting at d] (without d counted twice) -> so total length = dp_in[c] + dp_out[d]
+            We require that the entire set of courses can be scheduled in K semesters. So if we have a chain of length L, we need at least L semesters. Therefore, if dp_in[c] + dp_out[d] > K, then we cannot schedule? Actually, if it is >= K+1, then we need at least K+1 semesters -> which is more than K.
+
+        So if dp_in[c] + dp_out[d] >= K+1, then we output "reject".
+
+        Otherwise, we add the edge (c,d) to the graph (to adj_out[c], adj_in[d], and to the set) and then update the dp arrays:
+
+        We have two directions to update:
+
+        (1) For the new edge (c,d): it might extend the chain ending at d.
+            new_value = dp_in[c] + 1
+            If new_value > dp_in[d] and new_value <= K (if it's above K, we don't need to update because we already know that the chain is too long? but note: we already checked that the chain for the new edge doesn't break K? Actually, we checked that the chain from c to d via the edge doesn't form a chain of length > K? But note: the chain ending at d might become new_value, and that might be at most K (because we only come here if the new chain that we checked was < K+1). However, we must update only if the new_value is greater than the current dp_in[d] and also if it is <= K.
+
+            Then we propagate from d to its descendants: 
+                We do a BFS starting from d: 
+                    For d: we updated to new_value.
+                    Then for each neighbor w (that d has an edge to, i.e., w in adj_out[d]), we can try: candidate = dp_in[d] + 1
+                    If candidate is greater than the current dp_in[w] and candidate <= K, then we update dp_in[w] and push w.
+
+        (2) Similarly, the new edge might extend the chain starting at c.
+            new_value = dp_out[d] + 1
+            If new_value > dp_out[c] and new_value <= K, then update dp_out[c] and then propagate backwards (to ancestors of c): 
+                We do a BFS from c: 
+                    For each neighbor w (that has an edge to c, i.e., w in adj_in[c]), candidate = dp_out[c] + 1
+                    If candidate is greater than the current dp_out[w] and candidate <= K, then update and push w.
+
+        Note: Why do we need to propagate? Because the update at d might allow a longer chain for the nodes that depend on d? Similarly, the update at c might allow a longer chain for the nodes that c depends on.
+
+        However, note: the propagation must be done because the update at d (for dp_in) might affect all nodes that come after d. Similarly, the update at c (for dp_out) might affect all nodes that come before c.
+
+        But note: the graph is a DAG and the edges are from lower to higher? Actually, we have u < v for every edge. So we can traverse in increasing order for dp_in and decreasing for dp_out.
+
+        However, we are updating on the fly. The BFS propagation is necessary because we are updating one node and then we update the nodes that are directly connected and then their neighbors.
+
+        Important: We only update if the new chain length is at most K. This is because if a chain length becomes K+1, then we have an unacceptable set, but note: we are only adding one edge and we already checked that the chain from c to d doesn't form a chain of length >= K+1. However, it might cause a chain elsewhere? Actually, we are updating the dp_in and dp_out arrays to reflect the new edge, and we must propagate the updates to avoid having a chain that breaks the constraint.
+
+        But note: we are only propagating if the new value is at most K. If we get a chain that would become K+1, then we don't update that node? Actually, we are not going to update a node to a value that is greater than K? Because we skip such updates. However, if we don't update, then we might leave the node with an old value that is less than K, but then the chain that would be formed by the new edge and the propagation might be longer? 
+
+        However, the key is: we already checked that the chain formed by the new edge (c,d) is at most K (we check: dp_in[c] + dp_out[d] < K+1). Then when we update, we are only updating to values that are at most K. Then the propagation: we only update if the candidate (current node's value + 1) is <= K.
+
+        But note: the propagation might extend the chain beyond the current node. However, the propagation condition ensures that we only update if the candidate is <= K. So we are safe.
+
+        However, what if the propagation leads to a chain that is actually longer than K? We don't update beyond K. But note: if a chain of length K is formed, that is acceptable because we have K semesters. And we are not updating a node to a value greater than K, so we won't propagate a chain that becomes K+1.
+
+        But note: when we check the new edge, we only check the chain that goes from the chain ending at c to the chain starting at d. However, after adding the edge, the propagation might reveal a longer chain that goes through other edges? 
+
+        Actually, the propagation is necessary to update the dp_in and dp_out arrays so that future queries have the correct information.
+
+        Example: 
+          We have an edge (a,b) and then we add (b,c). Then we update the chain ending at c: it becomes max(old_dp_in[c], dp_in[b]+1). But if we then later add (c,d), we must know the updated chain ending at c.
+
+        Therefore, we must update the arrays.
+
+        However, note: the propagation is bounded. Since we only update a node when we can increase its dp_in or dp_out (and we only do so if the new value is at most K) and K is at most 100, each node might be updated at most K times. This makes the total propagation cost O(K*(N+Q)), which is acceptable because K is small (<=100) and N, Q up to 200,000.
+
+ Implementation:
+
+   We maintain:
+        adj_out: list of lists for outgoing edges (for each node u: list of v such that u->v exists)
+        adj_in: list of lists for incoming edges (for each node v: list of u such that u->v exists)
+        edges_set: set of edges (as tuples (u,v))
+
+   dp_in: list of current chain lengths ending at each node (initialized to 1, then computed by the initial graph)
+   dp_out: similarly.
+
+   For each query:
+
+        c, d = given
+
+        if (c,d) in edges_set: 
+            output "accept"
+
+        else:
+            if dp_in[c] + dp_out[d] >= K+1:
+                output "reject"
+            else:
+                output "accept"
+                add (c,d) to edges_set
+                append d to adj_out[c]
+                append c to adj_in[d]
+
+                # Update for dp_in: starting from d, then propagate to nodes that d points to.
+                new_in = dp_in[c] + 1
+                if new_in > dp_in[d] and new_in <= K_val:   # K_val is our K
+                    # update d and then propagate
+                    dp_in[d] = new_in
+                    queue_in = deque([d])
+                    while queue_in:
+                        u = queue_in.popleft()
+                        for w in adj_out[u]:
+                            candidate = dp_in[u] + 1
+                            if candidate > dp_in[w] and candidate <= K_val:
+                                dp_in[w] = candidate
+                                queue_in.append(w)
+
+                # Update for dp_out: starting from c, then propagate to nodes that point to c.
+                new_out = dp_out[d] + 1
+                if new_out > dp_out[c] and new_out <= K_val:
+                    dp_out[c] = new_out
+                    queue_out = deque([c])
+                    while queue_out:
+                        u = queue_out.popleft()
+                        for w in adj_in[u]:
+                            candidate = dp_out[u] + 1
+                            if candidate > dp_out[w] and candidate <= K_val:
+                                dp_out[w] = candidate
+                                queue_out.append(w)
+
+   Then output the result for each query.
+
+ But note: the propagation might be expensive if we do a BFS for every accepted edge? However, note that each node can be updated at most K times (because the chain length cannot exceed K). So the total number of updates is bounded by O(K*(N+Q)).
+
+ Since K is at most 100 and the total nodes plus edges is about 400,000 (N up to 200,000 and Q up to 200,000) in the worst-case, the worst-case total updates would be 100*(200,000+200,000)=40e6, which is acceptable in Pyton in 2 seconds? Actually, worst-case might be higher because each update might trigger a BFS that traverses many edges? 
+
+ However, note: each edge is processed at most once per update that affects the node? Actually, when we update a node, we look at all its outgoing (for dp_in) or incoming (for dp_out) edges. And each node can be updated at most K times. So the total operations for dp_in propagation: 
+        Sum_{node} (K * (number of outgoing edges from that node)) 
+        = K * (total edges) 
+        and similarly for dp_out: K * (total edges)
+
+ The total edges initially is M, and we add at most Q edges. So total edges = M+Q.
+
+ Therefore, the total propagation cost is O(K*(M+Q)).
+
+ Since K<=100, and M, Q <= 200,000, then total operations is 100*(400,000) = 40e6, which is acceptable.
+
+ However, worst-case we might have 40e6 operations per direction? Actually, we have two propagations: one for dp_in and one for dp_out. So total operations would be 2 * K * (M+Q) = 80e6, which is acceptable in Pyton in 2 seconds? 
+
+ But note: worst-case the graph might be dense? However, the graph has at most 200,000+200,000=400,000 edges. So the total operations would be 100 * 400,000 = 40e6 per propagation direction? Actually, no: for each edge we might be processed once per update of its starting node? 
+
+ Specifically, in the dp_in propagation: 
+        We start at a node and traverse all its outgoing edges. Then if we update a node, we traverse its outgoing edges. But note: each edge (u->v) might be processed every time the dp_in[u] is updated? 
+
+ However, the propagation condition: we only update a node v if we can set dp_in[v] to a new value that is greater than the current one and <=K. And each node can be updated at most K times (since the chain length increases by at least 1 each update, and we stop at K). 
+
+ Therefore, for each node, we process its outgoing edges at most K times. So the total work for dp_in propagation is: 
+        Sum_{v} [ (number of times we update v) * (out_degree(v)) ]
+
+ And the total number of updates is at most K * n? Actually, no: each node is updated at most K times. So total updates is at most K * n. But the work per update of a node is proportional to its out_degree. So total work = K * (sum_{v} out_degree(v)) = K * (total edges).
+
+ Similarly for dp_out: total work = K * (total edges).
+
+ Therefore, the total propagation cost over all queries is K * (M+Q) for dp_in and K * (M+Q) for dp_out -> 2*K*(M+Q).
+
+ With M, Q <= 200000, and K=100, we have 2*100*400000 = 80,000,000 operations, which is acceptable in Pyton in 2 seconds? 
+
+ But note: worst-case we might have 80e6 operations, and each operation is a constant time check. In Pyton, 80e6 operations is acceptable in 2 seconds.
+
+ However, worst-case we might have many edges per node? The graph is sparse: the total edges is M+Q, which is 400,000. So the propagation is over the edges and each edge is processed at most K times per direction? Actually, we are processing each edge from a node when that node is updated. And each node is updated at most K times. So the total operations is bounded by 2*K*(total edges) = 80,000,000.
+
+ We must be cautious: we are using BFS, but note that we are not visiting the same node twice in the same BFS, but we might update a node multiple times (each time we update it, we enqueue it again). However, we update a node at most K times. So the total enqueues per node is at most K. Therefore, the total queue operations (enqueue and dequeue) is O(K*n). But the edge processing: we process the edges of a node every time we update that node. So the total edge processing is O(K*(M+Q)).
+
+ Therefore, we code as described.
+
+ One more note: we are storing the graph with adj_out and adj_in. We update the graph when we accept an edge.
+
+ Let's run the sample: 
+     Input: "4 1 2\n1 2\n3\n2 3\n3 4\n1 3"
+
+     Initial edges: (1,2)
+     Then queries: 
+         2 3 -> check: dp_in[2] + dp_out[3] 
+            Initially: 
+                dp_in: 
+                  1: 1
+                  2: dp_in[1]+1 = 2 -> so 2
+                  3: 1 (no incoming) -> 1
+                  4: 1
+                dp_out:
+                  4: 1
+                  3: 1 (but then from 3: no outgoing? so 1) -> actually we have no edge from 3? so 1.
+                  2: 1 (because no outgoing from 2? but we have an edge from 2 to 3? no, initially we only have (1,2)). 
+                Actually, the initial graph: 
+                  adj_in[2] = [1]
+                  adj_out[1] = [2]
+
+                Then for dp_in: 
+                  1:1
+                  2: dp_in[1]+1 = 2
+                  3:1 -> no incoming
+                  4:1
+
+                dp_out: 
+                  from 4: 1
+                  3: 1 (because no outgoing from 3) -> then 2: we look at adj_out[2]: nothing? so 1; then 1: adj_out[1] has [2] -> dp_out[1] = max(1, dp_out[2]+1) = 1+1=2.
+
+                So for (2,3): 
+                  dp_in[2] = 2, dp_out[3]=1 -> 2+1=3 -> which is >=3? and K=2 -> so 3>=3 -> which is 3>=2+1 -> true -> reject.
+
+                But the sample output for the first query is "reject". So that matches.
+
+        Next: 3,4 -> 
+            Now the graph is still the same: because we didn't add the first edge. 
+            Check: dp_in[3] = 1, dp_out[4]=1 -> 2 < 3 -> accept? 
+            Then we add (3,4). Then update:
+                dp_in: for 4: new_in = dp_in[3]+1 = 2 -> which is greater than current dp_in[4] (which is 1) and <=2 -> so update dp_in[4]=2. Then propagate: from 4, no outgoing -> done.
+                dp_out: for 3: new_out = dp_out[4]+1 = 2 -> update dp_out[3]=2. Then propagate: from 3, look at its incoming edges? none -> so done.
+
+            Then the graph has edges: (1,2) and (3,4). 
+
+        Next: 1,3 -> 
+            Check: dp_in[1]=1, dp_out[3]=2 -> 1+2=3 -> >=3 -> so reject.
+
+        Output: 
+            reject
+            accept
+            reject -> matches sample.
+
+     Another sample: 
+        Input #2: 
+            "6 4 3\n2 5\n1 3\n1 4\n4 6\n8\n2 6\n3 4\n4 5\n1 3\n2 4\n3 6\n2 3\n5 6"
+
+        We'll build the initial graph: 
+            edges: (2,5), (1,3), (1,4), (4,6)
+
+        Precomputation for dp_in and dp_out:
+
+        dp_in:
+          1:1
+          2:1
+          3: dp_in[1]+1=2
+          4: dp_in[1]+1=2
+          5: dp_in[2]+1=2
+          6: dp_in[4]+1=3   [because 4->6: so 2+1=3]
+
+        dp_out: (compute from 6 down to 1)
+          6:1
+          5:1 -> because no outgoing from 5
+          4: max(1, dp_out[6]+1=2) -> 2
+          3:1 -> no outgoing
+          2: max(1, dp_out[5]+1=2) -> 2
+          1: max(1, 
+                 for 3: dp_out[3]+1=2 -> then 1+? 
+                 for 4: dp_out[4]+1=3 -> so 3) -> so 3
+
+        Then queries:
+
+        1. 2,6: 
+            dp_in[2]=1, dp_out[6]=1 -> 2<4 -> accept. Then we add the edge (2,6). 
+            Update:
+              For dp_in: at 6: new candidate = dp_in[2]+1 = 2. But current dp_in[6]=3 -> so no update for 6? 
+              For dp_out: at 2: new candidate = dp_out[6]+1 = 2. Current dp_out[2]=2 -> so no update.
+
+            So nothing changes.
+
+        2. 3,4: 
+            dp_in[3]=2, dp_out[4]=2 -> 4>=4? -> 4>=4 -> so 4>=3+1? -> yes -> so reject. 
+            (But the sample output for the second query is "reject".)
+
+        3. 4,5: 
+            Check: dp_in[4]=2, dp_out[5]=1 -> 3<4 -> accept. Then add (4,5). 
+            Then update:
+                For dp_in[5]: new candidate = dp_in[4]+1 = 3 -> which is > current 2? -> update to 3. Then propagate from 5: 
+                    adj_out[5]: initially none? so stop.
+                For dp_out[4]: new candidate = dp_out[5]+1 = 2 -> current is 2? so no update.
+
+            Now the graph has the initial edges plus (2,6) and (4,5).
+
+        4. 1,3: 
+            Already exists? -> no. Check: dp_in[1]=1, dp_out[3]=? 
+                We have to recompute? Actually, we updated the graph? But we didn't update any chain that affects 3? 
+                Let's check the current arrays: 
+                  dp_in: 
+                    1:1, 2:1, 3:2, 4:2, 5:3, 6:3 (because now 2->6: but that doesn't affect 3. Also 4->5: so 5 got updated to 3? and then 6: 
+                      from 4: 2+1=3, from 2:1+1=2 -> so 3. 
+                  dp_out: 
+                    6:1
+                    5:1 -> because no outgoing? 
+                    4: max(1, dp_out[5]+1=2, dp_out[6]? but we have no edge from 4 to 6? actually we do? no, we have (4,5) and (4,6) is already there? 
+                    Actually, after adding (4,5), we didn't update the propagation for dp_out for 4? 
+                    But note: when we added (4,5), we tried to update dp_out[4] from the new edge: we computed new_out = dp_out[5]+1 = 2, which was not greater than the current dp_out[4] (which was 2) -> so no update.
+
+                For 3: 
+                  adj_out[3]: nothing? so dp_out[3] remains 1? 
+                Actually, the initial computation: 
+                  After the initial graph, dp_out[3]=1 -> because no outgoing from 3. Then we added no edge from 3? so still 1.
+
+                So for (1,3): 
+                  dp_in[1]=1, dp_out[3]=1 -> 2<4 -> accept. 
+
+                Then we add (1,3) -> but note: the edge (1,3) is already in the initial graph? 
+                The initial graph has (1,3). So actually we should have output "accept" because it already exists.
+
+                However, the sample input says: 
+                    "6 4 3
+                    2 5
+                    1 3
+                    1 4
+                    4 6
+                    8
+                    2 6
+                    3 4
+                    4 5
+                    1 3
+                    ..."
+
+                The fourth query is (1,3). But the initial graph already has (1,3). So we output "accept" because it exists.
+
+            So that matches.
+
+        5. 2,4: 
+            Check: dp_in[2]=1, dp_out[4]=2 -> 3<4 -> accept. Then add (2,4). 
+            Update:
+              For dp_in[4]: new candidate = dp_in[2]+1=2 -> current is 2 -> no update.
+              For dp_out[2]: new candidate = dp_out[4]+1=3 -> which is greater than current dp_out[2]=2 -> and <=3 -> update to 3. Then propagate from 2: 
+                  For w in adj_in[2]: initial adj_in[2]? none? so stop.
+
+        6. 3,6: 
+            Check: dp_in[3]=2, dp_out[6]=1 -> 3<4 -> accept. Then add (3,6). 
+            Update:
+              For dp_in[6]: new candidate = dp_in[3]+1=3 -> current is 3? so no update.
+              For dp_out[3]: new candidate = dp_out[6]+1=2 -> which is > current dp_out[3]=1 -> update to 2. Then propagate: 
+                 For w in adj_in[3]: we have w=1? because initial edge (1,3). 
+                    candidate = dp_out[3]+1=3 -> which is greater than current dp_out[1]=? 
+                    Current dp_out[1]: initially 3? 
+                    After adding (2,4) and updating dp_out[2] to 3, did that propagate to 1? 
+                    Initially: dp_out[1] = max(1, dp_out[3]+1, dp_out[4]+1) -> but we updated nothing for 3 and 4? 
+                    Actually, we updated dp_out[3] to 2, so now for 1: 
+                         from 3: 2+1=3 -> still 3? 
+                         from 4: dp_out[4]=2 -> 2+1=3 -> so still 3.
+                    So candidate=3 for w=1: but current is 3 -> no update.
+
+        7. 2,3: 
+            Check: dp_in[2]=1, dp_out[3]=2 -> 3<4 -> accept. Then add (2,3). 
+            Update:
+              For dp_in[3]: new candidate = dp_in[2]+1=2 -> current is 2 -> no update.
+              For dp_out[2]: new candidate = dp_out[3]+1=3 -> current is 3? so no update.
+
+        8. 5,6: 
+            Check: dp_in[5]=3, dp_out[6]=1 -> 4>=4 -> so 4>=3+1 -> reject.
+
+        Output: 
+            accept
+            reject
+            accept
+            accept   (because existing: (1,3) is already there? actually the fourth query is (1,3) which exists -> so output accept)
+            accept
+            accept
+            accept
+            reject
+
+        The sample output is: 
+            accept
+            reject
+            accept
+            accept
+            accept
+            accept
+            accept
+            reject
+
+        So it matches.
+
+ Implementation:
+
+        We store:
+            n, m, K_val = K
+            edges_set = set()
+            adj_out = [ [] for _ in range(n+1) ]
+            adj_in = [ [] for _ in range(n+1) ]
+
+            dp_in = [1]*(n+1)
+            dp_out = [1]*(n+1)
+
+        Precomputation for dp_in: 
+            for i from 1 to n:
+                for each j in adj_in[i]:
+                    dp_in[i] = max(dp_in[i], dp_in[j] + 1)
+
+        Precomputation for dp_out:
+            for i from n down to 1:
+                for each j in adj_out[i]:
+                    dp_out[i] = max(dp_out[i], dp_out[j] + 1)
+
+        Then process Q queries.
+
+        Note: the precomputation for dp_in: we must iterate in increasing order? yes, because edges are from j (which is < i) to i. Similarly, dp_out: decreasing order.
+
+        But note: we have to be cautious: the graph might have multiple edges? but the set avoids duplicates.
+
+        We'll code accordingly.
+
+        However, note: the initial graph might not be connected? but we traverse all nodes.
+
+        We'll use collections.deque for the BFS in propagation.
+
+ Let's code accordingly.
+
+ Important: The propagation for dp_in: we start from the node that we updated (d in the first part) and then traverse to its children (adj_out) and update if we can extend the chain.
+
+        Similarly, for dp_out: we start from the node (c) and then traverse to its parents (adj_in) and update.
+
+        We use queues for BFS.
+
+        We do not update a node if the new value is not strictly greater than the current one and within [current+1, K_val] (but we check: if candidate is greater than current and <=K_val).
+
+        We do not update if the candidate is not strictly greater? because if it's equal, we skip.
+
+        Also, note: the propagation might be triggered even if the new edge doesn't update the immediate node? For example, if we have a chain that is already long enough at d, then we skip the propagation for dp_in. Similarly for dp_out.
+
+        This is efficient.
+
+ Let's run the first sample again to make sure:
+
+        After adding (3,4) in the first sample:
+
+            dp_in: 
+                1:1, 2:2, 3:1 -> then for 4: we set to 2? because 1+1=2? 
+                Actually, we have an edge from 3 to 4: so we compute: dp_in[3]=1 -> then 1+1=2 -> which is greater than the current 1? so update to 2.
+
+            Then propagate from 4: 
+                adj_out[4]: none? so done.
+
+            dp_out: 
+                for 3: we set to 2? because dp_out[4] is 1? then 1+1=2 -> update to 2? 
+                Then propagate from 3: 
+                    adj_in[3]: none? so done.
+
+        Then for the next query (1,3): 
+            dp_in[1]=1, dp_out[3]=2 -> 3>=3 -> reject.
+
+        So it matches.
+
+ Code:
+
+        We'll read the input and then process.
+
+        Note: the initial graph might have multiple edges? but the problem says: each dependency is represented by a pair (u,v). So we can assume no duplicates.
+
+        Similarly, the queries: we are given distinct pairs? and we skip if already exists.
+
+        We'll use a set of tuples (u,v) for edges_set.
+
+        We'll build adj_out and adj_in for the initial edges.
+
+        Then precompute dp_in and dp_out.
+
+        Then process Q queries.
+
+        We'll use collections.deque.
+
+        Let's code accordingly.
+
+        We assume that the graph has at most 400,000 edges.
+
+        We'll use sys.stdin for speed.
+
+        We write the code accordingly.
+
+        Note: We are updating the graph (adding the edge to adj_out and adj_in) only when we accept and the edge is new.
+
+        We are also updating the edges_set.
+
+        We hope that the propagation does not cause too many updates.
+
+        We'll run the sample inputs to test.
+
+        We'll output the result for each query.
+
+        We write the code as below.
+
+        Let's hope.

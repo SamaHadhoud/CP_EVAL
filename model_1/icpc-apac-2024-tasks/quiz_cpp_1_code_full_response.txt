@@ -1,0 +1,302 @@
+To solve this problem, we need to efficiently answer multiple queries about the k-th smallest element in a sorted array \( L \), where \( L \) is constructed by computing a specific value for every pair of nodes \( (x, y) \) in a rooted tree. The value for each pair is defined as \( (x-1) \times n^2 + (\text{LCA}(x, y)-1) \times n + (y-1) \). Given the constraints \( n \) and \( q \) up to 100,000, a brute-force approach is infeasible. Instead, we leverage the structure of the problem to optimize the solution.
+
+### Approach
+1. **Problem Analysis**:
+   - The array \( L \) is sorted, and each element is derived from node pairs \( (x, y) \).
+   - The value can be decomposed into three parts: the row \( (x-1) \times n^2 \), the LCA component \( (\text{LCA}(x, y)-1) \times n \), and the column \( (y-1) \). The row part dominates, so elements are grouped by \( x \). Within each row \( x \), elements are sorted by the inner value: \( (\text{LCA}(x, y)-1) \times n + (y-1) \).
+
+2. **Key Insight**:
+   - For a fixed \( x \), the inner values depend on the LCA between \( x \) and \( y \), which can be determined by the path from the root to \( x \). Specifically, for each node \( z \) on this path, the set of \( y \) where \( \text{LCA}(x, y) = z \) is the subtree of \( z \) excluding the subtree of the child leading to \( x \).
+
+3. **Handling Queries**:
+   - For each query \( k \), determine the row \( x_0 \) and the position \( r \) within that row: \( x_0 = (k-1) // n + 1 \), \( r = (k-1) \% n + 1 \).
+   - For chain trees (each node has at most one child), a direct formula computes the \( r \)-th element in the row.
+   - For general trees:
+     - Precompute DFS in/out times and a wavelet tree to answer queries like counting nodes in a DFS interval with node indices \( \leq X \).
+     - For the path from the root to \( x_0 \), iterate over each node \( z \) in the path:
+        - Compute valid \( y \) values in the set \( S(z) \) (subtree of \( z \) excluding the next child on the path).
+        - Use binary search to find the smallest inner value \( V \) such that the count of \( y \) with \( (z-1) \times n + (y-1) \leq V \) is at least \( r \).
+     - The final answer is \( (x_0-1) \times n^2 + V \).
+
+4. **Complexity**:
+   - **Chain Tree**: Each query is \( O(1) \).
+   - **General Tree**:
+     - Preprocessing: \( O(n) \) for DFS and \( O(n \log n) \) for the wavelet tree.
+     - Per Query: \( O(\text{depth}(x_0) \times \log^2 n) \) due to binary search and wavelet tree queries. Caching paths for \( x_0 \) avoids recomputation.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <stack>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <queue>
+#include <map>
+using namespace std;
+typedef long long ll;
+
+struct WaveletNode {
+    int lo, hi;
+    vector<int> C;
+    WaveletNode *left, *right;
+
+    WaveletNode(vector<int> arr, int lo_val, int hi_val) : lo(lo_val), hi(hi_val), left(nullptr), right(nullptr) {
+        if (arr.empty() || lo == hi) {
+            return;
+        }
+        int mid = (lo + hi) / 2;
+        C.clear();
+        C.push_back(0);
+        vector<int> left_arr, right_arr;
+        for (int i = 0; i < arr.size(); i++) {
+            if (arr[i] <= mid) {
+                left_arr.push_back(arr[i]);
+                C.push_back(C.back() + 1);
+            } else {
+                right_arr.push_back(arr[i]);
+                C.push_back(C.back());
+            }
+        }
+        if (!left_arr.empty()) {
+            left = new WaveletNode(left_arr, lo, mid);
+        }
+        if (!right_arr.empty()) {
+            right = new WaveletNode(right_arr, mid+1, hi);
+        }
+    }
+
+    int query(int l, int r, int x) {
+        if (l > r) {
+            return 0;
+        }
+        if (lo == hi) {
+            if (lo <= x) {
+                return r - l + 1;
+            } else {
+                return 0;
+            }
+        }
+        int mid = (lo + hi) / 2;
+        if (x <= mid) {
+            if (left) {
+                int new_l = C[l];
+                int new_r = C[r+1] - 1;
+                return left->query(new_l, new_r, x);
+            } else {
+                return 0;
+            }
+        } else {
+            int left_count = C[r+1] - C[l];
+            int right_count = 0;
+            if (right) {
+                int new_l = l - C[l];
+                int new_r = r - C[r+1];
+                right_count = right->query(new_l, new_r, x);
+            }
+            return left_count + right_count;
+        }
+    }
+
+    ~WaveletNode() {
+        delete left;
+        delete right;
+    }
+};
+
+struct WaveletTree {
+    WaveletNode *root;
+    int min_val, max_val;
+
+    WaveletTree(vector<int> arr, int lo, int hi) {
+        root = new WaveletNode(arr, lo, hi);
+        min_val = lo;
+        max_val = hi;
+    }
+
+    int query(int l, int r, int x) {
+        if (l > r || x < min_val) return 0;
+        if (x >= max_val) {
+            return r - l + 1;
+        }
+        return root->query(l, r, x);
+    }
+
+    ~WaveletTree() {
+        delete root;
+    }
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, q;
+    cin >> n >> q;
+
+    vector<int> p_arr(n);
+    vector<int> parent_arr(n+1, 0);
+    vector<vector<int>> children(n+1);
+
+    int root = -1;
+    for (int i = 0; i < n; i++) {
+        cin >> p_arr[i];
+        parent_arr[i+1] = p_arr[i];
+        if (p_arr[i] == 0) {
+            root = i+1;
+        } else {
+            children[p_arr[i]].push_back(i+1);
+        }
+    }
+
+    bool is_chain = true;
+    if (n > 1) {
+        if (children[root].size() != 1) {
+            is_chain = false;
+        }
+        for (int i = 1; i <= n; i++) {
+            if (i != root && children[i].size() > 1) {
+                is_chain = false;
+                break;
+            }
+        }
+    } else {
+        is_chain = true;
+    }
+
+    vector<int> in_time(n+1, -1), out_time(n+1, -1);
+    vector<int> A;
+    if (!is_chain) {
+        vector<int> ptr(n+1, 0);
+        stack<int> st;
+        st.push(root);
+        in_time[root] = 0;
+        A.resize(n);
+        A[0] = root;
+        int timer = 1;
+        while (!st.empty()) {
+            int u = st.top();
+            if (ptr[u] < children[u].size()) {
+                int v = children[u][ptr[u]++];
+                in_time[v] = timer;
+                A[timer] = v;
+                timer++;
+                st.push(v);
+            } else {
+                out_time[u] = timer - 1;
+                st.pop();
+            }
+        }
+    }
+
+    WaveletTree *wt = nullptr;
+    if (!is_chain) {
+        wt = new WaveletTree(A, 1, n);
+    }
+
+    map<int, vector<int>> path_cache;
+
+    for (int i = 0; i < q; i++) {
+        ll k;
+        cin >> k;
+        k--;
+
+        ll x0 = k / n + 1;
+        ll r = k % n + 1;
+
+        if (is_chain) {
+            ll inner_val;
+            if (r <= x0 - 1) {
+                inner_val = (r - 1) * (n + 1LL);
+            } else {
+                inner_val = (x0 - 1) * n + (r - 1);
+            }
+            ll ans = (x0 - 1) * n * 1LL * n + inner_val;
+            cout << ans << '\n';
+        } else {
+            if (path_cache.find(x0) == path_cache.end()) {
+                vector<int> path;
+                int cur = x0;
+                while (cur != 0) {
+                    path.push_back(cur);
+                    cur = parent_arr[cur];
+                }
+                reverse(path.begin(), path.end());
+                path_cache[x0] = path;
+            }
+            const vector<int>& path = path_cache[x0];
+            ll low_val = 0;
+            ll high_val = (ll)n * (ll)n - 1;
+
+            auto count_in_row = [&](ll V) -> ll {
+                ll total = 0;
+                for (int idx = 0; idx < path.size(); idx++) {
+                    int z = path[idx];
+                    ll base = (ll)(z - 1) * (ll)n;
+                    if (base > V) {
+                        break;
+                    }
+                    ll rem = V - base;
+                    int Y0 = min(rem + 1, (ll)n);
+
+                    if (idx < path.size() - 1) {
+                        int next_node = path[idx+1];
+                        int L1 = in_time[z];
+                        int R1 = in_time[next_node] - 1;
+                        ll count1 = 0;
+                        if (L1 <= R1) {
+                            count1 = wt->query(L1, R1, Y0);
+                        }
+
+                        int L2 = out_time[next_node] + 1;
+                        int R2 = out_time[z];
+                        ll count2 = 0;
+                        if (L2 <= R2) {
+                            count2 = wt->query(L2, R2, Y0);
+                        }
+                        total += count1 + count2;
+                    } else {
+                        int L = in_time[z];
+                        int R = out_time[z];
+                        if (L <= R) {
+                            total += wt->query(L, R, Y0);
+                        }
+                    }
+                }
+                return total;
+            };
+
+            while (low_val < high_val) {
+                ll mid_val = (low_val + high_val) / 2;
+                if (count_in_row(mid_val) >= r) {
+                    high_val = mid_val;
+                } else {
+                    low_val = mid_val + 1;
+                }
+            }
+
+            ll ans = (x0 - 1) * n * 1LL * n + low_val;
+            cout << ans << '\n';
+        }
+    }
+
+    delete wt;
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Tree Classification**:
+   - The tree is first checked to determine if it is a chain (each node has at most one child). If so, a direct formula computes the result for each query in \( O(1) \) per query.
+2. **Preprocessing for General Trees**:
+   - **DFS Traversal**: Computes in-time, out-time, and an array \( A \) mapping DFS indices to node indices.
+   - **Wavelet Tree**: Built on \( A \) to efficiently count nodes in any DFS interval with node indices \( \leq X \).
+3. **Query Processing**:
+   - For each query, the row \( x_0 \) and position \( r \) within the row are determined.
+   - The path from the root to \( x_0 \) is retrieved or computed and cached.
+   - Binary search finds the smallest inner value \( V \) such that the count of valid \( y \) values (using the wavelet tree) meets or exceeds \( r \).
+   - The final result combines the row offset and \( V \).
+
+This approach efficiently handles the constraints by leveraging tree properties, binary search, and wavelet trees for range queries, ensuring optimal performance for large inputs.

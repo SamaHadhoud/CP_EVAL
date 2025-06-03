@@ -1,0 +1,2008 @@
+We are given two integers: N (the upper bound of the number range, from 1 to N) and K (the maximum number of guesses).
+We are also given a string of answers. The answers string can be in one of two forms:
+  1. The last character is '=' and all previous characters are either '<' or '>'. The length of the string is at most K.
+  2. The entire string has exactly K characters and each is either '<' or '>'.
+
+We are to output a sequence of guesses (each between 1 and N) that is consistent with the answers and the game rules, OR output -1 if it is impossible.
+
+Key points of the game:
+- Romanos' guesses must be consistent with all previous answers. That is, after each answer, the set of possible numbers is updated: 
+    - Initially, the set is [1, N].
+    - After a '<' answer to a guess g, the set becomes [1, g-1].
+    - After a '>' answer to a guess g, the set becomes [g+1, N].
+    - After an '=', we know the number and the game ends.
+
+- Theodora is cheating adaptively: she always chooses an answer that maximizes the remaining range. In case of a tie, she chooses '<'.
+
+However, note that in the problem we are given the answers. We are to reconstruct the guesses that would lead to that sequence of answers, under the condition that Romanos is playing "seriously" (so his guesses are consistent with previous answers) and Theodora is playing adversarially (by the rule above).
+
+But note: Theodora's answer for a given guess is determined by the current state (the current interval [L, R]) and the guess g. Specifically, for a guess g in [L, R]:
+  - If g is the only number (L = R), then she must answer '='. But if we see an '=' earlier, then that must be the case.
+
+  - Otherwise, she considers two possibilities:
+        Option 1: answer '<' -> then the new interval becomes [L, g-1] (if g-1 < L then this interval is empty) -> size = max(0, g - L)
+        Option 2: answer '>' -> then the new interval becomes [g+1, R] -> size = max(0, R - g)
+
+  - The rule: Theodora chooses the answer that leads to the larger interval. If both are equal, she chooses '<'.
+
+However, note that the problem does not require us to simulate Theodora's decision; we are given the answers. But we must check that the answers are consistent with her strategy? Actually, no: the problem says that Theodora "cheats" and changes her number as long as it is consistent. So the answers we are given must be the ones that Theodora would have given in some scenario. But note: we are also to reconstruct Romanos' guesses that would lead to that exact answer sequence.
+
+But here's the catch: Theodora's answer for a given guess is forced by her strategy. Therefore, for a given state [L, R] and a guess g, the answer she gives is predetermined. So we must have that the answer in the input for that guess is exactly the one that Theodora would have chosen.
+
+Therefore, our task is:
+  - We know the initial interval [1, N].
+  - We traverse the answer string one character at a time. For the i-th character, we must choose a guess g_i in the current interval [L, R] such that:
+        - If the current answer is '=', then we must have that the current interval has exactly one number? Actually, no: because Theodora can choose to answer '=' only when the number is g_i. But note: if the current interval has more than one number, she would never answer '=' (because she can choose to answer '<' or '>' to maximize the interval). Therefore, the only time we can get an '=' is when the current interval is a singleton? Actually, no: Theodora can change her number as long as it is consistent. So if the current interval is [L, R] and we guess g_i, then Theodora can choose to have the number be g_i (if it is in the interval) and then answer '='. But she doesn't have to: she can also choose to answer differently and then change her number to one that is not g_i. However, the problem says: she will always answer to maximize the remaining range. So if she answers '=' then the game ends and the remaining range is 0? That doesn't maximize the range. Therefore, she will only answer '=' when forced, i.e., when the current interval is {g_i} (a singleton and the only number is g_i). OR if she is forced to end the game? Actually, no: she can choose to answer '=' at any time when the number is g_i? But note: she wants to maximize the remaining range. The range after an '=' is 0. The range after a '<' is (g_i - L) and after a '>' is (R - g_i). So she will choose '=' only if both (g_i - L) and (R - g_i) are 0? That is, when L = R = g_i.
+
+But wait: what if the interval has more than one element? Then she can choose to answer '<' or '>', and both would leave a positive range? Then she would never choose '='? However, the problem says: she can change her number as long as it is consistent. So she is free to set her number to g_i even if there are other possibilities? Then why would she ever answer '='? Actually, the rules state: 
+  "Theodora will then say one of the following answers based on the exact condition"
+
+and then the three possibilities. The condition is: she must tell the truth relative to her current number. But she can change her number as long as it is consistent with all previous answers. So if the current guess is g_i, then she can set her number to g_i? Then she can answer '='. But note: if she does that, then the game ends and Romanos wins. She wants to avoid that. Therefore, she would only answer '=' when forced: that is, when the current interval has exactly one number and that number is g_i. Otherwise, she can choose to set her number to a value that is not g_i and then answer either '<' or '>'.
+
+But the problem states: "whenever possible, Theodora will always answer either ... that maximizes the possible answer range". So if the current interval has the number g_i, but also other numbers, she can avoid '='. Therefore, she will only use the answers '<' and '>' unless the current interval is a singleton and that singleton is g_i.
+
+Moreover, the input condition says that the last character might be '=' and then the game ends. So we must have that at the last guess, the interval becomes a singleton and the guess is that singleton? Or is it possible that the interval has multiple numbers? Actually, according to the above reasoning, Theodora would only answer '=' when the interval is a singleton and the guess is that number. Otherwise, she would have chosen an answer that leaves a positive range. Therefore, the problem implies that the answer '=' is only given at the last guess and only when the current interval has exactly one number and the guess is that number.
+
+But note the input condition: the string might end with '=' and then the previous answers are '<' or '>', and the length is at most K. So the game ends on the '='.
+
+Alternatively, the entire string has exactly K characters and they are all '<' or '>' (so Romanos never guessed correctly and used all K guesses).
+
+So our algorithm:
+
+We simulate the game with the given answers. We maintain the current interval [L, R] (initially [1, N]). We also maintain a list of guesses.
+
+For the i-th answer (0-indexed) in the string S (of length M):
+  - We must choose a guess g in [L, R] such that:
+        If S[i] is '<', then we require that the Theodora's strategy would have chosen '<' for this guess and the current interval. 
+        Similarly for '>' and '='.
+
+But how do we choose the guess? We have freedom: any guess that satisfies the condition and is in the current interval. However, we must also ensure that after updating the interval with the answer, the subsequent guesses are possible.
+
+But note: we are reconstructing the entire sequence. We are free to choose any consistent guess as long as the answer we get is the given one and the Theodora's strategy is respected.
+
+However, the problem says: Theodora's answer is determined by the current interval and the guess. Specifically, for a given interval [L, R] and a guess g, the answer is:
+    if L == R and g == L: then '=' (but note: if L==R and g != L, that's impossible because the guess must be in [L,R]).
+    else:
+        let left_range = g - L   [if we choose '<', then the new interval is [L, g-1] -> size = g - L]
+        let right_range = R - g   [if we choose '>', then the new interval is [g+1, R] -> size = R - g]
+
+        Theodora will choose:
+          if left_range > right_range: then she must answer '<'
+          if left_range < right_range: then she must answer '>'
+          if left_range == right_range: then she must answer '<' (by tie-breaker)
+
+        But note: if the answer we are given is '=', then we require that the interval [L, R] has exactly one number and that number is g. Otherwise, Theodora would not have chosen '='.
+
+Therefore, for the i-th step:
+  - If the answer is '=', then we must have L == R and then we set g = L (or R). Then the next interval becomes [L, R] (but the game ends).
+
+  - If the answer is '<' or '>', then we must choose a guess g in [L, R] such that:
+        (a) Theodora's forced answer for (L, R, g) is exactly the given answer.
+        (b) And then the next interval becomes:
+               [L, g-1] for '<'
+               [g+1, R] for '>'
+
+But note: we also have to consider that if we choose a particular g, then the next interval must be non-empty for the subsequent answers (if any). However, we are not forced to look ahead arbitrarily: we are going to simulate step by step.
+
+But there is a catch: the Theodora's answer for a guess g in [L, R] is predetermined by the sizes of the left and right intervals. So we must choose g such that:
+
+    For an answer '<' at this step: we require that 
+        (g - L) >= (R - g)   [because if (g-L) > (R-g) then Theodora chooses '<' and if equal then by tie-breaker she also chooses '<'] 
+        BUT: if (g-L) < (R-g), then Theodora would choose '>' and we cannot use that g for an answer '<'.
+
+    Similarly, for an answer '>' at this step: we require that 
+        (R - g) > (g - L)   [because if (R-g) is strictly greater than (g-L) then Theodora chooses '>', and if they are equal then she chooses '<' so we cannot have an answer '>' in the tie case? Actually, no: if they are equal, she chooses '<', so we must avoid that. Therefore, for '>' we require (R-g) > (g-L).
+
+But wait: what if the interval has only two numbers? [L, R] with R = L+1. Then if we choose L:
+        left_range = L - L = 0
+        right_range = R - L = 1 -> so Theodora would choose '>' (because 1>0) -> so we cannot get a '<' by guessing L? Actually, we can get '<' by guessing R? 
+        For g = R: 
+            left_range = R - L = 1
+            right_range = R - R = 0 -> so Theodora would choose '<' (because 1>0, and in tie-breaker we don't have a tie here).
+
+So for the two-element interval [L, R] (with R = L+1):
+    - If we are to get a '<', we must guess R? Then the next interval is [L, R-1] = [L, L] -> singleton.
+    - If we are to get a '>', we must guess L? Then the next interval is [L+1, R] = [R, R] -> singleton.
+
+But what if we are to get an '='? Then we must have the interval being a singleton.
+
+Therefore, the constraints for the current step:
+
+    Let s = the given answer for step i.
+
+    We need to choose a guess g in [L, R] such that:
+        if s == '=': then we require L == R and g = L (so there is only one choice).
+
+        if s == '<': then we require that (g - L) >= (R - g)   [because then Theodora would choose '<' by her rule: either strictly greater or equal and in the tie she picks '<'].
+
+        if s == '>': then we require that (R - g) > (g - L)   [because if they are equal, she picks '<', so we need strict inequality].
+
+    Then we update the interval:
+        if s == '<': then new interval [L, g-1]
+        if s == '>': then new interval [g+1, R]
+        if s == '=': then the interval remains [L, R] (but the game ends so we break).
+
+However, note: after updating, the interval must be non-empty for the next step (if there is a next step). But if we are at the last step and the answer is '=' then we break. For '<' and '>' we must have that the updated interval is non-empty? Actually, no: if the updated interval becomes empty, then that is acceptable only if there are no more steps? 
+
+But the input condition: if the last character is '=', then the game ends. Otherwise, we have K guesses and the string has exactly K characters (all '<' or '>'). So if we are at the last character (i = M-1) and the answer is '<', then we require that the updated interval [L, g-1] is non-empty? Actually, no: because the game ends after K guesses regardless. But Theodora's answer must be consistent. If we have an answer '<' and then the updated interval [L, g-1] is empty, that would mean that there is no number in [L, g-1]. But Theodora must have a number that is in the current interval and less than g. So if [L, g-1] is empty, then she cannot have a number that is less than g? Then she would not have answered '<'? Therefore, we must have that the updated interval is non-empty? Actually, no: because the problem says that Theodora can change her number as long as it is consistent. But if the interval becomes empty, then there is no consistent number. So that is impossible.
+
+Therefore, we must ensure that the updated interval is non-empty for every step until the last step? Actually, after the last step, if the answer is '<' or '>', then the updated interval can be empty? But then Theodora would have no number to choose? So that scenario is invalid. Therefore, we must have that after every non-final step (i.e., not the last step) the updated interval is non-empty. And for the last step:
+  - if the answer is '=', then we don't update the interval (we break) and it's okay.
+  - if the answer is '<' or '>', then the updated interval must be non-empty? Actually, no: because the game ends. Theodora does not need to have a number? But the rules: initially she picks a number. And she must always have a consistent number. So after the last guess, the set of possible numbers must be non-empty? Actually, the problem says: the game ends after K guesses (all wrong) and then Romanos loses. So Theodora wins. Therefore, she must have a number that is consistent with all answers. Therefore, the entire sequence of answers must leave a non-empty set at the end? 
+
+But note: the last answer is given. After the last guess, we update the interval. Then the set must be non-empty? Actually, the problem does not require that the set is non-empty at the end? It only says the game ends after K guesses. However, Theodora must have a number that is consistent with all the answers. So the set must be non-empty.
+
+Therefore, at every step we must ensure that the updated interval is non-empty? Actually, we must ensure that after updating the interval (for any step) the interval is non-empty? Because if at any step the updated interval becomes empty, then there is no number that satisfies the answers so far. So that scenario is invalid. But note: the problem says that Romanos' guess must be consistent. So if the current interval is [L, R] and we get an answer '<', then the new interval is [L, g-1]. If g-1 < L, then the interval is empty. Similarly for '>'. Therefore, we must avoid that.
+
+But wait: what if the current interval has one number and we get an answer that is not '='? Then we must avoid that. Actually, if the current interval is [x, x] and we guess g, then:
+  - If g == x, then Theodora must answer '=' (because if she answers '<' or '>', then the interval becomes empty and she has no number). But the problem says that she can change her number as long as it is consistent. However, the initial choice is fixed? Actually, no: she can change it arbitrarily as long as consistent. But if the current interval is [x,x], then the only consistent number is x. Therefore, she must answer '=' if we guess x. If we guess a different number? But the guess must be in [x,x] -> so we must guess x. Therefore, if the interval is a singleton, the only guess we can make is x and then she must answer '='.
+
+Therefore, if the current interval is a singleton and we are not at the last step (and the last character is not '=') or we are but the given answer is not '=', then we have a problem.
+
+So in summary, the constraints for step i (with current interval [L, R]):
+
+  - If the current answer is '=':
+        We must have L == R and we set g = L.
+        Then the next interval is [L, R] (and we break).
+
+  - If the current answer is '<' or '>', then we require that the current interval has at least 2 elements? Actually, no: we might have a singleton and then we cannot make a non-'=' answer. So we require that the current interval has at least 2 elements? Actually, we require that the current interval has at least 1 element (which it does) and that we can choose a g such that:
+        (a) Theodora would give the given answer s for (L, R, g).
+        (b) The updated interval is non-empty.
+
+  For an answer '<' at step i (which is not the last step? Actually, it might be the last step) we require:
+        g is in [L, R]
+        (g - L) >= (R - g)   [so that Theodora would choose '<'] 
+        and then [L, g-1] is non-empty -> so we require g-1 >= L -> so g > L.
+
+        But note: if g = L, then the left interval is [L, L-1] -> empty -> which is not allowed. So we require g > L.
+
+  Similarly, for an answer '>', we require:
+        g is in [L, R]
+        (R - g) > (g - L)   [so that Theodora would choose '>']
+        and then [g+1, R] is non-empty -> so we require g < R.
+
+But note: the condition for '<' already requires g>L? Actually, we require that the updated interval is non-empty: [L, g-1] non-empty => there exists at least one number in [L, g-1] => so we require L <= g-1 -> g>=L+1.
+
+Similarly, for '>' we require g <= R-1.
+
+Therefore, we can combine:
+
+  For '<': we require g in [max(L, ?), min(R, ?)] such that:
+        g >= L+1
+        and (g - L) >= (R - g)   -> which implies 2*g >= L+R.
+
+  For '>': we require g in [L, R] such that:
+        g <= R-1
+        and (R - g) > (g - L)   -> which implies 2*g < L+R.
+
+But note: the condition for '<' can be rewritten: g >= ceil((L+R)/2.0) ? Actually, 
+        g - L >= R - g   =>   2g >= L+R   -> g >= ceil((L+R)/2) if (L+R) is even? Actually, if (L+R) is even, then g>= (L+R)/2. If odd, then g>= (L+R+1)/2.
+
+Similarly, for '>': 2g < L+R -> g < (L+R)/2.
+
+So we can define:
+
+  For '<': g must be at least max(L+1, ceil((L+R)/2)) and at most R.
+
+  For '>': g must be at least L and at most min(R-1, floor((L+R-1)/2) [because 2g < L+R -> g <= floor((L+R-1)/2)].
+
+But note: the entire interval [L, R] might be large (N up to 10^18) and we have up to 50000 steps. We cannot iterate over the interval.
+
+How to choose g? We have freedom. We can choose any g that satisfies the constraints. We want the entire sequence to be possible. Therefore, we can choose arbitrarily? But note: the choice of g might affect the future steps. We want to ensure that after updating the interval, we can complete the rest of the answers.
+
+Therefore, we must choose g such that the updated interval [L', R'] is large enough to accommodate the remaining answers? But the problem does not require minimality. However, we must ensure that the entire sequence is possible. How?
+
+We note that the remaining answers will reduce the interval. We know that the worst-case reduction by Theodora's strategy is to halve the interval (approximately) at each step. But we have the exact answers. We can simulate the entire process without knowing the guesses? Actually, we can simulate the intervals without knowing the guesses? 
+
+But we are going to reconstruct the guesses. We can simulate step by step, and at each step we choose a guess that satisfies the constraints for the current answer and the current interval, and then update the interval. Then we proceed to the next step.
+
+However, we must also check that the updated interval is non-empty and that the next step is feasible. But note: the next step has a specific answer. So we will do the same for the next step.
+
+But what if at a step we have multiple choices for g? We can choose any? How to avoid backtracking? The constraints are that the updated interval must be able to produce the remaining answers.
+
+But note: Theodora's strategy is fixed: she always chooses the answer that maximizes the remaining interval. Therefore, the size of the interval after each step is predetermined? Actually, no: because we choose the guess arbitrarily as long as it satisfies the condition for the current answer. However, the size of the updated interval is:
+
+  For '<': the size = g - L   [if we choose g, then the new interval [L, g-1] has size = (g-1) - L + 1 = g - L.
+  For '>': the size = R - g.
+
+But the Theodora's strategy requires that the size we leave is the maximum possible? Actually, no: Theodora's strategy is what determined the answer. But we are constrained by the given answer. And we choose g arbitrarily as long as it forces Theodora to give that answer.
+
+However, the problem does not require the guesses to be minimal or maximal. So we can choose any g that satisfies the constraints. And then the next step will have the new interval [L', R'].
+
+But note: the updated interval must be non-empty. And then the next step must also be feasible: we must be able to choose a guess for the next answer in the updated interval that satisfies the condition for that answer and the updated interval.
+
+Therefore, we can simulate greedily step by step. At each step, we choose a guess g that satisfies:
+   - For the current interval [L, R] and the current answer s_i, g must be in a specific subinterval.
+
+But what if there are multiple choices? We can choose arbitrarily? However, we must ensure that the entire sequence can be completed. How?
+
+We note that the entire sequence of answers is fixed. The problem is: can we choose a sequence of guesses such that the intervals evolve as required? And the constraints at each step are independent? Actually, the choice of g affects the next interval. And the next interval must be able to support the next answer.
+
+But note: the next answer is given. Therefore, we must choose a g such that the updated interval is non-empty and also that the updated interval has at least one number that we can use for the next guess? Actually, the next guess must be in the updated interval. But we are going to choose the next guess arbitrarily. The issue is: the updated interval must be such that for the next answer, we can choose a guess that forces Theodora to give the next answer? 
+
+For the next step, we will have the same constraints: we need to choose a guess in the updated interval that satisfies the condition for the next answer. Therefore, we must ensure that the updated interval is large enough? Actually, no: even a singleton for the next step is acceptable if the next answer is '='. But if the next answer is '<' or '>', then we require at least two numbers.
+
+Therefore, we must also look ahead? But we have up to 50000 steps. We cannot do backtracking.
+
+Alternative idea: simulate the entire process without the guesses to determine the minimal interval sizes? Actually, we can compute the minimal and maximal interval sizes that must be maintained at each step to be able to complete the remaining answers.
+
+But note: the Theodora's strategy is fixed and the answers are given. Therefore, we can precompute the required interval after each step? Actually, we can simulate backwards.
+
+However, the problem is: the answers are given. We know the entire sequence. We can simulate backwards to determine the interval at each step? Then we can determine the guesses by going forward.
+
+Step 1: Backward simulation to compute the intervals.
+
+We start from the end. At the end, what must be the interval?
+
+  - If the last answer is '=': then the interval at that step must be a singleton. So the interval [x, x] for some x.
+
+  - If the last answer is '<' or '>': then the updated interval after the last guess must be non-empty? Actually, the last guess leads to an update. And then the game ends. But we require that the updated interval is non-empty? Yes, because Theodora must have a number. So the updated interval must be non-empty. However, the problem does not require that the entire sequence of guesses ends with a non-empty interval? Actually, the game ends after the last guess. Theodora's number must be in the final interval. So the final interval must be non-empty.
+
+But note: the last guess is the K-th guess. The updated interval is determined by the last guess and the last answer. Then the number must be in that interval. So the final interval must be non-empty.
+
+Therefore, we can simulate backwards:
+
+  Let M = length of the answer string.
+
+  We define intervals [L_i, R_i] for i = M, M-1, ... 0.
+
+  For i = M (after the last guess and update):
+        The interval must be non-empty: [L_M, R_M] must satisfy L_M <= R_M.
+
+        How do we know the size? We don't. But we have constraints from the last step.
+
+  Then for step i (from last to first), we know the next interval [L_{i+1}, R_{i+1}] and the answer s_i. Then we can recover the interval before the update and the guess g_i.
+
+        If s_i is '=': then the interval at step i must be [x, x] and the guess must be x. And then the updated interval is still [x, x] (but the game ends). So we require that [L_{i+1}, R_{i+1}] = [x,x] and then the interval at step i is the same: [x,x].
+
+        If s_i is '<': then we know that the updated interval is [L_i, g_i-1] = [L_{i+1}, R_{i+1}]. Therefore, we have:
+                L_i = L_{i+1}
+                R_i = g_i - 1? -> but we don't know g_i. Actually, the updated interval is [L_i, g_i-1] = [L_{i+1}, R_{i+1}]. Therefore, we have:
+                L_{i+1} = L_i   and   R_{i+1} = g_i - 1.
+
+                Also, the guess g_i must be in [L_i, R_i] and satisfy the condition for '<' and the updated interval must be non-empty -> which we already have.
+
+                Moreover, we know the condition for '<': (g_i - L_i) >= (R_i - g_i). 
+
+                But we also have: the interval at step i is [L_i, R_i]. And the updated interval is [L_i, g_i-1] = [L_{i+1}, R_{i+1}]. Therefore, we can express g_i: 
+                        g_i = R_{i+1} + 1.
+
+                Then the interval at step i is [L_i, R_i] = [L_{i+1}, g_i] = [L_{i+1}, R_{i+1}+1]? Actually, no: the updated interval is [L_i, g_i-1] = [L_{i+1}, R_{i+1}]. Therefore, we have:
+                        L_i = L_{i+1}
+                        R_i = g_i - 1? -> but then R_i = R_{i+1}? 
+                Actually, the updated interval is [L_i, g_i-1] and we are setting that equal to [L_{i+1}, R_{i+1}]. Therefore, we have:
+                        L_i = L_{i+1}
+                        g_i = R_{i+1} + 1
+                        R_i = ?   We don't know R_i from the update. Actually, the update only tells us the updated interval. The original interval [L_i, R_i] must be such that the updated interval is [L_i, g_i-1] = [L_{i+1}, R_{i+1}]. Therefore, we have:
+                        L_i = L_{i+1}
+                        and g_i = R_{i+1} + 1.
+
+                And then R_i must be at least g_i? Actually, the original interval [L_i, R_i] must contain g_i (which is R_{i+1}+1) and the updated interval is [L_i, R_{i+1}]. Therefore, we set:
+                        R_i = ???   Actually, we don't have a direct equation. But we know that the updated interval is [L_i, g_i-1] = [L_i, R_{i+1}]. So we have g_i-1 = R_{i+1} -> which we already used: g_i = R_{i+1}+1.
+
+                And the condition for the guess: g_i must be in [L_i, R_i] and the condition for '<' is: 
+                        (g_i - L_i) >= (R_i - g_i)
+
+                => ( (R_{i+1}+1) - L_i ) >= (R_i - (R_{i+1}+1))
+
+                But we don't know R_i. How to recover R_i?
+
+        Similarly, for '>' we have:
+                The updated interval is [g_i+1, R_i] = [L_{i+1}, R_{i+1}].
+                Therefore, we have:
+                        R_i = R_{i+1}
+                        g_i = L_{i+1} - 1.
+
+                And the condition: (R_i - g_i) > (g_i - L_i) -> 
+                        (R_i - (L_{i+1}-1)) > ((L_{i+1}-1) - L_i)
+
+                But we don't know L_i.
+
+Therefore, backward simulation is tricky. Instead, we can do a forward simulation and choose a guess arbitrarily that satisfies the constraints and then update the interval. We hope that the choices we make will not lead to a dead end in the future. But what if at step i we have multiple choices? How to choose one that leaves the interval as flexible as possible?
+
+Alternatively, we can choose the guess arbitrarily as long as it satisfies the condition. Why? Because the problem says: "if there are more than one possible scenario for Romanos' guesses, you may output any of them".
+
+But we must avoid making a choice that leads to an empty interval in the future? Actually, we update the interval immediately. Then we check that the updated interval is non-empty. If it is, then we proceed. But what about the next steps? The next steps will be handled similarly. However, the problem is that the current choice of g might make the interval too small to satisfy the remaining answers? 
+
+But note: the remaining answers are fixed. How many answers are left? The worst-case reduction: with k answers left, what is the minimal size of the interval that we need?
+
+Actually, we can precompute the minimal size of the interval that is needed to complete the remaining answers? We can use a DP or a greedy bound.
+
+We know that Theodora's strategy maximizes the interval. But we are given the answers. How does the interval evolve? 
+
+We can compute the minimal interval size required at step i (with m answers remaining) to be able to complete the sequence. 
+
+We define f(m) as the minimal size of the interval (i.e., the number of integers) that is needed to be able to handle m answers (with the worst-case answers from Theodora). But note: we are given the answers. So we can compute the required size for the remaining sequence.
+
+Alternatively, we can derive the minimal size for the remaining steps by simulating backwards the worst-case growth? Actually, we can do:
+
+  Let F(0) = 1.   [because at the end, we need at least one number]
+
+  Then for each step backwards with a given answer s:
+
+        If s is '=': then we require that the interval size is 1. And then after the step, the interval size becomes 1? Actually, the step with '=' ends the game so we don't need to consider after. But in our backward simulation, we start from the end.
+
+        If s is '<' or '>': then we are going to have an update. What is the minimal initial interval size that, when updated by the answer s, leaves at least F(m) numbers? 
+
+        For an answer '<' at the next-to-last step: 
+                We have: the updated interval is of size F(m) = F(1) = 1.
+                Then the original interval [L, R] and we chose g such that the updated interval [L, g-1] has size 1. 
+                Then we have: the updated interval is [x, x] for some x. Therefore, the original interval must include at least the numbers: [x, g] with g = x+1? 
+                Actually: [L, g-1] = [x, x] -> so L = x, g-1 = x -> g = x+1.
+                The original interval must contain g = x+1? and also the updated interval [x, x]. So the original interval must contain [x, x+1] -> size 2.
+
+                But also the condition for Theodora: 
+                        (g - L) = (x+1 - x) = 1
+                        (R - g) = (R - (x+1)) 
+                We require (g-L) >= (R-g) -> 1 >= R - (x+1) -> R <= x+2.
+
+                And the original interval is [L, R] = [x, R] and must include g=x+1 -> so R>=x+1.
+
+                So the minimal R is x+1 -> then the interval is [x, x+1] -> size=2.
+
+        Similarly, for an answer '>' at the next-to-last step: 
+                updated interval is [g+1, R] = [x,x] -> so g+1=x, R=x -> so g = x-1.
+                Then the original interval must contain [x-1, x] -> size=2.
+
+        Now for two steps:
+
+          Suppose we have two answers: the last answer is '<' and the next one is also '<'. Then we need:
+
+            After the first '<': the updated interval must be able to support the next '<' which requires at least size 2? Then after the second '<' we have size 1.
+
+            How big must the initial interval be?
+
+            Let the first guess be g. Then the first updated interval is [L, g-1] = I1, which must be of size at least 2? Actually, we know that to support one more '<' we require the interval to be at least size 2? But we just saw that one '<' requires the interval to be at least size 2? Actually, the minimal interval size for one '<' is 2. Then what about the first step?
+
+            The first step: 
+                We start with [L, R]. We choose g such that the updated interval [L, g-1] has size at least 2 (to support the next '<').
+
+                The condition for the first '<': (g - L) >= (R - g) and also we require that the updated interval has size = g - L (which must be at least 2).
+
+                How to minimize R-L+1? 
+
+                The condition: (g - L) >= (R - g) -> 2g >= L+R.
+
+                The updated interval size = g - L.
+
+                We want to minimize R-L+1.
+
+                We have: R <= 2g - L.
+
+                And the updated interval size = g - L = s (>=2). Then g = L+s.
+
+                Then R <= 2(L+s) - L = L+2s.
+
+                The total size = R - L + 1 <= (L+2s) - L + 1 = 2s+1.
+
+                We set s=2 -> then total size <= 5? But we can do better?
+
+                Example: 
+                  Let L=1, then g = 1+2 = 3. Then R<= 1+2*2=5. 
+                  The interval [1,5]: 
+                      We guess 3 -> then Theodora must answer '<' only if (3-1) >= (5-3) -> 2>=2 -> true (and then by tie-breaker she chooses '<').
+                      Then updated interval [1,2] -> which has size 2 -> which is the minimal for the next '<'.
+
+                Then the next guess: in [1,2] and we need to get a '<'. 
+                  We must guess 2? 
+                      Then Theodora: 
+                         left_range = 2-1 = 1, right_range = 2-2=0 -> so she answers '<' -> then updated interval [1,1] -> size 1 -> which is acceptable for the end? Actually, the game ends after the second guess? But we have two '<' answers and then the game ends? The problem: the game ends after K guesses. And the string has K characters? Or we have two characters? 
+
+                But note: the problem says the entire string has exactly K characters? Or the last character might be '='? In this example, we have two '<' and that's the entire string (if K=2). Then at the end, the interval [1,1] is non-empty -> so it is acceptable.
+
+                Therefore, the minimal initial interval for two '<' is 5? But we see that we did it in [1,5] -> size 5.
+
+                But we might do with size 4? 
+                  [1,4]: 
+                    Guess 3: 
+                         left_range = 3-1 = 2, right_range=4-3=1 -> so Theodora answers '<' -> updated interval [1,2] (size=2) -> which is enough for the next '<'. 
+                    Then next guess: 2 -> Theodora answers '<' -> updated interval [1,1] -> which is non-empty.
+
+                So minimal size=4.
+
+            Therefore, we can define:
+
+                Let F(m) = the minimal size of the interval that is needed to complete the next m answers (and leave a non-empty interval at the end).
+
+                Then:
+                  F(0) = 1   [because we need at least one number]
+
+                  For an answer '<' at the head of the remaining sequence: 
+                         We choose a guess g. The updated interval has size = g - L. We require that this updated interval has size at least F(m-1). 
+                         And the condition: (g - L) >= (R - g)  -> which we can write in terms of the entire interval: 
+                                 Let the entire interval size = S = R-L+1.
+                                 Then: (g-L) >= (R-g)  => 2g >= L+R = (L+R) -> 2g >= L+R.
+
+                         Also, the updated interval size = g - L. We require g-L >= F(m-1).
+
+                         How to relate to S? 
+                                 We have: R = L + S - 1.
+                                 Then: 2g >= L + (L+S-1) = 2L+S-1 -> g >= (2L+S-1)/2.
+
+                                 Then the updated interval size = g-L >= (2L+S-1)/2 - L = (S-1)/2.
+
+                         But we also require g-L >= F(m-1). 
+
+                         Therefore, we require that there exists an integer g in [L, R] such that g-L >= F(m-1) and g>= ceil((2L+S-1)/2). 
+
+                         To minimize S, we can set g as small as possible: g0 = max( L + F(m-1), ceil((2L+S-1)/2) ). Then we require g0 <= R.
+
+                         But note: we want the minimal S such that there exists g satisfying the above.
+
+                  Similarly, for an answer '>': 
+                         updated interval size = R - g >= F(m-1)
+                         and condition: (R - g) > (g - L)  -> which implies g < (L+R)/2.
+
+                         Then the minimal g we can choose? g <= floor((L+R-1)/2) and R-g>= F(m-1) -> then g <= R - F(m-1).
+
+                         Then we require that there exists g such that g <= min( floor((L+R-1)/2), R - F(m-1) ) and g>=L.
+
+                  However, this is complicated.
+
+        Alternatively, we can use a recurrence that does not depend on L and R, only on the size S:
+
+          Let F(m) = minimal initial interval size needed for m answers.
+
+          For m=0: F(0)=1.
+
+          For m>=1 and the next answer is s:
+            If s is '=': then we require the interval to be of size 1. But also, we are at the last answer. So F(1) = 1.
+
+            But note: the input condition: if there is an '=', it is the last character. So if the next answer is '=', then m=1 and F(1)=1.
+
+            If the next answer is '<' or '>', then we will update the interval and then we need to handle m-1 answers.
+
+            For '<': 
+                  We require that there exists a guess g such that:
+                         g-L >= F(m-1)   [because the updated interval must be at least F(m-1) in size]
+                         and g-L >= (R - g)   [the condition for Theodora to answer '<'].
+
+                  Let T = F(m-1). Then we require:
+                         g-L >= T
+                         and g-L >= R-g   -> 2g >= L+R.
+
+                  The smallest possible interval size S = R-L+1.
+
+                  We want the minimal S such that there exists g in [L, R] satisfying:
+                         g>= L+T
+                         g>= ceil((L+R)/2)
+
+                  And g<=R.
+
+                  The most constraining lower bound for g is: g0 = max(L+T, ceil((L+R)/2)).
+
+                  Then we require g0 <= R.
+
+                  How to express in terms of S? 
+                         Let L=1 for simplicity (since the problem is shift-invariant). Then R = S-1? Actually, the size is R-L+1 = S -> R = L+S-1 = 1+S-1 = S.
+
+                  Then g0 = max(1+T, ceil((1+S)/2)).
+
+                  We require: max(1+T, ceil((1+S)/2)) <= S.
+
+                  This must hold for some S.
+
+                  Rearranged:
+                        1+T <= S   and   ceil((1+S)/2) <= S.
+
+                  The second is always true for S>=1. So the binding constraint is S>= 1+T.
+
+                  But we also need to consider the condition for the updated interval: the updated interval is [L, g-1] which has size = g-L. We require that size>=T -> which is satisfied by g>=L+T.
+
+                  However, note that after the guess, the updated interval size is exactly g-L. We require that this size is at least F(m-1)=T. But we set g>=L+T, so the size is at least T.
+
+                  Therefore, we can set S_min = T+1? But wait: we had an example for two '<': 
+                         T = F(1) = 1 (for one '<')? 
+                         Then for the first '<' we would require S>= 1+1 = 2.
+
+                  But then for the next '<' we require the updated interval to be at least F(0)=1? and then we would set S for the first step to be 2? 
+
+                  Example: 
+                    [1,2]: 
+                      First guess: must be 2? 
+                         Then Theodora: 
+                              left_range = 2-1=1, right_range=2-2=0 -> so she answers '<' -> updated interval [1,1] -> size=1 -> which is acceptable for F(0)=1.
+                      Then next guess: there is none? because we are done after one guess? 
+
+                  But we have two answers: two '<'s. How do we do two answers in [1,2]? 
+                    First guess: we can only guess 1 or 2.
+                    If we guess 1: 
+                         Theodora: 
+                             left_range=0, right_range=1 -> she answers '>' -> we get an answer '>' not '<'. 
+                    If we guess 2: we get '<', then the next guess must be in [1,1] -> guess 1. 
+                         But then we get an '='? because the interval is [1,1] and we guess 1. But we want a '<' for the second answer. 
+
+                  Therefore, we cannot get two '<'s in a row in an interval of size 2.
+
+                  We had an example in an interval of size 4.
+
+            Therefore, we must derive a recurrence that captures the worst-case growth. 
+
+            For the answer '<' in the first step, the updated interval size is g-L. We require g-L>=T. Also, the condition 2g>=L+R forces the interval to be split in a way that the left part is at least the right part. The minimal S that allows an updated interval of size T and satisfies the condition is:
+
+                  S >= 2*T + 1   [this is known in the classic "worst-case for binary search" when the adversary is allowed to choose the larger part]
+
+            Why? 
+                  Condition: g-L >= R-g  => 2g>=L+R.
+                  Also, g-L = T0 (>=T).
+                  Then R-g <= T0.
+                  Then total size = (g-L) + (R-g) + 1 = T0 + (R-g) + 1 <= T0 + T0 + 1 = 2*T0+1.
+                  But we require T0>=T, so the minimal T0 is T. Then the minimal total size is 2*T+1.
+
+            Similarly, for '>', we have R-g>=T and the condition R-g > g-L forces R-g >= (g-L)+1? 
+                  Actually, R-g > g-L  => (R-g) - (g-L) > 0  => (R+L) - 2g > 0.
+                  But the minimal total size is also 2*T+1.
+
+            Therefore, we have:
+
+                  F(m) = 
+                     if the next answer is '=': then 1   [but note: m=1]
+                     if the next answer is '<' or '>': then 2 * F(m-1) + 1
+
+            And for a sequence of answers, we can compute the minimal required size at the beginning of the sequence by:
+
+                  Start with F=1 for the end.
+                  Traverse the answer string from last to first (excluding the last if it is '='? actually no, we include all):
+
+                         Actually, if the last answer is '=' then the minimal size at that step is 1.
+                         For the step before the last (if any) that is not '=': then we would require 2*1+1 = 3? 
+
+            But wait: the '=' answer can only appear at the end. And if it appears, then the step immediately has size 1.
+
+            Therefore, we can define an array:
+
+                  Let A[0] = 1   (after the last answer, the interval size must be at least 1)
+                  Then for i from 1 to M (where M is the total length):
+                         if the (M - i)-th answer is '=': then we skip? Actually, we are traversing backwards.
+
+            Better: 
+                  Let F[0] = 1   (after the entire string, we need at least size 1)
+                  Then for i in range(1, len(answers)+1):
+                         let j = len(answers) - i   (so we are at the j-th answer, counting from 0)
+                         if answers[j] is '=': 
+                                then F[i] = 1   [because at the step that answers '=', the interval must be a singleton]
+                         if answers[j] is '<' or '>': 
+                                then F[i] = 2 * F[i-1] + 1
+
+            But note: the '=' can only appear at the last character. Therefore, in the backward traversal, we only see an '=' at the first step of the backward (i=1). But the recurrence above would work: if we see an '=' at step j, then for that step we require F[for the remaining including the '='] = 1. Then the step before it (if any) would then require 2*1+1=3.
+
+            However, after an '=' the game ends, so there are no more answers. So the recurrence only applies to the steps before the '='. 
+
+            Therefore, we can do:
+
+                  Let M = length of the answer string.
+                  Let F[0] = 1.
+                  Then for i from 1 to M:
+                         if the (M-i)-th character is '=': 
+                                 then we cannot be here because the '=' is the last character? 
+                         But wait: the answers are given in order. The last character is at index M-1. We are traversing backwards: 
+                                 i=1: we look at the last answer: 
+                                         if it is '=', then we set F[1] = 1.
+                                         if it is '<' or '>', then we set F[1] = 2*F[0]+1 = 3.
+
+                  Then for i=2: we look at the second last answer. But if the last answer is '=', then the second last answer does not exist? because the '=' is the last.
+
+            How to handle? 
+
+                  If the answer string ends with '=', then the last answer is at the end. So we start the backward recurrence at the last answer:
+
+                         Let F = 1 for the state after the last answer? Actually, after the last answer we don't have a state. The state before the last answer (which is the guess that got '=') must be a singleton. So the size at the beginning of that step is 1.
+
+                  Then for the step before the last (if any), which will be at index M-2 (if the last is at M-1), we have an answer that is '<' or '>', and then we require the size at the beginning of that step to be 2*F+1.
+
+                  Therefore, we can do:
+
+                         sizes = [1]   # starting from the end (after the last guess, the final interval must be non-empty -> size>=1, but for '=' we don't have a final interval? Actually, for '=' the game ends and the final interval is the singleton. But we don't need to go further. 
+                         However, for the steps:
+
+                         We simulate backwards the answers in reverse order (from last to first).
+
+                         Let F = 1   (size after the last update)
+                         Then for i in range(len(answers)-1 down to -1, step -1):
+                                if answers[i] is '=': 
+                                        then at this step the size must be 1. 
+                                        And then the next state (after this guess) is the final state? so we set F for the next (earlier) step to 1? But there is no next guess. 
+                                        Actually, this '=' is the last answer. So we break.
+
+                                if answers[i] is '<' or '>': 
+                                        then the size at the beginning of this step must be at least 2 * F + 1.
+                                        And then we set F = 2*F+1? 
+
+                         But wait: the updated interval for this step becomes the next state (which is later in the game, but we are going backwards). So we set F = 2*F+1.
+
+            However, note: the recurrence for the minimal size is: size_before = 2 * size_after + 1.
+
+            Therefore, we can compute:
+
+                  required_size = 1
+                  for i in range(len(answers)-1, -1, -1):
+                         if answers[i] == '=':
+                                 # This must be the last answer? 
+                                 required_size = 1   # because the interval at this step must be a singleton
+                         else:
+                                 required_size = 2 * required_size + 1
+
+            But then after processing the entire string, we get the minimal size needed at the beginning.
+
+            And we require that the initial interval size (N) is at least required_size.
+
+            However, is this recurrence correct for mixed answers? 
+
+            Example: answers = "=" -> then required_size = 1 -> then we need N>=1 -> which is true.
+
+            Example: answers = ">=" -> 
+                  The string has two characters, but the last is '=' so the first must be '>' or '<'. 
+
+                  We start from the last answer (index1: '='): 
+                         required_size = 1   (for the '=')
+                  Then we move to the first answer (index0: '>'): 
+                         required_size = 2*1+1 = 3.
+
+                  So the initial interval must be at least size 3.
+
+            Let's test: 
+                  [1,3]: 
+                  First guess: we must choose g such that Theodora will answer '>'. 
+                         How? 
+                         Theodora: 
+                            For a guess g, she will choose the answer that leaves the larger interval. 
+                         Let g=2:
+                            left_range = 2-1=1, right_range=3-2=1 -> tie, so she answers '<'. 
+                         Let g=1:
+                            left_range=0, right_range=2 -> she answers '>'. 
+                         So we guess 1 -> then Theodora answers '>' -> updated interval [2,3] (size=2) -> then we need to guess in [2,3] and get an '='. 
+                         We guess 2: then she answers '='? only if the interval is [2,2] -> but the interval is [2,3] -> so she could answer '<' or '>'? 
+                         But we require her to answer '='. 
+                         However, the problem states that the last answer is '='. This means that the second guess must be correct. So at the second guess, the interval must be [x,x] and we guess x. 
+
+                         How can the interval become [2,2]? 
+                                After the first answer '>' to guess 1, the interval is [2,3]. 
+                                Then we guess 2: 
+                                      Theodora: 
+                                          left_range = 2-2=0, right_range=3-2=1 -> she answers '>', not '='. 
+                                Then the interval becomes [3,3]. Then we guess 3: and she answers '='. 
+                         But then the answer string would be ">=" for the second and third guesses? -> but we only have two guesses. 
+
+                  The answer string ">=" has two answers for two guesses. So we only have two guesses. 
+                  After the first guess 1 and answer '>', the interval is [2,3]. 
+                  Then we make the second guess: we must guess a number in [2,3] and then Theodora answers '='. 
+                  How? 
+                         Theodora will only answer '=' if the interval is a singleton and we guess that singleton. 
+                  But the interval [2,3] has two numbers. Therefore, she will not answer '='. 
+
+            Therefore, the sample input: 
+                  10 5
+                  <>=
+                  Output: -1
+
+            Why? 
+                  The answer string is '<>=' -> but the last character is '='. 
+                  We compute the minimal required_size:
+
+                    Start from the end: 
+                         last answer: '=' -> required_size=1.
+                         next: '>' -> required_size = 2*1+1 = 3.
+                         next: '<' -> required_size = 2*3+1 = 7.
+
+                  Then we require the initial interval size N>=7. Since N=10, it is enough.
+
+            But the sample output is -1. 
+
+            What's the catch? 
+
+            The catch is: in the second guess, after the first '<', the updated interval is [g+1, R] for the next answer '>'? 
+
+            But then for the last guess, we require an '='. So after the second guess (which is a '>'), the updated interval must be a singleton. 
+
+            How does the second guess work? 
+
+                  After the first guess and answer '<', the updated interval is [1, g1-1]. 
+                  Then we choose a guess g2 in [1, g1-1] such that Theodora answers '>', which requires that (g2 - L) < (R - g2) -> and then the updated interval is [g2+1, R] = [g2+1, g1-1]. 
+                  Then for the last guess, we require that [g2+1, g1-1] is a singleton and we guess that singleton.
+
+            Therefore, the size of [g2+1, g1-1] must be 1.
+
+            Then we have: (g1-1) - (g2+1) + 1 = 1  -> g1 - g2 - 1 = 1 -> g1 = g2+2.
+
+            Also, the condition for the first guess '<': 
+                  (g1 - 1) >= (10 - g1) -> 2*g1>=11 -> g1>=6 (since integer).
+
+            Condition for the second guess '>': 
+                  (g1-1 - g2) > (g2 - 1)  -> (g1-1-g2) > (g2-1) -> g1 - 2*g2 > 0.
+                  But we have g1 = g2+2 -> (g2+2) - 2*g2 > 0 -> 2 - g2 > 0 -> g2<2.
+
+            Then g1 = g2+2 < 4.
+
+            But we also have g1>=6. Contradiction.
+
+            Therefore, there is no valid guesses.
+
+            So the recurrence only tells us the minimal size required for the initial interval, but it does not guarantee that the entire sequence is feasible. It is necessary but not sufficient.
+
+            Therefore, we must also simulate forward and choose guesses that satisfy the constraints and also the condition that the interval at each step is at least the minimal size required for the remaining answers.
+
+            How to do it in O(K) with K up to 50000?
+
+            We can precompute an array min_size[0..M] for the minimal interval size required starting at step i (for the remaining answers from i to M-1). We do:
+
+                  min_size[M] = 1   // after the last answer, we need size at least 1
+                  for i = M-1 down to 0:
+                         if ans[i]=='=': 
+                                 min_size[i] = 1   // because at this step we must have a singleton
+                         else:
+                                 min_size[i] = 2 * min_size[i+1] + 1
+
+            Then we simulate forward:
+
+                  L0 = 1, R0 = N.
+                  For i from 0 to M-1:
+                         // Check that the current interval [L, R] has size at least min_size[i]
+                         if R-L+1 < min_size[i]:
+                                return impossible.
+
+                         Then choose a guess g in [L, R] such that:
+                                if ans[i]=='=': 
+                                        then we require L==R and g=L.
+                                else if ans[i]=='<': 
+                                        then we require:
+                                                g >= L+1   (so that [L, g-1] is non-empty)
+                                                and g>=ceil((L+R)/2)   [so that (g-L)>=(R-g)]
+                                                and [L, g-1] has size at least min_size[i+1]? -> but we will check in the next iteration.
+
+                                        Actually, we require that the updated interval [L, g-1] has size >= min_size[i+1]? 
+                                        But min_size[i] = 2 * min_size[i+1] + 1.
+                                        And the size of the updated interval is g-L.
+                                        We require g-L>=min_size[i+1] and also g-L>=ceil((L+R)/2)-L? 
+
+                                        To choose g, we can choose the smallest possible g that satisfies:
+                                                g >= max( L+1, ceil((L+R)/2), L+min_size[i+1] ) 
+                                        and then we also require that the updated interval [L, g-1] has size = g-L >= min_size[i+1] (which is ensured by g>=L+min_size[i+1]).
+
+                                else if ans[i]=='>': 
+                                        similarly: 
+                                                g <= R-1
+                                                and g < (L+R)/2   -> actually, the condition is (R-g) > (g-L) -> 2g < L+R -> g <= floor((L+R-1)/2)
+                                                and we require R-g >= min_size[i+1] -> so g <= R - min_size[i+1]
+
+                                        Then we choose g in [L, min( floor((L+R-1)/2), R-min_size[i+1] ) ] and we require g>=L and g<=R-1.
+
+                                        But we also require g<=R-1 and g<=floor((L+R-1)/2) and g>=L. We can choose the largest possible g? or the smallest? 
+
+                                        Actually, we want to choose any g that satisfies. Let g0 = min( floor((L+R-1)/2), R-min_size[i+1] ) 
+                                        and then we require g0>=L.
+
+                         Then update the interval.
+
+            But note: the condition for '<' also requires that the updated interval is non-empty -> g>L -> and we have g>=L+1.
+
+            However, there is a catch: the conditions for '<' are:
+
+                  g in [ max(L+1, ceil((L+R)/2), L+min_size[i+1]), R ]
+
+            But note: ceil((L+R)/2) might be greater than L+min_size[i+1], or vice versa.
+
+            Similarly, for '>':
+
+                  g in [ L, min( floor((L+R-1)/2), R-min_size[i+1] ) ]
+
+            And then update:
+
+                  if ans[i]=='=': 
+                         then we are done. But there should be no more answers? the next answers should not exist? so i must be the last.
+                  if ans[i]=='<': 
+                         L' = L, R' = g-1
+                  if ans[i]=='>': 
+                         L' = g+1, R' = R
+
+            We then set L = L', R = R' for the next step.
+
+            Then we output the guesses.
+
+            Special: if at any step we cannot find a g that satisfies the constraints, we output -1.
+
+            Example: the sample "=": 
+                  M=1, min_size[0] = 1.
+                  L=1, R=N (which is at least 1).
+                  Then we require ans[0]=='=' -> then we require L==R. So we require N==1. 
+                  Then we output g=1.
+
+            Example: the sample "><>=": 
+                  N=10, K=5, answers = "><>=" (M=4)
+
+                  Precompute min_size:
+                         min_size[4] = 1   (after the last answer)
+                         i=3: '=' -> min_size[3]=1
+                         i=2: '>' -> min_size[2]=2*min_size[3]+1 = 3
+                         i=1: '<' -> min_size[1]=2*min_size[2]+1=7
+                         i=0: '>' -> min_size[0]=2*min_size[1]+1=15
+
+                  Then we start with L0=1, R0=10 -> size=10, which is <15? -> then we return -1? 
+
+                  But the sample output is 5 8 6 7.
+
+            What's the issue? 
+
+            The recurrence min_size[0]=15 is the minimal size required for the entire sequence of 4 answers? But we start with size 10<15, so we return -1.
+
+            But the sample is possible.
+
+            Why? 
+
+            The recurrence is for the worst-case growth. It assumes that Theodora's answers are adversarial and maximize the interval. But in this problem, the answers are given. We know exactly what Theodora will answer. Therefore, the actual size reduction might be less severe.
+
+            For example, the first answer is '>', which leaves the interval [g0+1, 10]. The size of the updated interval is 10 - g0. 
+                  We require that this size is at least min_size[1]=7 -> so 10-g0>=7 -> g0<=3.
+
+            But the condition for the first guess '>': 
+                  (10 - g0) > (g0 - 1)  -> 10 - g0 > g0 - 1  -> 11>2g0 -> g0<5.5 -> g0<=5.
+
+            And also, the guess must be at most 3 (from the size constraint) and at least 1.
+
+            Then we choose g0=3? 
+
+            Then the updated interval is [4,10] (size=7, which is min_size[1]=7).
+
+            Then the next answer is '<': 
+                  We require a guess g1 in [4,10] such that:
+                         Theodora answers '<': so (g1-4) >= (10-g1)  -> 2*g1>=14 -> g1>=7.
+                         And the updated interval [4, g1-1] must have size at least min_size[2]=3 -> so g1-4>=3 -> g1>=7.
+
+                  We choose g1=7? 
+                         Then updated interval [4,6] (size=3).
+
+            Then next answer is '>': 
+                  g2 in [4,6]: 
+                         condition for '>': (6-g2) > (g2-4)  -> 6-g2 > g2-4 -> 10>2g2 -> g2<5.
+                         and the updated interval [g2+1,6] must have size at least min_size[3]=1 -> so g2+1<=6 -> which is true.
+
+                         We choose g2=4? 
+                                Then Theodora answers '>' -> updated interval [5,6] (size=2) -> which is >=1? yes, but we need size>=1 -> yes.
+
+            Then next answer '=': 
+                  We require the interval [5,6] to be a singleton? but it is not. 
+
+            How did the sample do? 
+                  Output: 5 8 6 7.
+
+            Step-by-step:
+
+                  Initially: [1,10]
+                  Guess1:5 -> Theodora answers '>' -> then the new interval [6,10] -> size=5.
+
+                  Then min_size[1]=7 -> but 5<7 -> so we would have failed at the first step.
+
+            Why do we require the first step to have an interval size>=15? That seems too high.
+
+            The recurrence min_size[i] = 2*min_size[i+1]+1 is for the worst-case growth when the answer is adversarial. But in our case, the answers are given. We know that the next answer is '>', which leaves the right part. The recurrence should be adjusted per answer.
+
+            Specifically, for a given answer s at step i, the minimal size for the interval at step i is:
+
+                  if s is '=': then 1.
+                  if s is '<': then the updated interval will be the left part. And the size of the updated interval must be at least min_size[i+1]. And also, the condition forces that the left part is at least the right part. But the entire size is (left_part) + (right_part) + 1 (the guess itself) and the left_part>=max(right_part, min_size[i+1]). 
+
+                  How to minimize the total size? 
+                         We want to minimize the total size = left_part + right_part + 1, 
+                         with the constraint: left_part >= right_part and left_part>=min_size[i+1].
+
+                  The minimal total size is achieved when left_part = max( min_size[i+1], right_part ) and we minimize right_part.
+
+                  But note: right_part = total_size - left_part - 1.
+
+                  Then: left_part >= total_size - left_part - 1  => 2*left_part >= total_size - 1.
+
+                  And left_part>=min_size[i+1].
+
+                  To minimize total_size, we set left_part = min_size[i+1]. Then we require:
+                        2*min_size[i+1] >= total_size - 1  => total_size <= 2*min_size[i+1]+1.
+
+                  But also, the condition left_part>=right_part is automatically satisfied because:
+                         right_part = total_size - left_part - 1 <= (2*min_size[i+1]+1) - min_size[i+1] - 1 = min_size[i+1] <= left_part.
+
+                  Therefore, the minimal total_size is min_size[i+1] + (min_size[i+1]) + 1 = 2*min_size[i+1]+1? 
+
+                  But wait: if we set left_part = min_size[i+1], then right_part = total_size - min_size[i+1] - 1.
+                  The condition left_part>=right_part becomes: min_size[i+1] >= total_size - min_size[i+1] - 1 -> 2*min_size[i+1]+1>= total_size.
+
+                  Then we have total_size = 2*min_size[i+1]+1.
+
+                  And then right_part = (2*min_size[i+1]+1) - min_size[i+1] - 1 = min_size[i+1]. 
+
+                  So the minimal total_size is 2*min_size[i+1]+1.
+
+                  Similarly, for '>' the minimal total_size is 2*min_size[i+1]+1.
+
+            Therefore, the recurrence is the same regardless of the answer. So we were not wrong.
+
+            But then for "><>=", the min_size[0]=15, and we have N=10<15 -> then we output -1. But the sample is possible.
+
+            What went wrong? 
+
+            The recurrence is for the minimal initial interval size that guarantees survival for ANY sequence of answers of that type (adversarial). In our problem, the answers are fixed. We know the exact sequence. The recurrence might be too conservative.
+
+            For example, the first answer is '>', which leaves the right part. The recurrence 2*min_size[i+1]+1 is designed to work for the worst-case answer. But we know the answer, so we can use a recurrence that depends on the answer:
+
+                  if the answer s is '<': then the updated interval is the left part, and we require the left part to be at least min_size[i+1], and the right part can be up to the left part (because the condition) but it can be smaller. Therefore, the minimal total size is min_size[i+1] + 1 (for the guess) + min_size[i+1] (worst-case for the right part) = 2*min_size[i+1]+1. 
+
+            But wait: the right part can be arbitrarily small. The condition only requires that the left part is at least the right part. So the minimal total size is when the right part is 0? 
+
+                  Then total size = left_part+1 >= min_size[i+1]+1.
+
+            However, the guess must be in the interval. And the updated interval is the left part. So the guess is not in the updated interval. But the condition for the answer '<' is that the number is in the left part. 
+
+            Therefore, the guess must be such that the left part has size at least min_size[i+1] and the right part can be as small as 0. 
+
+            Example: 
+                  [1, S]: 
+                  We choose guess = S.
+                  Theodora answers '<' because the left part is S-1 and the right part is 0, and she always chooses the larger part (and if tie, '<'). Here, S-1>=0, and if S-1>0 then she answers '<' (because it is larger than 0). 
+
+                  Then the updated interval is [1, S-1] -> size=S-1>= min_size[i+1] -> so S>= min_size[i+1]+1.
+
+            Therefore, the minimal size for answer '<' is min_size[i+1]+1.
+
+            Similarly, for '>' it is min_size[i+1]+1.
+
+            But wait: what if the left part and the right part are both required to be large by Theodora's condition? 
+
+            The condition for '<' is: (g-L) >= (R-g). This condition must be satisfied. It does not require the right part to be at least something, but it does force the total size to be at most 2*(g-L)+1. And we require g-L>=min_size[i+1]. Therefore, the total size = (g-L) + (R-g) + 1 = (g-L) + (R-g) + 1.
+            But from the condition: (g-L) >= (R-g) -> (R-g) <= (g-L).
+            Then total size <= (g-L) + (g-L) + 1 = 2*(g-L)+1 <= 2* (R-L+1) ??? 
+
+            Actually, we are trying to find a lower bound on the total size from the requirement of the updated interval size and the condition. 
+
+            We require: (g-L)>= min_size[i+1] and (g-L)>= (R-g).
+
+            Then from (g-L)>= (R-g), we have: R<= 2g-L -1? 
+
+            Then the total size = R-L+1<= (2g-L-1) - L + 1 = 2g-2L.
+
+            But we also have g>=L+min_size[i+1] -> then total size<= 2*( min_size[i+1] )+something? 
+
+            Alternatively, we can set g = L+min_size[i+1] - 1 + something. 
+
+            Let's set g = L + a, then we require a>= min_size[i+1] and a>= (R - (L+a)) -> 2a>=R-L.
+            Then total size = R-L+1<= 2a+1.
+
+            We can set a = max(min_size[i+1], ceil((R-L)/2)) but we want a lower bound for the total size.
+
+            Note: the total size is S = R-L+1.
+            From 2a>=R-L = S-1, and a>= min_size[i+1], we have: 
+                  2 * max(min_size[i+1], ceil((S-1)/2)) >= S-1.
+
+            This is always true. 
+
+            Therefore, the only constraint is a>= min_size[i+1] and a can be as small as min_size[i+1]. Then the total size must be at least min_size[i+1] + 1 (because the guess g = L+a must be in [L, R] and R>=L+a).
+
+            Example: 
+                  guess g = L+min_size[i+1] 
+                  then condition: a = min_size[i+1] >= (R - g) = (R - (L+min_size[i+1]))
+                  -> min_size[i+1] >= (R - L - min_size[i+1])
+                  -> 2*min_size[i+1] >= R-L.
+                  -> R-L+1 >= 2*min_size[i+1] + 1? -> no, it says R-L<=2*min_size[i+1] -> then R-L+1<=2*min_size[i+1]+1.
+
+            So the condition does not force a lower bound on the total size other than the obvious: R-L+1>= min_size[i+1]+1.
+
+            Therefore, the recurrence should be:
+
+                  if s is '=': 
+                         min_size[i] = 1
+                  if s is '<' or '>': 
+                         min_size[i] = min_size[i+1] + 1
+
+            Then for the sample "><>=":
+
+                  min_size[3] = 1   // for '='
+                  min_size[2] = 1+1 = 2 // for '>', 
+                  min_size[1] = 2+1 = 3 // for '<'
+                  min_size[0] = 3+1 = 4 // for '>'
+
+            Initial size=10>=4 -> possible.
+
+            But is this sufficient? 
+
+            Consider two '<' answers:
+
+                  min_size[0] = 2: 
+                  then for the first '<': we require the left part to be at least min_size[1] = 1+1=2.
+                  guess g: then the left part [L, g-1] must have size>=2.
+                  and the condition for '<' is: left_part>= right_part.
+                  Example: [1,3]: 
+                         guess g=3: 
+                                left_part = [1,2] -> size=2>=2, condition: 2>=0 (right_part=0) -> true.
+                  Then next: 
+                         [1,2] and answer '<': 
+                                min_size[1]=2, so we require size>=2+1=3? -> but [1,2] has size 2<3 -> fail.
+
+            So we need to to safe, we must ensure that the updated interval has size>= min_size[i+1]. 
+
+            For the first '<' in the example above, the updated interval has size2, which is>= min_size[1]=2, so it is safe.
+
+            Then for the second '<' in [1,2]: 
+                  min_size for the second '<' (i=1) = min_size[2] + 1 = ? 
+                         min_size[2] for the next after the second '<' would be computed from the next answer. In this example, we have two '<'s, so for the second '<' (last answer) we would then have min_size[2] = 1 (if the next answer is '=') or min_size[2] = min_size[3]+1 if there is another answer. 
+
+            In our example of two '<'s, the answer string is "< <" and then the game ends? or does it end after the second '<'? 
+
+            The game ends after the second guess. There is no '='. Therefore, the updated interval after the second guess must be non-empty. The recurrence for the second '<' should be:
+
+                  min_size for the second '<' (at i=1) = 1 ( because after the second guess, we only require the interval to be non-empty: size>=1) -> then min_size[1] = 1+1=2.
+
+            Then for the second step: 
+                  [1,2] has size 2>=2 -> then we choose guess=2: 
+                         condition: left_part = 2-1=1, right_part=0 -> she answers '<' -> updated interval [1,1] -> size=1>=1 (min_size[2]=1) -> valid.
+
+            Therefore, the recurrence should be:
+
+                  Let min_size[M] = 1   (after the last answer, we need size>=1)
+
+                  For i from M-1 downto 0:
+                         if the answer[i] is '=':
+                                min_size[i] = 1
+                         else if the answer[i] is '<' or '>':
+                                min_size[i] = min_size[i+1] + 1
+
+            But wait: after an answer '<' or '>', the updated interval size can be as small as 1, but we require it to be at least min_size[i+1] (which is the minimal size for the next steps). 
+
+            This recurrence min_size[i] = min_size[i+1] + 1 ensures that the current interval has size at least min_size[i] = min_size[i+1]+1, and then we can choose a guess such that the updated interval has size at least min_size[i+1] (by not including the guess and one other number). 
+
+            Specifically, we can choose the guess at the boundary. 
+
+            For '<': 
+                  choose g = R (the upper bound) -> then the left part has size R-L, and the right part has size 0. 
+                  We require left_part>=0 (true) and we require left_part>=min_size[i+1] -> so we require R-L>= min_size[i+1] -> which is ensured by the current interval size = R-L+1>= min_size[i] = min_size[i+1]+1, so R-L>=min_size[i+1].
+
+            For '>': 
+                  choose g = L -> then the right part has size R-L, and the left part=0. 
+                  condition: right_part>0 (true) and we require right_part>=min_size[i+1] -> ensured by R-L>=min_size[i+1].
+
+            Therefore, we can use:
+
+                  min_size[0] = 1
+                  for i in range(M-1, -1, -1):
+                         if ans[i]=='=': 
+                                 min_size[i] = 1
+                         else:
+                                 min_size[i] = min_size[i+1] + 1
+
+            Then at step i, we require that the current interval size (R-L+1) >= min_size[i].
+
+            And then we choose the guess as follows:
+
+                  if ans[i]=='=': 
+                         then if L!=R, it's impossible -> but our min_size[i] is 1, and we have size>=1, and if size>1 then we cannot have '=' -> so we require L==R.
+                         g = L.
+                  if ans[i]=='<': 
+                         // We choose g = R  (the upper bound of the interval)
+                         // Then the left part is [L, R-1] -> size = (R-1)-L+1 = R-L.
+                         // We require R-L>= min_size[i+1] -> which is true because our current size is R-L+1>= min_size[i] = min_size[i+1]+1 -> R-L>= min_size[i+1].
+                         // Also, the condition for '<' is: (g-L) = (R-L) >= (R - R) =0 -> true.
+
+                         But is it the only choice? No, but it is a valid choice.
+
+                  if ans[i]=='>': 
+                         // choose g = L.
+                         // Then the right part is [L+1, R] -> size = R-L.
+                         // condition: (R-L) > (L-L)=0 -> true.
+
+            Then update:
+
+                  if '<': L'=L, R'=R-1
+                  if '>': L'=L+1, R'=R
+
+            Let's test the sample "><>=" with N=10, answers="><>=".
+
+            Precompute min_size (M=4):
+                  min_size[3] = 1   // for '='
+                  min_size[2] = min_size[3]+1 = 2   // for '>' 
+                  min_size[1] = min_size[2]+1 = 3   // for '<'
+                  min_size[0] = min_size[1]+1 = 4   // for '>' 
+
+            Steps:
+                  L=1, R=10, size=10>=4 -> valid.
+                  i=0: '>' -> choose g=1.
+                         new interval: L=2, R=10 -> size=9.
+                  i=1: '<' -> choose g=10.
+                         new interval: L=2, R=9 -> size=8.
+                  i=2: '>' -> choose g=2.
+                         new interval: L=3, R=9 -> size=7.
+                  i=3: '=' -> we require L==R, but L=3, R=9 -> not equal. -> fail.
+
+            What happened? 
+
+            The sample solution is: 5,8,6,7.
+
+            We see that at the last step, the guess is 7 and the interval must be [7,7]? How do we get there?
+
+            We must choose the guesses in the middle, not at the boundary.
+
+            How to incorporate the condition for Theodora's answer? 
+
+            For the first '>' in the sample, we did choose g=1. This is valid for the answer '>' and leaves the interval [2,10]. 
+            For the next '<', if we guess 10, then the condition for '<' is: (10-2)>= (10-10)? -> 8>=0, true. 
+            Then we leave [2,9]. 
+            For the next '>', we guess 2 -> condition: (9-2) > (2-3)? -> wait, the current interval is [2,9]. 
+                  (9-2) = 7, (2-2)=0 -> 7>0, true. 
+            Then we leave [3,9]. 
+            Then for '=', we need [3,9] to be a singleton? -> no. 
+
+            We must guess the number that will leave the interval as a singleton for the last guess.
+
+            For the third guess (answer '>'), we are in [2,9] and we want after the guess to have the interval be [7,7]? -> how? 
+                  We guess g such that the updated interval is [g+1,9] = [7,7] -> then g+1=7 and 9=7 -> no.
+
+            How about guess=6: 
+                  Theodora answers '>' -> then updated interval [7,9]. 
+            Then the last guess: guess=7, but then the interval [7,9] is not a singleton. 
+
+            How about guess=7: 
+                  answers '>' -> updated interval [8,9] -> not a singleton.
+
+            How about guess=8: 
+                  answers '>' -> updated interval [9,9] -> singleton.
+
+            Then the last guess: guess=9 -> '='. 
+
+            But the answers are "><>=" and the last guess should be the fourth and yield '='. In this scenario, the fourth guess is 9 and yields '='. 
+
+            Therefore, the guesses would be: 
+                  guess1= (for '>') in [1,10]: let's choose  something that leaves room for the next.
+                  sample: guess1=5.
+
+            Why boundary guesses are not optimal for the whole sequence? 
+
+            We must choose a guess that not only 
+
+            In summary, we have two constraints at step i for a non-'=' answer s:
+                  1. The updated interval must have size at least min_size[i+1].
+                  2. The guess must be such that Theodora would answer s.
+
+            For '<' the guess must be in [ ceil((L+R)/2), R ] and also we require that the left part (size = g-L) is at least min_size[i+1]. 
+            For '>' the guess must be in [ L, floor((L+R-1)/2) ] and also we require that the right part (size = R-g) is at least min_size[i+1].
+
+            Additionally, the updated interval must be non-empty.
+
+            Therefore, for '<': 
+                  g must be in [ max(ceil((L+R)/2), L+min_size[i+1]), R ]
+
+            For '>'.: 
+                  g must be in [ L, min(floor((L+R-1)/2), R-min_size[i+1]) ]
+
+            Then we can choose any g in that range. To leave as much flexibility as possible, we can choose the smallest possible g for '<' and the largest possible g for '>'? 
+
+            But note: the sample for the first '>' in "><>=" with [1,10]: 
+                  For '>' (s0='>'): 
+                         g in [1, min(floor((1+10-1)/2), 10-min_size[1])] 
+                         = [1, min(floor(10/2)=5, 10-3=7)] = [1,5]
+
+                  We can choose any g in [1,5]. 
+
+                  If we choose g=5, then updated interval = [6,10] (size=5) -> which>= min_size[1]=3, valid.
+
+            Then for the next answer '<' in [6,10]: 
+                  g in [ max(ceil((6+10)/2), 6+min_size[2]), 10] 
+                         = [ max(ceil(16/2)=8, 6+2=8), 10] = [8,10]
+
+                  choose g=8.
+                  updated interval = [6,7] (size=2) -> which >= min_size[2]=2, valid.
+
+            Then for '>' in [6,7]:
+                  g in [6, min(floor((6+7-1)/2), 7-min_size[3])]
+                         = [6, min(floor(12/2)=6, 7-1=6)] = [6,6]
+                  choose g=6.
+                  updated interval = [7,7] (size=1) -> valid.
+
+            Then for '=' in [7,7]: choose g=7.
+
+            Therefore, the guesses = [5,8,6,7] -> matches the sample.
+
+            Therefore, algorithm:
+
+                  Precompute min_size: an array of length M+1.
+                         min_size[M] = 1
+                         for i = M-1 downto 0:
+                                 if ans[i]=='=': 
+                                         min_size[i] = 1
+                                 else:
+                                         min_size[i] = min_size[i+1] + 1
+
+                  L = 1, R = N
+                  guesses = []
+                  for i in range(M):
+                         if the current interval size = R-L+1 < min_size[i]:
+                                 return -1
+
+                         if ans[i]=='=':
+                                 if L != R:
+                                         return -1
+                                 else:
+                                         guess = L   (or R)
+                                         guesses.append(guess)
+                                         # interval remains [L,R] (but we break anyway, as this is the last)
+                         elif ans[i]=='<':
+                                 # range for g: [max(ceil((L+R)/2), L+min_size[i+1]), R]
+                                 low = max( (L+R+1)//2, L+min_size[i+1] )   # ceil((L+R)/2) = (L+R+1)//2 for floor division in integers?
+                                 # But note: ceil((L+R)/2) might be implemented as (L+R+1) // 2 for integers.
+                                 high = R
+
+                                 if low > high:
+                                         return -1
+                                 # We choose the smallest possible g? or any? 
+                                 # Let's choose low.
+                                 guess = low
+                                 guesses.append(guess)
+
+                                 # update: R = guess - 1
+                                 R = guess - 1
+                         elif ans[i]=='>':
+                                 # range for g: [L, min( (L+R-1)//2, R-min_size[i+1] ) ]
+                                 high = min( (L+R-1)//2, R - min_size[i+1] )
+                                 low = L
+
+                                 if low > high:
+                                         return -1
+                                 # choose the largest possible g? or any? 
+                                 # Let's choose high.
+                                 guess = high
+                                 guesses.append(guess)
+
+                                 # update: L = guess + 1
+                                 L = guess + 1
+
+                  output the guesses.
+
+            Note: for the '=' case, we break out of the loop naturally because i goes to M.
+
+            But note: in the '<' and '>' cases, we use min_size[i+1]. For the last step (i=M-1) and if the answer is '<' or '>', then we use min_size[M] = 1.
+
+            Also, after the last update, we don't have to check the next interval beyond the last guess.
+
+            Let's test the second sample: 
+                  Input: 10 5
+                          ><><
+                  Answers: '><><' (M=4)
+
+            Precompute min_size:
+                  min_size[4]=1
+                  i=3: '>' -> min_size[3]=min_size[4]+1=2
+                  i=2: '<' -> min_size[2]=min_size[3]+1=3
+                  i=1: '>' -> min_size[1]=min_size[2]+1=4
+                  i=0: '<' -> min_size[0]=min_size[1]+1=5
+
+            Steps:
+
+                  L=1, R=10, size=10>=5 -> valid.
+                  i=0: '<' -> 
+                         low = max(ceil((1+10)/2), 1+min_size[1]) = max(ceil(11/2)=6, 1+4=5) = 6
+                         high=10
+                         choose guess=6.
+                         update: R=6-1=5 -> [1,5]
+                  i=1: '>' -> 
+                         high = min( (1+5-1)//2 = (5)//2=2, 5-min_size[2]=5-3=2) = 2
+                         low=1
+                         choose guess=2.
+                         update: L=2+1=3 -> [3,5]
+                  i=2: '<' ->
+                         low = max(ceil((3+5)/2)=ceil(4)=4, 3+min_size[3]=3+2=5) = 5
+                         high=5
+                         guess=5.
+                         update: R=5-1=4 -> [3,4]
+                  i=3: '>' ->
+                         high = min( (3+4-1)//2 = (6)//2=3, 4-min_size[4]=4-1=3) = 3
+                         low=3
+                         guess=3.
+                         update: L=3+1=4 -> [4,4] (but then the game ends)
+
+                  Guesses: [6,2,5,3] 
+
+            The sample output is: 4 10 8 5 7 -> wait, the sample input has only 4 guesses? 
+
+            But the input: 
+                  10 5
+                  ><><   -> length=4.
+
+            The sample output: 4 integers: 4, 10, 8, 5, 7? -> but it says 4 integers. 
+
+            The sample output says: 4 10 8 5 7 -> that is 5 integers. 
+
+            Let me check the sample input: 
+                  Sample Input 2:
+                        10 5
+                        ><><
+                  Output: 4 10 8 5 7
+
+            This is 5 numbers. 
+
+            But the string has length 4, so we should output 4 guesses.
+
+            The sample output has 5 numbers. 
+
+            I see the problem: the sample input description says:
+
+                  # Sample Input
+                  10 5
+                  ><><
+
+                  # Output for Sample Input
+                  4 10 8 5 7
+
+            This output has 5 numbers, but the string has length 4.
+
+            This is a mistake in the problem statement? 
+
+            Let me read the problem again: 
+                  "The second line contains a string in a line denoting Theodora's answers."
+
+                  and 
+                  - The last character of the string is `=` and ... or 
+                  - The length of the string is exactly K and each character is either '<' or '>'.
+
+            In this sample, K=5, and the string is "><><" (length=4), which is not K and does not have an '='. -> therefore, it is not in the first category, and for the second category we require length=K=5. 
+
+            So the sample input is malformed? 
+
+            But the problem says: 
+                  "or
+                  - The length of the string is exactly K and each character of the string is either '<' or '>'."
+
+            So if K=5, then the string must be of length 5.
+
+            Therefore, the sample input might be:
+
+                  10 5
+                  ><><   (4 characters)  -> this does not meet the condition.
+
+            But the sample input might be:
+
+                  10 5
+                  ><><   (without space, and it is 4 characters) -> so it is length 4, not 5.
+
+            The sample output has 5 guesses. 
+
+            Theodora's answers string is given as 4 characters, but Romanos made 5 guesses? -> no, the game ended after 4 guesses.
+
+            This is confusing.
+
+            Let me check the sample input in the problem statement: 
+                  Sample Input 2 is:
+
+                        10 5
+                        ><><
+
+                  and the output is:
+
+                        4 10 8 5 7
+
+            How many answers are there? 5 guesses -> 5 answers? But the string is "><><" -> 4 answers.
+
+            This is a mismatch.
+
+            I see the sample input has K=5 and the string has 4 characters. This is allowed only if the last character is '='? but it isn't. 
+
+            Therefore, the sample input is invalid according to the input specification.
+
+            But the problem says: 
+                  "or
+                  - The length of the string is exactly K and each character of the string is either '<' or '>'."
+
+            Here, K=5 and the string length is 4, so it is not satisfied.
+
+            Let me reread the input condition:
+
+                  "The second line contains a string in a line denoting Theodora's answers.
+                   Each character of the string is either '<', '>', or '=', and either:
+                         - The last character of the string is '=' and each character of the string other than the last character is either '<' or '>', and the length of the string is not more than K, 
+                         or
+                         - The length of the string is exactly K and each character of the string is either '<' or '>'."
+
+            In sample 2: 
+                  The string is "><><", which has no '=' and has length=4, and K=5.
+                  It does not satisfy the first condition (because the last is not '=') and it does not satisfy the second condition (because length is 4, not K=5).
+
+            Therefore, it is invalid input.
+
+            But the problem says: we must output one of the possible scenario or -1.
+
+            How to resolve sample 2? 
+
+            The sample output is provided, so likely the problem has a mistake. 
+
+            I notice the sample output has 5 guesses, and the string should be of length 5. 
+            The sample input string is shown as "><><", but it might be "><><>" or something else.
+
+            Looking at the sample output: 4,10,8,5,7 -> and the answers we would get are:
+
+                  Guess1=4 -> 
+                        Theodora: she will answer '>' because the number is greater than 4? -> so answer '>'.
+                  Guess2=10 -> 
+                        Theodora: answer '<' because the number is less than 10.
+                  Guess3=8 -> 
+                        Theodora: answer '>' -> because the number is greater than 8? 
+                  Guess4=5 -> 
+                        Theodora: answer '<' 
+                  Guess5=7 -> 
+                        Theodora: then she would answer '=' if the number is 7? 
+
+            But the answer string in the input is "><><", which is only 4 answers. 
+
+            If we consider the answers for the first four guesses: 
+                  guess1: '>'  -> matches
+                  guess2: '<'  -> matches
+                  guess3: '>'  -> matches
+                  guess4: '<'  -> matches
+            then the fifth guess is not answered? 
+
+            The problem says: the game ends after one of:
+                  - Romanos guesses the correct number (he wins), or 
+                  - All K guesses are wrong (he loses).
+
+            In this case, K=5, and the fifth guess is 7. Theodora then answers '=' -> which means Romanos wins. But the answer string provided in input does not include the fifth answer.
+
+            The input condition says: the string is either:
+                  Option1: last char '=', and length<=K, or
+                  Option2: length=K and no '='.
+
+            In sample2, the fifth guess yields '=', so the answer string should be "><><=" and then we would be in Option1. 
+
+            But the sample input is given as "><><", not "><><=".
+
+            Therefore, the sample input is likely miswritten.
+
+            Given the complexity, we assume the input is as specified.
+
+            Let's do the sample input that is in the specification: 
+                  Sample Input: 10 5
+                                  ><>=
+                  We did above and it works.
+
+            Another sample: 
+                  Sample Input: 10 5
+                                  <>=
+                  Output: -1
+
+            Precompute min_size for "<>=" (M=3):
+                  min_size[3]=1
+                  i=2: '=' -> min_size[2]=1
+                  i=1: '>' -> min_size[1]=min_size[2]+1=2
+                  i=0: '<' -> min_size[0]=min_size[1]+1=3
+
+            Steps:
+                  L=1, R=10, size=10>=3 -> valid.
+                  i=0: '<' -> 
+                         low = max(ceil((1+10)/2)=6, 1+min_size[1]=1+2=3) = 6
+                         high=10
+                         guess=6
+                         update: R=5   -> [1,5]
+                  i=1: '>' -> 
+                         high = min( (1+5-1)//2 = 5//2=2, 5-min_size[2]=5-1=4) = 2
+                         low=1
+                         guess=2
+                         update: L=3   -> [3,5]
+                  i=2: '=' -> 
+                         requires [3,5] to be a singleton -> not, so return -1.
+
+            Therefore, output -1.
+
+            Another sample: 
+                  10 9
+                  >>>>>>>>>   (8 '>' or 9? we said the string must have length K=9? -> and the condition is the second option, so length=9)
+
+            Precompute min_size for a string of 9 '>'s:
+                  min_size[9]=1
+                  min_size[8]=1+1=2
+                  min_size[7]=2+1=3
+                  ... min_size[0]=10
+
+            Then the initial interval size=10. 
+            Step0: '>' -> 
+                    guess in [1, min( floor((1+10-1)/2), 10-9=1 )] = [1, min(5,1)] = [1,1] -> choose g=1.
+                    update: L=2, R=10 -> size=9.
+            Then min_size[1]=9 -> 9>=9, valid.
+            Step1: '>' ->
+                    guess in [2, min(floor((2+10-1)/2)= (11//2)=5, 10-min_size[2]=10-8=2)] = [2, min(5,2)] = [2,2] -> g=2.
+                    update: L=3, R=10 -> size=8.
+            Step2: size=8, min_size[2]=8 -> valid.
+                    g in [3, min( (3+10-1)//2=12//2=6, 10-7=3 )] = [3, min(6,3)] = [3,3] -> g=3.
+                    L=4, R=10 -> size=7.
+
+            ...
+
+            Step8: 
+                  L=9, R=10, size=2, min_size[8]=2 -> valid.
+                  '>' -> 
+                         g in [9, min( (9+10-1)//2 = 18//2=9, 10-min_size[9]=10-1=9)] = [9,9] -> g=9.
+                         update: L=10, R=10 -> size=1.
+
+            Step9: 
+                  '>' -> 
+                         but the current interval is [10,10]. 
+                         For '>' : 
+                                g in [10, ...] -> but floor((10+10-1)/2)= floor(19/2)=9 -> but 10>9 -> so the range is [10, min(9, ...)] -> empty.
+
+            So we return -1 at step9.
+
+            But the sample output is: 1 2 3 4 5 6 7 8 9
+
+            Let me simulate with that:
+
+                  L0=1, R0=10.
+                  guess1=1 -> the condition for '>': (10-1)>(1-1) -> 9>0 -> true.
+                         update: L1=2, R1=10.
+                  guess2=2 -> update: L2=3, R2=10.
+                  ... 
+                  guess9=9 -> update: L9=10, R9=10.
+
+            Then the answer for the 9th guess is '>'? -> but Theodora: 
+                  For guess9=9 in the interval [10,10]: 
+                         Theodora must answer '>' only if the number is greater than 9. But the number is 10, so she answers '>'. 
+
+            Then the updated interval is [10,10]? 
+            But the next guess? There is no next guess? the game has used 9 guesses.
+
+            The problem: the game ends after K guesses (all guesses are wrong) -> then Theodora wins. 
+            The answer string has exactly K=9 '>'s.
+
+            In the last guess, the answer is '>', and then the game ends. We do not require a next interval? 
+            But the problem does require that the entire sequence of answers leaves a non-empty set of possible numbers. 
+
+            After the ninth guess and answer '>', the updated interval is [10,10] (if we use the rule for '>': [g+1, R] = [10,10]). 
+            Then the set is non-empty.
+
+            Therefore, we should not do the min_size check for the next interval after the last answer? 
+
+            In our algorithm, after the last answer we don't update min_size for the next step beyond the last. 
+
+            How about we change the min_size to represent the minimal size of the interval at the beginning of step i (before the guess) that is needed to be able to complete the remaining answers and leave a non-empty set at the end. 
+
+            The min_size for the last step (i=M-1) should be:
+
+                  if the last answer is '=': then the current interval must be a singleton: min_size[i]=1.
+                  if the last answer is '<' or '>': then the updated interval after the guess must be non-empty. How to express that in terms of the current interval (before the guess)? 
+
+                  For '<' at the last step: 
+                         the updated interval is [L, g-1] must be non-empty -> so there must be at least one number in [L, g-1]. 
+                         Also, the guess g must be in [L, R] and satisfy the condition for '<'.
+
+                         The minimal current interval size: 
+                                We require that there exists g in [L,R] such that [L, g-1] is non-empty and the condition holds.
+
+                         This is satisfied if the current interval has at least 2 elements? 
+                                If the current interval has one element: then we must have an '='. 
+                                If it has two elements: [x,x+1]: 
+                                       if we guess x+1: then left part = [x, x] -> non-empty, and condition: (x+1 - x) = 1 >= (x+1 - (x+1))=0 -> true.
+                                If it has one element: cannot do '<' or '>', only '='.
+
+                         Therefore, the minimal size for the last step when the answer is '<' or '>' is 2.
+
+            Therefore, we need to adjust the recurrence for the last answer (i=M-1) if it is not '=' to be 2.
+
+            But then the recurrence for the second last would be 2+1=3, etc.
+
+            Alternatively, we can redefine min_size[i] as the minimal size of the interval at the beginning of step i such that we can complete the answers from i to the end and at the end have a non-empty set.
+
+            For the last step (i=M-1):
+                  if ans[i] is '=': then min_size[i]=1.
+                  if ans[i] is '<' or '>': then min_size[i]=2   (because we need at least two elements to have a non-empty updated interval: for example, [x,x+1] and guess x+1 for '<' leaves [x,x] -> non-empty; and similarly for '>').
+
+            Then for i=M-2:
+                  if ans[i] is '=': then not happening (because '=' is last) -> skip.
+                  if ans[i] is '<': then we require the left part to be at least min_size[i+1] (which is 2) and the current interval must be at least 2+1=3? 
+                         guess g: the left part must be>=2, and the current interval must have size at least 3.
+                  if ans[i] is '>': similarly.
+
+            And recurrence: 
+                  if ans[i] is '<' or '>': then min_size[i] = min_size[i+1] + 1
+
+            But then for the last step (non '=') we have min_size=2, for the second last we have 3, then 4, ...
+
+            For the sample of 9 '>'s:
+                  min_size[8] = 2   // for the last '>' at step8 (if we consider 0-indexed up to 8 for 9 steps)
+                  min_size[7] = 3
+                  ... min_size[0]=10
+
+            Then at step0: size=10>=10, valid.
+            Then we can try to choose guesses at the boundary? 
+
+            But at step0: 
+                  '>' : 
+                         g in [1, min( floor((1+10-1)/2)=5, 10-9=1 )] = [1,1] -> g=1.
+            step1: L=2, R=10 -> size=9, min_size[1]=9 -> valid.
+                  '>' : g in [2, min(floor((2+10-1)/2)= (11//2)=5, 10-8=2)] = [2, min(5,2)] = [2,2] -> g=2.
+
+            ... until step8: 
+                  L=9, R=10, size=2, min_size[8]=2 -> valid.
+                  '>' : g in [9, min( floor((9+10-1)/2)= (18//2)=9, 10-min_size[9] ? )] -> but wait, we defined min_size for i from 0 to 8.
+
+            We only need min_size up to i=8. For the last step (i=8), we have min_size[8]=2.
+
+            Then for step8: 
+                  '>' : 
+                         g in [9, min( floor((9+10-1)/2)=9, 10 - min_size[??? ] )] 
+
+            We don't have min_size[9] because there is no next step. For the last step, we don't have min_size[i+1]. 
+
+            How about we let min_size[M] = 0? 
+
+            But then the recurrence for the last step would be: 
+                  if ans[M-1] is '<' or '>', then min_size[M-1] = min_size[M] + 1 = 1, but we want 2.
+
+            Alternatively, we can do:
+
+                  min_size[i] = 
+                         if i==M: then 0   // after the last answer, we don't need any interval? 
+                         if i==M-1 and ans[i]=='=': then 1
+                         if i==M-1 and ans[i] in '<>': then 2
+                         else: 
+                                 if ans[i]=='=': 1   // but then it would be used only if i is not the last? 
+                                 else: min_size[i+1]+1
+
+            But '=' can only appear at the last, so for i<M-1, we won't see '='.
+
+            Therefore, we can do:
+
+                  if i==M: min_size[i]=0
+                  for i=M-1 downto 0:
+                         if ans[i]=='=': 
+                                 min_size[i]=1
+                         else:
+                                 if i==M-1:
+                                         min_size[i]=2
+                                 else:
+                                         min_size[i]=min_size[i+1]+1
+
+            Then for the 9 '>'s (M=9):
+
+                  min_size[9]=0
+                  i=8: ans[8]='>' -> min_size[8]=2
+                  i=7: '>' -> min_size[7]=min_size[8]+1=3
+                  ... 
+                  min_size[0]= min_size[1]+1 = 10
+
+            Then at step0: size=10>=10 -> valid.
+            Then for the last step (i=8): the current interval size must be>=2. [9,10] has size=2, valid.
+
+            Then for i=8: '>' : 
+                  g in [9, min( floor((9+10-1)/2)=9, 10 - min_size[9]=10-0=10)] = [9,9] -> choose g=9.
+                  updated interval: [10,10] -> non-empty.
+
+            And the last answer is '>', and the updated interval [10,10] is non-empty.
+
+            Therefore, we output the guesses: [1,2,3,4,5,6,7,8,9].
+
+            But the sample output is: 1 2 3 4 5 6 7 8 9.
+
+            Now for the sample input: 
+                  10 10
+                          >>>>>>>>>>   (10 '>'s)
+
+            Precompute min_size (M=10):
+                  min_size[10]=0
+                  i=9: '>' -> min_size[9]=2  (because i=M-1)
+                  i=8: '>' -> min_size[8]=3
+                  ... 
+                  i=0: '>' -> min_size[0]=11
+
+            Then initial size=10<11 -> return -1.
+
+            Sample output: -1.
+
+            This matches.
+
+            Therefore, final algorithm:
+
+                  Let M = length of the answer string.
+                  Precompute an array min_size of length M+1 (indexed 0 to M) as follows:
+                         min_size[M] = 0
+                         for i from M-1 down to 0:
+                                 if ans[i] == '=':
+                                         min_size[i] = 1
+                                 else:
+                                         if i == M-1: 
+                                                 min_size[i] = 2
+                                         else:
+                                                 min_size[i] = min_size[i+1] + 1
+
+                  L = 1, R = N
+                  guesses = []
+                  for i in range(M):
+                         size = R-L+1
+                         if size < min_size[i]:
+                                 return -1
+
+                         if ans[i]=='=':
+                                 if L != R:
+                                         return -1
+                                 else:
+                                         guess = L   # or R
+                                         guesses.append(guess)
+                         elif ans[i]=='<':
+                                 # The guess must be in [ max(ceil((L+R)/2), L+min_size[i+1]), R ]
+                                 low_bound = (L+R+1)//2   # ceil((L+R)/2)
+                                 if i < M-1:
+                                         low_bound = max(low_bound, L+min_size[i+1])
+                                 else:
+                                         # For the last answer (i=M-1) and it is '<' or '>', we don't have min_size[i+1] beyond the string? 
+                                         # But note: min_size is defined for i+1 up to M, and we have min_size[M]=0, but we don't use it in the '<' formula for the last step.
+                                         # For the last step (i=M-1) in '<', we only require that the updated interval is non-empty -> which is ensured by g>L.
+                                         # But we do need to ensure that the updated interval is non-empty -> so we require g>=L+1.
+                                         low_bound = max(low_bound, L+1)
+
+                                 # However, note: in the formula for '<' we require g in [low_bound, R] and also we require that the updated interval is non-empty: g>L -> which is ensured by low_bound>=L+1.
+
+                                 if low_bound > R:
+                                         return -1
+                                 guess = low_bound   # choose the smallest possible
+                                 guesses.append(guess)
+                                 R = guess - 1
+                         else: # '>'
+                                 high_bound = (L+R-1)//2   # floor((L+R)/2) in a way that condition: g<= this value ensures (R-g)>(g-L)
+                                 if i < M-1:
+                                         high_bound = min(high_bound, R - min_size[i+1])
+                                 else:
+                                         # last step: ensure updated interval is non-empty: g<=R-1.
+                                         high_bound = min(high_bound, R-1)
+
+                                 if high_bound < L:
+                                         return -1
+                                 guess = high_bound   # choose the largest possible? 
+                                 # But note: we want to leave as much room as possible? 
+                                 # However, any guess in the range works. We choose the largest to maximize the room in the left? 
+                                 # But we go to the right part. 
+                                 # Actually, we choose the largest guess in the allowed range? 
+                                 # But our high_bound is the upper bound of the range. 
+                                 # However, we want to choose a guess that is in [L, high_bound]. We can choose the highest, which is high_bound.
+                                 guesses.append(guess)
+                                 L = guess + 1
+
+                  output the guesses.
+
+            Note: for the last step (i=M-1) for '<' and '>', we do a special boundary adjustment: for '<' we require g>=L+1, for '>' we require g<=R-1.
+
+            Let's test the last step for '<' in a small example: 
+                  [1,2] at the last step (i=M-1) and ans[i]='<'
+                  min_size[i]=2 (which is satisfied by size=2).
+                  low_bound = ceil((1+2)/2)=ceil(1.5)=2, and then we require g>=2 and g<=2 -> g=2.
+                  updated interval: [1,1] -> valid.
+
+            For '>' in [1,2] at the last step: 
+                  high_bound = floor((1+2-1)/2)= floor(2/2)=1, and then we require g<=1 and g>=1 -> g=1.
+                  updated interval: [2,2] -> valid.
+
+            Therefore, we are done.
+
+            Let's test the sample that was a problem earlier: 
+                  "><>=" with N=10, K=5.
+
+            Precompute min_size (M=4):
+                  min_size[4]=0
+                  i=3: '=' -> min_size[3]=1
+                  i=2: '>' -> min_size[2]= min_size[3]+1 = 2   (since i=2<3, not last)
+                  i=1: '<' -> min_size[1]=min_size[2]+1=3
+                  i=0: '>' -> min_size[0]=min_size[1]+1=4
+
+            Steps:
+                  L=1, R=10, size=10>=4 -> valid.
+                  i=0: '>' -> 
+                         high_bound = floor((1+10-1)/2)=5, and then min(5, 10-min_size[1]=10-3=7)=5.
+                         guess=5.
+                         L becomes 6, R=10.
+                  i=1: '<' -> 
+                         low_bound = ceil((6+10)/2)=ceil(8)=8, and then max(8, 6+min_size[2]=6+2=8)=8.
+                         guess=8.
+                         R=10 -> R=8-1=7 -> [6,7]
+                  i=2: '>' -> 
+                         high_bound = floor((6+7-1)/2)=floor(12/2)=6, and then min(6, 7-min_size[3]=7-1=6)=6.
+                         guess=6.
+                         L=7, R=7.
+                  i=3: '=' -> 
+                         guess=7.
+
+            Output: [5,8,6,7] -> matches.
+
+            We'll code accordingly.
+
+            Note: the sample input that has a last answer not being '=' and of length<K: we don't need to consider because the input condition.
+
+            Let's hope.
+
+            We'll implement accordingly.
+
+            Time complexity: O(K) and K<=50000.
+
+            Note: N up to 10^18, so we use big integers.
+
+            Let's code accordingly.
+
+            But note: we are not asked to write code, but we have the algorithm.
+
+            Summary:
+
+            We are given (N, K) and a string s of answers.
+
+            Steps:
+
+              1. Precompute min_size[0..M] (M = len(s)):
+                   min_size[M] = 0
+                   for i from M-1 down to 0:
+                         if s[i]=='=': 
+                                 min_size[i] = 1
+                         else:
+                                 if i == M-1: 
+                                         min_size[i] = 2
+                                 else:
+                                         min_size[i] = min_size[i+1] + 1
+
+              2. Set L=1, R=N, and guesses = [].
+              3. For i in range(M):
+                     if R-L+1 < min_size[i]:
+                             return -1
+
+                     if s[i]=='=':
+                             if L != R:
+                                     return -1
+                             else:
+                                     guess = L   (or R, they are equal)
+                                     guesses.append(guess)
+                     elif s[i]=='<':
+                             # Compute low_bound = ceil((L+R)/2) 
+                             # Note: ceil(a/b) for integers can be (L+R+1)//2 when we use nonnegative integers.
+                             low_bound = (L+R+1) // 2
+                             # If this is not the last step, we also require g>=L+min_size[i+1]
+                             if i < M-1:
+                                     low_bound = max(low_bound, L + min_size[i+1])
+                             else:
+                                     # Last step: we require g>=L+1 to have a non-empty updated interval.
+                                     low_bound = max(low_bound, L+1)
+
+                             if low_bound > R:
+                                     return -1
+                             guess = low_bound   # choosing the smallest possible g
+                             guesses.append(guess)
+                             # Update: Theodora's answer '<' means the number is < guess, so the new interval is [L, guess-1]
+                             R = guess - 1
+                     else: # s[i]=='>'
+                             high_bound = (L+R) // 2   # floor((L+R)/2)? 
+                             # But note: the condition for '>' is: (R-g) > (g-L)  -> 2g < L+R -> so g <= floor((L+R-1)/2) 
+                             # Actually, we want the largest integer g such that 2g < L+R -> g <= (L+R-1)//2.
+                             high_bound = (L+R-1) // 2
+
+                             if i < M-1:
+                                     high_bound = min(high_bound, R - min_size[i+1])
+                             else:
+                                     high_bound = min(high_bound, R-1)
+
+                             if high_bound < L:
+                                     return -1
+                             guess = high_bound
+                             guesses.append(guess)
+                             L = guess + 1
+
+              4. Output the guesses.
+
+            This should work.
+
+            Let's run the provided samples.
+
+            Sample: 10 5 
+                     s = "><>=" -> M=4.
+
+            Precomputed min_size: [4,3,2,1] for i=0,1,2,3? 
+                  min_size[4]=0
+                  i=3: '=' -> min_size[3]=1
+                  i=2: '>' -> min_size[2] = min_size[3]+1 = 2   (since i=2<3 -> not last) -> but wait, i=2 is not the last? last is i=3. So i=2 is not the last step? 
+                  i=1: '<' -> min_size[1]=min_size[2]+1=3
+                  i=0: '>' -> min_size[0]=min_size[1]+1=4
+
+            Then the steps as above -> works.
+
+            Sample: 10 5
+                     s = "><<><"   -> wait, the sample input is given as:
+
+                           10 5
+                           ><><   (4 characters) -> but then M=4, and we have to treat as the input condition is not met? 
+
+            But the problem says: 
+                  "or
+                   - The length of the string is exactly K and each character of the string is either '<' or '>'."
+
+            Here, K=5, and the string has length 4, so it is not. Therefore, we would not get such input.
+
+            The sample input that is provided and should work is the one with the sample output: 4 10 8 5 7, but then the answer string should be "><><>="? 
+            But the problem says the sample input is:
+
+                  10 5
+                  ><><
+
+            and output:
+
+                  4 10 8 5 7
+
+            This is a mismatch.
+
+            We'll assume the input satisfies the condition.
+
+            Another sample: 
+                  Sample Input: 10 5
+                                  <>=
+                  Output: -1
+
+            M=3.
+            min_size: 
+                  min_size[3]=0
+                  i=2: '=' -> min_size[2]=1
+                  i=1: '>' -> min_size[1]=min_size[2]+1=2   (since i=1 is not last? last is i=2) -> but wait, i=1 is the second last, not last. 
+                  i=0: '<' -> min_size[0]=min_size[1]+1=3
+
+            Steps:
+                  L=1, R=10, size=10>=3 -> valid.
+                  i=0: '<' -> 
+                         low_bound = ceil((1+10)/2)= (11+1)//2 = 6, and then since i<2, we do: max(6, 1+min_size[1]=1+2=3)=6.
+                         guess=6.
+                         R=5.
+                  i=1: '>' -> 
+                         high_bound = floor((1+5-1)/2)= (5)//2=2, and then min(2, 5-min_size[2]=5-1=4)=2.
+                         guess=2.
+                         L=3.
+                  i=2: '=' -> 
+                         but the interval is [3,5] (if we did update after the first step: [1,5] and then after the second step: [3,5]) -> size=3, not 1 -> fail.
+
+            Output -1.
+
+            Sample: 10 9
+                     s = ">>>>>>>>>" (9 '>'s)
+
+            min_size: 
+                  min_size[9]=0
+                  i=8: last step -> min_size[8]=2
+                  i=7: '>' -> min_size[7]=min_size[8]+1=3
+                  ... 
+                  i0: '>' -> min_size[0]=10
+
+            Steps:
+                  L=1, R=10, size=10<10? no: 10>=10.
+                  i0: '>' -> 
+                         high_bound = floor((1+10-1)/2)= (10)//2=5, and then min(5, 10-min_size[1]) -> but we need min_size[1]= min_size[0] for i=1? 
+                         min_size[1] = min_size[2]+1 = (min_size[3]+1)+1 = ... = 9.
+                         so min(5, 10-9)=min(5,1)=1.
+                         guess=1.
+                  Then L=2, R=10.
+                  i1: '>' -> 
+                         high_bound = floor((2+10-1)/2)= (11)//2=5, min(5, 10-8)=min(5,2)=2.
+                         guess=2.
+                  ... 
+                  i8: '>' -> 
+                         current interval: [9,10]
+                         high_bound = floor((9+10-1)/2)= (18)//2=9, and since last step, we do min(9,10-1)=9 -> guess=9.
+                  Then L=10, R=10 for the next state.
+
+            Output: [1,2,3,4,5,6,7,8,9]
+
+            But the sample output is: 1 2 3 4 5 6 7 8 9.
+
+            Sample: 10 10
+                     s = ">>>>>>>>>>" (10 '>'s)
+
+            min_size[10]=0
+            i9: last step: min_size[9]=2
+            i8: min_size[8]=3
+            ... 
+            i0: min_size[0]=11
+
+            Then L=1, R=10, size=10<11 -> return -1.
+
+            Output: -1.
+
+            Therefore, the editorial is complete.
+
+            Note: The sample input "><><" with K=5 and length=4 is not handled by our algorithm because the input condition is not satisfied. We assume the input satisfies the condition.
+
+            We'll output the algorithm as described.
+
+            Edge: when L and R are such that the interval is empty -> then we return -1.
+
+            We do the check at the beginning of each iteration.
+
+            This meets the time: O(K) and memory: O(K).
+
+            Let's hope.
+
+            We write accordingly.

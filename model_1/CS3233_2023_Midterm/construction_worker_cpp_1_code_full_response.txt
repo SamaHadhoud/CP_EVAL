@@ -1,0 +1,173 @@
+To solve this problem, we need to maximize the amount of cat dollars SoCCat can earn by completing construction jobs before a given deadline \( z_j \). The jobs are offered periodically every \( T \) days by multiple companies, each with specific start days (modulo \( T \)), duration, and profit. The challenge is to efficiently answer multiple queries for large \( z_j \) (up to \( 10^{11} \)) within time constraints.
+
+### Approach
+1. **Problem Analysis**: 
+   - Jobs are offered periodically by companies. Each company \( i \) offers a job at days \( x_i + k \cdot T \) (for \( k \geq 0 \)), taking \( l_i \) days to complete, and yielding \( p_i \) million cat dollars.
+   - SoCCat can only start one job on the day it is offered and must complete it before starting another.
+   - The goal is to answer \( q \) queries, each asking for the maximum profit achievable before day \( z_j \).
+
+2. **Key Insights**:
+   - **State Representation**: The state can be represented by the residue of the current free day modulo \( T \), as job availability is periodic with period \( T \).
+   - **Dynamic Programming (DP)**: For small profits (up to \( 5 \times T \)), compute the minimal time required to achieve each profit level starting from each residue. The recurrence involves transitions using job details and residue updates.
+   - **Cycle Detection**: For larger profits, leverage cycles in the state transition graph. Identify the most profitable cycle (highest profit-to-time ratio) that can be repeated to maximize profit for large \( z_j \).
+
+3. **Algorithm Selection**:
+   - **DP Setup**: Precompute a DP table where \( dp[k][r] \) is the minimal time to achieve profit \( k \) starting from residue \( r \).
+   - **Efficiency Optimization**: Use prefix and suffix minima to compute transitions efficiently for each profit level.
+   - **Cycle Handling**: For residue 0 (starting state), find the best cycle (profit and time) that can be repeated to extend the solution for large deadlines.
+   - **Query Processing**: For each query, combine initial profits (from DP) and profits from repeating the best cycle for the remaining time.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <climits>
+
+using namespace std;
+typedef long long ll;
+
+const ll INF = 1e18;
+
+struct Job {
+    int x;
+    ll l;
+    int p;
+    int r_i;
+    Job(int x, ll l, int p, int r_i) : x(x), l(l), p(p), r_i(r_i) {}
+};
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int T, n;
+    cin >> T >> n;
+
+    vector<Job> jobs;
+    for (int i = 0; i < n; i++) {
+        int x;
+        ll l;
+        int p;
+        cin >> x >> l >> p;
+        int r_i = (x + l) % T;
+        jobs.emplace_back(x, l, p, r_i);
+    }
+
+    int M = 5 * T;
+    vector<vector<ll>> F_prev(6, vector<ll>(T, INF));
+    F_prev[0][0] = 0;
+
+    vector<ll> res0(M + 1, INF);
+    res0[0] = 0;
+
+    for (int k = 1; k <= M; k++) {
+        vector<ll> G(T, INF);
+        for (const Job& job : jobs) {
+            if (k < job.p) continue;
+            int prev_index = (k - job.p) % 6;
+            if (F_prev[prev_index][job.r_i] == INF) continue;
+            ll candidate = job.l + F_prev[prev_index][job.r_i];
+            if (candidate < G[job.x]) {
+                G[job.x] = candidate;
+            }
+        }
+
+        vector<ll> A(T, INF);
+        vector<ll> B_vec(T, INF);
+        for (int x = 0; x < T; x++) {
+            if (G[x] < INF) {
+                A[x] = G[x] + x;
+                B_vec[x] = G[x] + x + T;
+            }
+        }
+
+        vector<ll> suff_min(T, INF);
+        if (T > 0) {
+            suff_min[T - 1] = A[T - 1];
+            for (int i = T - 2; i >= 0; i--) {
+                suff_min[i] = min(A[i], suff_min[i + 1]);
+            }
+        }
+
+        vector<ll> pref_min_B(T, INF);
+        if (T > 0) {
+            pref_min_B[0] = INF;
+            for (int i = 1; i < T; i++) {
+                pref_min_B[i] = min(pref_min_B[i - 1], B_vec[i - 1]);
+            }
+        }
+
+        vector<ll> F_current(T, INF);
+        for (int r = 0; r < T; r++) {
+            ll option1 = INF;
+            if (suff_min[r] != INF) {
+                option1 = suff_min[r] - r;
+            }
+            ll option2 = INF;
+            if (r > 0 && pref_min_B[r] != INF) {
+                option2 = pref_min_B[r] - r;
+            }
+            F_current[r] = min(option1, option2);
+        }
+
+        F_prev[k % 6] = F_current;
+        res0[k] = F_current[0];
+    }
+
+    ll best_cycle_profit = 0;
+    ll best_cycle_time = INF;
+    for (int k1 = 0; k1 <= M; k1++) {
+        if (res0[k1] == INF) continue;
+        for (int k2 = k1 + 1; k2 <= min(M, k1 + 50); k2++) {
+            if (res0[k2] == INF) continue;
+            ll time_diff = res0[k2] - res0[k1];
+            if (time_diff <= 0) continue;
+            ll profit_diff = k2 - k1;
+            if (best_cycle_profit * time_diff < profit_diff * best_cycle_time) {
+                best_cycle_profit = profit_diff;
+                best_cycle_time = time_diff;
+            } else if (best_cycle_profit * time_diff == profit_diff * best_cycle_time) {
+                if (time_diff < best_cycle_time) {
+                    best_cycle_time = time_diff;
+                    best_cycle_profit = profit_diff;
+                }
+            }
+        }
+    }
+
+    int q;
+    cin >> q;
+    for (int i = 0; i < q; i++) {
+        ll z;
+        cin >> z;
+        ll best_profit = 0;
+        for (int k = 0; k <= M; k++) {
+            if (res0[k] <= z) {
+                ll time_left = z - res0[k];
+                ll add_profit = 0;
+                if (best_cycle_time != INF) {
+                    add_profit = (time_left / best_cycle_time) * best_cycle_profit;
+                }
+                if (k + add_profit > best_profit) {
+                    best_profit = k + add_profit;
+                }
+            }
+        }
+        cout << best_profit << '\n';
+    }
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Input Handling**: Read the period \( T \), number of companies \( n \), and job details (start day modulo \( T \), duration, profit). Jobs are stored in a vector.
+2. **Dynamic Programming Setup**: Initialize a DP table `F_prev` to store minimal times for residues modulo \( T \) for the last 6 profit levels. The base case sets `F_prev[0][0] = 0` (starting at day 0 with residue 0).
+3. **DP Transitions**: For each profit level \( k \) from 1 to \( 5 \times T \):
+   - **Job Processing**: For each job, compute the minimal time to achieve profit \( k \) by transitioning from profit \( k - p_i \).
+   - **Efficiency Optimization**: Use prefix and suffix minima to compute state transitions in linear time relative to \( T \).
+4. **Cycle Detection**: After DP, for residue 0, find the best cycle (profit and time) by comparing state differences within a window of 50 profit levels.
+5. **Query Processing**: For each query \( z_j \), combine initial profits (from DP) and profits from repeating the best cycle for the remaining time. The result is the maximum profit achievable before \( z_j \).
+
+This approach efficiently handles the constraints by leveraging periodic job availability and cycle-based profit maximization for large deadlines, ensuring optimal performance within given time and memory limits.

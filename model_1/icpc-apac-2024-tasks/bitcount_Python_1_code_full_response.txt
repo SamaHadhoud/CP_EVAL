@@ -1,0 +1,167 @@
+To solve this problem, we need to determine whether there exists a non-negative integer \( x \) such that the sequence of popcounts (number of ones in the binary representation) of \( x, x+1, \ldots, x+n-1 \) matches the given sequence \( a_1, a_2, \ldots, a_n \). If such an \( x \) exists, we should return the smallest one; otherwise, return -1.
+
+### Approach
+1. **Check Consecutive Differences**: The difference between consecutive popcounts \( a_{i+1} - a_i \) must be either 1 or a non-positive integer. If it's non-positive, the number of trailing ones in \( x+i \) must be \( k = 1 - (a_{i+1} - a_i) \), and \( k \) should not exceed \( a_i \). If any difference violates these conditions, the solution is impossible.
+
+2. **Build System of Congruences**: For each valid consecutive difference, derive a congruence condition \( x \equiv r_i \mod m_i \), where \( m_i = 2^{k_i + 1} \) and \( r_i = (2^{k_i} - 1 - i) \mod m_i \). Combine these congruences using the Chinese Remainder Theorem (CRT) for powers of two to find a unified congruence \( x \equiv \text{res} \mod \text{mod} \).
+
+3. **Determine Higher Bits Contribution**: After solving the congruences, the residue \( \text{res} \) fixes the lower bits of \( x \). The higher bits (beyond the modulus \( \text{mod} \)) are represented by a non-negative integer \( t \). For each \( i \), compute the popcount contribution of the higher bits:
+   - If \( \text{res} + i < \text{mod} \), the popcount is \( p(t) + p(\text{res} + i) \).
+   - Otherwise, it's \( p(t+1) + p((\text{res} + i) - \text{mod}) \).
+   The values \( p(t) \) and \( p(t+1) \) must match the computed contributions \( v0 \) and \( v1 \) consistently across all \( i \).
+
+4. **Compute Minimal \( t \)**: Based on the derived \( v0 \) and \( v1 \), compute the smallest \( t \) such that:
+   - If only \( v0 \) is set, \( t \) is the smallest number with popcount \( v0 \).
+   - If only \( v1 \) is set, \( t \) is the smallest number such that \( t+1 \) has popcount \( v1 \).
+   - If both are set, \( t \) must satisfy both popcount conditions, considering the relation between consecutive popcounts.
+
+5. **Construct \( x \)**: The solution is \( x = t \times \text{mod} + \text{res} \).
+
+### Solution Code
+```python
+import sys
+
+def main():
+    data = sys.stdin.read().split()
+    t = int(data[0])
+    index = 1
+    results = []
+    for _ in range(t):
+        n = int(data[index]); index += 1
+        a = list(map(int, data[index:index+n]))
+        index += n
+        
+        valid = True
+        if n > 1:
+            for i in range(n-1):
+                d = a[i+1] - a[i]
+                if d > 1:
+                    valid = False
+                    break
+                elif d <= 0:
+                    k = 1 - d
+                    if k > a[i]:
+                        valid = False
+                        break
+        if not valid:
+            results.append("-1")
+            continue
+            
+        mod = 1
+        res = 0
+        if n > 1:
+            for i in range(n-1):
+                if a[i+1] - a[i]] == 1:
+                    k_i = 0
+                else:
+                    k_i = 1 - (a[i+1] - a[i]])
+                m_i = 1 << (k_i + 1)
+                base_val = (1 << k_i) - 1 - i
+                r_i = base_val % m_i
+                if r_i < 0:
+                    r_i += m_i
+                    
+                g = min(mod, m_i)
+                if (res % g) != (r_i % g):
+                    valid = False
+                    break
+                    
+                if mod <= m_i:
+                    diff = r_i - res
+                    if diff % mod != 0:
+                        valid = False
+                        break
+                    quotient = diff // mod
+                    step_size = m_i // mod
+                    t0 = quotient % step_size
+                    res = res + t0 * mod
+                    mod = m_i
+                    res %= mod
+            if not valid:
+                results.append("-1")
+                continue
+                
+        v0 = None
+        v1 = None
+        valid_sequence = True
+        for i in range(n):
+            base_val = res + i
+            if base_val < mod:
+                s = bin(base_val)
+                pc = s.count('1')
+                v_val = a[i] - pc
+                if v_val < 0:
+                    valid_sequence = False
+                    break
+                if v0 is None:
+                    v0 = v_val
+                else:
+                    if v_val != v0:
+                        valid_sequence = False
+                        break
+            else:
+                base_val2 = base_val - mod
+                s = bin(base_val2)
+                pc = s.count('1')
+                v_val = a[i] - pc
+                if v_val < 0:
+                    valid_sequence = False
+                    break
+                if v1 is None:
+                    v1 = v_val
+                else:
+                    if v_val != v1:
+                        valid_sequence = False
+                        break
+                        
+        if not valid_sequence:
+            results.append("-1")
+            continue
+            
+        if v0 is not None and v1 is not None:
+            if not (1 <= v1 <= v0 + 1):
+                results.append("-1")
+                continue
+        if v1 is not None and v0 is None:
+            if v1 < 1:
+                results.append("-1")
+                continue
+                
+        if v0 is not None and v1 is None:
+            if v0 == 0:
+                t_min = 0
+            else:
+                t_min = (1 << v0) - 1
+        elif v0 is None and v1 is not None:
+            t_min = (1 << v1) - 2
+        else:
+            if v1 == v0 + 1:
+                t_min = (1 << (v0+1)) - 2
+            else:
+                k = v0 - v1 + 1
+                if v1 == 0:
+                    t_min = 0
+                else:
+                    part1 = (1 << (v1-1)) - 1
+                    part1_shifted = part1 << (k+1)
+                    part2 = (1 << k) - 1
+                    t_min = part1_shifted | part2
+                    
+        x_candidate = t_min * mod + res
+        results.append(str(x_candidate))
+        
+    print("\n".join(results))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Reading Input**: The input is read in one go for efficiency, especially given the constraints.
+2. **Checking Validity of Differences**: For each test case, the differences between consecutive elements in the sequence are checked. If any difference violates the conditions (either greater than 1 or implies an invalid number of trailing ones), the solution is deemed impossible.
+3. **Solving Congruences**: Using the derived conditions, a system of congruences is built and solved using properties of powers of two, leveraging the Chinese Remainder Theorem for efficient combination.
+4. **Determining Higher Bits**: The residue from solving the congruences fixes the lower bits of \( x \). The higher bits' popcount contributions are checked for consistency across the sequence.
+5. **Computing Minimal \( x \)**: The smallest \( t \) (higher bits) satisfying the popcount conditions is computed, and \( x \) is constructed as \( t \times \text{mod} + \text{res} \).
+6. **Output**: Results for all test cases are collected and printed at the end for efficiency.
+
+This approach efficiently checks for the existence of \( x \) and computes the smallest valid \( x \) by leveraging modular arithmetic and properties of binary numbers.

@@ -1,0 +1,1480 @@
+We are counting the number of ways to place scarecrows on an R x C grid (with R up to 14 and C up to 1000) such that:
+1. Each row has at least one scarecrow.
+2. Every two consecutive columns (i.e., columns j and j+1 for j from 0 to C-2) have at least one scarecrow.
+
+Additionally, we cannot place a scarecrow on a cell that is planted with rice (represented by 'v'). Empty cells are '.'.
+
+Constraints:
+- R (rows) is between 1 and 14.
+- C (columns) is between 1 and 1000.
+
+We note that the grid has fixed constraints per cell: if a cell is 'v', then we cannot place a scarecrow there.
+
+The problem requires:
+- At least one scarecrow per row.
+- For every two consecutive columns, at least one scarecrow in that pair of columns (meaning at least one scarecrow in the two columns j and j+1, but note: it could be in any row).
+
+However, note that condition 2 is stated as "each consecutive two columns contain at least one scarecrow". This is equivalent to: for every j from 0 to C-2, the two columns j and j+1 together must have at least one scarecrow.
+
+But note: the condition does not require that the scarecrow is in the same row for consecutive columns. It can be in any row.
+
+How to approach?
+
+We can use dynamic programming that goes column by column. However, the condition that every two consecutive columns must have at least one scarecrow and every row must have at least one scarecrow complicates matters.
+
+We note that the state for a column must remember which rows have been covered so far (for the row condition) and also the coverage for the consecutive columns condition. However, the consecutive columns condition is local to adjacent columns.
+
+But note: the row condition is global: we require every row to have at least one scarecrow in the entire grid. However, the consecutive columns condition is local: for each pair of consecutive columns.
+
+We can design a DP that goes column by column and also keeps track of the row coverage so far? But the row coverage is global and we have up to 1000 columns, and 14 rows -> 2^14 states per column? Then we have 1000 columns -> 1000 * 2^14 ~ 16,000,000 states which is acceptable in C++ but note we also have to consider the state for the consecutive columns condition.
+
+However, the consecutive columns condition for column j and j+1: we require that columns j and j+1 together have at least one scarecrow. This condition for column j is only enforced when we process column j+1? Actually, we can enforce it as we go.
+
+Alternatively, we can use a state that includes:
+- The current column index j (from 0 to C-1).
+- A bitmask of which rows have been covered (so far) by a scarecrow? But note: the row condition requires that every row must have at least one scarecrow in the entire grid. However, we cannot wait until the end to check because the consecutive columns condition must hold for every adjacent pair.
+
+But the consecutive columns condition forces that adjacent columns are not both empty. How do we enforce this?
+
+We can design a DP that for column j, we remember:
+1. The scarecrow placements in column j (as a bitmask over the R rows: 0 means no scarecrow, 1 means scarecrow, but only allowed on '.' cells).
+2. The set of rows that have been covered so far (from column 0 to j) by a scarecrow? But note: the row condition is global and we cannot check until the end. However, we must also remember the placements in the previous column to enforce the consecutive condition: because condition for columns j-1 and j requires that in columns j-1 and j, there is at least one scarecrow.
+
+Actually, the condition for consecutive columns j and j+1: we must have at least one scarecrow in columns j and j+1. But note: if we are at column j, we can also enforce the condition for the pair (j-1, j) if we remember the previous column's placements.
+
+Therefore, we can design a DP state:
+
+dp[j][mask][prev] = ... but we have two conditions: the row coverage so far and the consecutive condition. Alternatively, we can separate the row coverage and the consecutive condition.
+
+But note: the consecutive condition only depends on the current and the previous column. Also, the row condition we can check at the end? However, the consecutive condition must be satisfied for every adjacent pair as we go.
+
+So we can do:
+
+Let j be the current column (from 0 to C-1). We remember:
+- The set of rows that have been covered so far (from column 0 to j) by a scarecrow: this is a bitmask of R bits. However, we do not need the entire history, but just which rows have been covered at least once so far? But then we have 2^R states.
+
+Additionally, we must remember the placements in the current column? Actually, no: but we need the placements in the current column to check the consecutive condition for the next adjacent pair? Actually, for the consecutive condition of (j, j+1), we need to know the placements in column j and j+1. However, when we are processing column j, we are about to set the placements for column j. Then we will use that to check the condition for (j-1, j) and later for (j, j+1) when we go to j+1.
+
+But when we are at column j, we have already fixed column j-1. So for the condition (j-1, j): we can check that at column j: we require that either column j-1 had at least one scarecrow OR column j has at least one scarecrow? Actually, the condition is: the two columns together must have at least one. So if column j-1 had at least one, then we are safe for the pair (j-1, j). If not, then we require that column j has at least one.
+
+However, if column j-1 was empty (i.e., no scarecrow in any row) then we require that column j must have at least one.
+
+But how do we know if column j-1 was empty? We can remember the placements in column j-1? Actually, we can remember the entire placements of column j-1? That would be R bits, which is 14 -> 16384 states per column? Then we have state: [j][mask][prev_col_mask] where:
+- j: current column index (0-indexed)
+- mask: the set of rows that have been covered so far (from column 0 to j) -> 2^R states
+- prev_col_mask: the placements in column j-1 (as a bitmask) -> 2^R states
+
+But then the state dimension is C * (2^R) * (2^R) = 1000 * 2^14 * 2^14 = 1000 * 2^28 = 1000 * ~268 million = 268 billion states. This is too high.
+
+Alternative idea:
+
+We note that the consecutive condition for (j-1, j) can be enforced by knowing only whether column j-1 had at least one scarecrow and column j had at least one scarecrow? Actually, no: if column j-1 had a scarecrow, then we are safe for the pair (j-1, j) regardless of column j. But if column j-1 had none, then we require that column j must have at least one.
+
+So we don't need the entire mask for column j-1, we only need a boolean: whether column j-1 had at least one scarecrow.
+
+Similarly, when we move to the next column j+1, we will need to know about column j: whether it had at least one scarecrow? So we can reduce the state for the previous column to a single bit: 0 means column j-1 was empty, 1 means it had at least one scarecrow.
+
+But wait: what if we have two consecutive columns that are both empty? Then the condition fails. So we can represent the state for the previous column by a boolean: whether it was non-empty? Actually, that is sufficient.
+
+Therefore, state:
+
+dp[j][covered_mask][prev_nonempty] = number of ways to arrange scarecrows for columns 0 to j such that:
+- covered_mask: a bitmask of R bits, where bit i is 1 if row i has been covered (by a scarecrow) at least once in columns 0..j, and 0 otherwise.
+- prev_nonempty: a boolean (0 or 1) that indicates whether column j-1 had at least one scarecrow? (But note: for j=0, there is no previous column. How do we handle?)
+
+For j=0 (the first column), we don't have a previous column. However, the consecutive condition starts from columns 0 and 1? So the first condition is for columns 0 and 1. Therefore, at column0, we don't have to worry about a consecutive condition? But then when we go to column1, we will check the pair (0,1). So at column0, we only have to remember the covered_mask and the placements in column0? But then when we move to column1, we need to know: was column0 non-empty? So we can store that as part of the state.
+
+But note: the consecutive condition for (0,1) will be enforced at column1: if column0 was empty, then we require that column1 must be non-empty. So we must remember: in the state for column0, we don't have a consecutive condition to check, but we must remember the entire placements of column0? Actually, no: we only need to remember whether column0 was non-empty? Yes.
+
+So we can design:
+
+Let j range from 0 to C-1.
+
+dp[j][mask][prev] = number of ways to assign scarecrows from column0 to column j such that:
+  - mask: the set of rows that have been covered so far (in columns 0..j) by a scarecrow.
+  - prev: a boolean indicating whether the previous column (column j-1) is non-empty (i.e., has at least one scarecrow). For j=0, we don't have a previous column, so we can consider the previous as "non-existent", but then when we go to j=1 we need to know about column0. So we can handle j=0 separately? Actually, we can let the state for j=0 have a dummy prev? But note: the condition for the consecutive pair (0,1) will be enforced at j=1. So for j=0, we don't have to enforce any consecutive condition. However, we do need to remember for the next state: the non-emptiness of column0.
+
+Therefore, we can let the state for j=0 have:
+  mask: the set of rows covered in column0.
+  prev: we don't have a column -1. But we can set prev = 1 for the purpose of the next consecutive condition? Actually, the consecutive condition for (0,1) only requires that either column0 or column1 has a scarecrow. So if we set prev = 1 for column0 meaning that column0 is non-empty, then when we process column1, we don't require that column1 must be non-empty? Actually, no: if column0 is non-empty, then the condition for (0,1) is satisfied regardless of column1. So we can represent the state for column0 by:
+    mask: the set of rows that are covered so far (only column0)
+    and we set prev = the non-emptiness of column0? Actually, we don't need to store the entire placements of column0, only whether it was non-empty. But note: when we go to the next column, we will need the non-emptiness of column0? So we can store that in the state as the "prev" for the next column.
+
+Therefore, for j=0, we can have:
+  We iterate over all possible placements for column0 (that are valid: only on '.' cells). For each placement, we compute:
+    mask0 = the set of rows that are covered in column0 (by the placement)
+    non_empty0 = (mask0 != 0) ? 1 : 0   [but note: if no scarecrow in column0, then non_empty0=0]
+
+  Then state for column0: dp[0][mask0][non_empty0] += 1.
+
+But note: the consecutive condition for the first pair (0,1) will be enforced at column1. However, we also note that we have not enforced the consecutive condition for (0,1) at column0. But that's okay because we will enforce it at column1.
+
+Now, for j>=1, we consider the placements for column j. We iterate over:
+  - the current state: (mask_old, prev_old) from column j-1 (which is stored in dp[j-1][mask_old][prev_old])
+  - the current placement in column j: represented by a bitmask 'curr' of R bits. For each row i, if the grid[i][j] is 'v', then we must have curr[i] = 0. Otherwise, we can choose 0 or 1.
+
+Then we update:
+  new_mask = mask_old OR curr   [because we are adding the scarecrows in column j to the covered set]
+
+  non_empty_curr = (curr != 0) ? 1 : 0
+
+But we must enforce the consecutive condition for the pair (j-1, j): 
+  Condition: we require that either prev_old (which indicates column j-1 was non-empty) is true OR non_empty_curr (column j is non-empty) is true.
+
+  If this condition fails, then we skip.
+
+Then we update the state for column j: dp[j][new_mask][non_empty_curr] += dp[j-1][mask_old][prev_old]
+
+After processing all columns (j from 0 to C-1), we must have:
+  - The consecutive condition for the last pair (C-2, C-1) has been enforced at column C-1? Yes, because when we processed column C-1, we checked the consecutive condition for (C-2, C-1).
+  - The consecutive condition for all pairs (0,1), (1,2), ... (C-2, C-1) are enforced.
+
+But what about the row condition? At the end, we require that mask is (1<<R)-1, i.e., all rows are covered.
+
+Additionally, note: we also require the consecutive condition for the last pair? It is enforced at column C-1.
+
+So the answer = sum_{prev} dp[C-1][(1<<R)-1][prev]
+
+But note: what about the consecutive condition for the last column? The condition for the last pair (C-2, C-1) is enforced at column C-1. There is no consecutive condition for a pair ending at the last column? The condition is only for consecutive two columns, so the last pair is (C-2, C-1). We have enforced that.
+
+However, we must note: the consecutive condition for the pair (C-1, C) does not exist because there is no column C.
+
+So the above state design should work.
+
+But note: the state dimension is:
+  j: 0..C (but we do j from 0 to C-1) -> 1000
+  mask: 0 to (1<<R)-1 -> 2^14 = 16384
+  prev: 0 or 1 -> 2
+
+Total states: 1000 * 16384 * 2 = 32,768,000 states.
+
+But for each state, we iterate over all possible placements for the current column: 2^R = 16384.
+
+Total operations: 1000 * 16384 * 2 * 16384 = 1000 * 2 * (16384)^2 = 2000 * 268435456 = 536,870,912,000 which is about 537 billion. That is too high.
+
+We need to optimize.
+
+Alternative: we can precompute for each column the valid placements (bit masks) and also precompute for each state the transitions without iterating over all 2^R? Actually, note that the placements must be valid: we can only put scarecrows on '.' cells. So we have a fixed set of allowed masks per column.
+
+But worst-case, the number of valid masks might be 2^R, so 16384 per column.
+
+But we can use a double DP: one for the columns and one for the masks. However, the state has two more dimensions: mask_old and prev_old.
+
+We need to reduce the inner loop.
+
+Idea: precompute for each column j the list of valid masks. Then for each state (mask_old, prev_old) and for each valid mask curr for column j, we compute:
+  new_mask = mask_old | curr
+  non_empty_curr = (curr != 0) ? 1 : 0
+  if (prev_old || non_empty_curr) then update.
+
+But the inner loop is 16384 per state, and we have 16384 * 2 states per column -> total per column: 16384 * 2 * (number of valid masks for j) = worst-case 16384 * 2 * 16384 = 2 * 2^28 = 2^29 = 536,870,912 per column. Then for 1000 columns: 536,870,912 * 1000 = 536,870,912,000 operations -> too slow.
+
+We need to optimize the inner loop.
+
+Alternative approach: we can use a state that does not include the entire history mask? But the row condition is global and we must know which rows have been covered so far.
+
+But note: we are going column by column. The row condition: we require that every row is covered at least once in the entire grid. However, we can also use inclusion-exclusion? But that might be complex.
+
+Another idea: we can use a state that only includes the set of rows that have NOT been covered so far? But then the state dimension is the same: 2^R.
+
+Alternatively, we can use a different state representation: instead of storing the entire mask of covered rows, we can store the mask of rows that have been covered in the current and previous columns? But no, because the row condition is global: a row might have been covered in any column.
+
+We need to reduce the state dimension? The state has two integers: mask (2^14) and prev (2). The issue is the inner loop over the current mask (2^14). So total per column: 2^14 * 2 * 2^14 = 2^29 which is about 536e6 per column -> 536e9 for 1000 columns.
+
+But note: the grid has R up to 14, so 2^14 is 16384. Then 16384 * 16384 * 2 * 1000 = 16384 * 16384 = 268435456 * 2 = 536870912 * 1000 = 536,870,912,000 which is 537e9 operations. This is too high in C++ (each operation is a few instructions) for 2 seconds.
+
+We must optimize the transition.
+
+We can use the following: instead of iterating over all masks for the current column, we can iterate over the subsets of the current column? But that is still 2^R.
+
+Alternatively, we can use a meet-in-the-middle? Not obvious.
+
+Another idea: we can use a DP that uses the previous state and then uses bitmask DP techniques to update the new state by iterating over the current mask? But we are already doing that.
+
+But note: we can precompute for each column j and for each state (mask_old, prev_old) and for each current mask 'curr', the update to state (new_mask, non_empty_curr) is additive. So we can use:
+
+  for each mask_old, prev_old:
+      for each curr: 
+          if condition holds, then update dp[j][new_mask][non_empty_curr] += dp[j-1][mask_old][prev_old]
+
+But we can reverse the order? We can fix the current mask and then the mask_old? But that doesn't reduce the complexity.
+
+Alternatively, we can use a different formulation: let's denote:
+  dp[j][mask][prev] = number of ways for columns 0..j.
+
+Then we want to compute dp[j][*][*] from dp[j-1][*][*].
+
+We can precompute for the current column j:
+  Let A = the set of valid masks for column j.
+
+Then for each mask_old in [0, (1<<R)-1] and each prev_old in {0,1}, and for each curr in A:
+   new_mask = mask_old | curr
+   non_empty_curr = (curr != 0) ? 1 : 0
+   if (prev_old || non_empty_curr):
+        dp[j][new_mask][non_empty_curr] += dp[j-1][mask_old][prev_old]
+
+But the inner loop over curr is |A| which is at most 2^R.
+
+But note: we can avoid iterating over all masks_old and all curr by using a 2D convolution? Specifically, we can fix the current mask and then update the new_mask by ORing the current mask. But the OR operation is not linear.
+
+Alternatively, we can iterate by mask_old and then for each new_mask that is a superset of mask_old, we can iterate over the current mask that is contained in (new_mask \ mask_old) and also in the set of valid masks? But that is even more complex.
+
+Another idea: use a 3D array for dp and then use a 2D array for the next state. We have:
+
+  dp_next[new_mask][non_empty_curr] = 0 for all new_mask, non_empty_curr.
+
+  for each mask_old, each prev_old, and each curr:
+        new_mask = mask_old | curr
+        non_empty_curr = (curr != 0)
+        if (prev_old || non_empty_curr):
+            dp_next[new_mask][non_empty_curr] += dp_prev[mask_old][prev_old]
+
+But without optimization, the inner loop is 2^R per state, so total 2^R * 2^R * 2 = 2^(2R+1) per column.
+
+But R=14: 2^(2*14+1) = 2^29 per column -> 1000 * 2^29 = 537e9.
+
+We need a faster way.
+
+We can precompute for each current mask 'curr' the set of mask_old that OR with curr to give a particular new_mask? But that is not helpful.
+
+Alternatively, we can change the order: iterate by curr first? Then we can accumulate for each mask_old and prev_old.
+
+But still, we have to iterate over mask_old and curr.
+
+We can use the following: note that the update is:
+
+  for each mask_old, prev_old:
+      for each curr:
+          if condition holds, then update.
+
+We can swap the loops:
+
+  for each curr (valid for column j):
+      non_empty_curr = (curr != 0)
+      for each mask_old, each prev_old:
+          if (prev_old || non_empty_curr):   // condition
+              new_mask = mask_old | curr
+              dp_next[new_mask][non_empty_curr] += dp_prev[mask_old][prev_old]
+
+Now, we can precompute for a fixed curr, the entire contribution from the previous state.
+
+But the inner loop is over 2^R * 2 states -> 16384 * 2 = 32768 per curr.
+
+Then total per column: (number of valid curr) * 32768.
+
+In worst-case, the number of valid curr is 16384, so 16384 * 32768 = 2^14 * 2^15 = 2^29 = 536,870,912 per column. Then for 1000 columns: 536,870,912,000 -> same as before.
+
+But note: we are doing 1000 * 2^29 operations. In C++ on a modern machine, 500 billion operations might run in about 500 seconds? We need to be under 2 seconds.
+
+We need a better approach.
+
+Alternative approach:
+
+We can use the following observation: the consecutive condition only requires the non-emptiness of adjacent columns. And the row condition is global. But we can combine the row condition and the consecutive condition with a state that includes:
+  - The set of rows that have been covered so far: mask (2^14 states)
+  - The placements in the previous column? Actually, we only need the non-emptiness of the previous column? But we have that: we store prev as 0 or 1.
+
+But the issue is the transition: we are iterating over all placements in the current column. 
+
+We can try to break down the current column mask by iterating over the rows? But then we get an inner loop of R, and then we can use a state that is the mask_old and the current mask? But that is the same.
+
+Another idea: use inclusion-exclusion for the row condition? But then we lose the consecutive condition? And also the placements are restricted per column.
+
+Alternatively, we can use a DP over columns and use a state that is the mask of rows that were covered in the previous column? And then we can use the current column mask? But then the row condition is global and we would have to store the entire coverage mask? Which is the same.
+
+We need to reduce the state by not storing the entire coverage mask? But the row condition is global and we have to know which rows have been covered so far to ensure at the end that all are covered. However, we cannot avoid storing the coverage mask.
+
+But note: the consecutive condition is local. And the row condition is global. We are forced to store the coverage mask.
+
+Alternative idea: use a state that stores the set of rows that have been covered in the last two columns? But then we lose the information about rows covered earlier? And we need to know at the end that every row is covered.
+
+We might try to use a state that stores the set of rows that are not covered yet? And then we can update it by the current column. But then we still have 2^R states.
+
+And the transition: we iterate over the current mask? Then we have 2^R * 2^R per column.
+
+We need a faster convolution for the OR operation? 
+
+We can use the following: 
+  Let F[mask_old] = dp[j-1][mask_old][0] + dp[j-1][mask_old][1]   [but actually we have two states per mask_old: one for prev=0 and one for prev=1]
+
+But then we want to compute for a fixed curr:
+   dp_next[new_mask][non_empty_curr] += F[mask_old]   for all mask_old such that we don't need to separate prev? But we do need to separate by prev because the condition (prev_old || non_empty_curr) depends on prev_old.
+
+So we cannot combine the two prev states.
+
+We can split F into two arrays: F0[mask] = dp[j-1][mask][0], F1[mask] = dp[j-1][mask][1].
+
+Then for a fixed curr, we have:
+   non_empty_curr = (curr != 0) ? 1 : 0
+
+   For F0: we require that (0 || non_empty_curr) = non_empty_curr. So if non_empty_curr is false (i.e., curr==0), then we cannot use F0. If non_empty_curr is true, then we can use F0.
+
+   For F1: we require (1 || non_empty_curr) = true, always.
+
+So the update:
+
+   if non_empty_curr:
+        dp_next[new_mask][non_empty_curr] += (F0[mask_old] + F1[mask_old])   for all mask_old? 
+   else:
+        dp_next[new_mask][non_empty_curr] += F1[mask_old]   for all mask_old.
+
+But note: new_mask = mask_old | curr.
+
+So for a fixed curr, we are adding:
+
+   if non_empty_curr: 
+        for every mask_old: 
+            new_mask = mask_old | curr
+            add (F0[mask_old] + F1[mask_old]) to dp_next[new_mask][1]
+
+   if not non_empty_curr:
+        for every mask_old:
+            new_mask = mask_old | curr   [but curr=0, so new_mask = mask_old]
+            add F1[mask_old] to dp_next[new_mask][0]
+
+But note: if curr==0, then non_empty_curr is false, and then we add F1[mask_old] to dp_next[mask_old][0].
+
+However, we can optimize the summation for a fixed curr by noticing that the update for a fixed curr is:
+
+   if non_empty_curr:
+        Let G = F0 + F1   [an array of size 2^R: G[mask] = F0[mask] + F1[mask]]
+        Then for each mask_old, we add G[mask_old] to state new_mask = mask_old | curr.
+
+        But this is equivalent to: 
+           for each mask_old: 
+                new_mask = mask_old | curr
+                then add G[mask_old] to H[new_mask]   [where H is an array for the new state for non_empty_curr=1]
+
+        We can do: 
+            H[new_mask] += G[mask_old]   for every mask_old.
+
+        This is a standard OR convolution? But note: it's not a convolution in the linear algebra sense. We are simply saying that for a fixed curr, we are ORing mask_old with curr to form new_mask. But we can precompute for a fixed curr and for each new_mask, the sum of G[mask_old] for all mask_old such that (mask_old | curr) = new_mask.
+
+        Actually, we can iterate by mask_old and update H[ mask_old | curr ] += G[mask_old]. This is O(2^R) per curr.
+
+   if not non_empty_curr (i.e., curr=0):
+        Then we are adding F1[mask_old] to state (mask_old, 0). 
+        So: 
+            for each mask_old: 
+                H0[mask_old] += F1[mask_old]
+
+        And note: in this case, we are not changing the mask.
+
+Therefore, for a fixed curr, the update is:
+
+   if curr != 0:
+        for each mask_old in [0, 2^R-1]:
+            new_mask = mask_old | curr
+            dp_next[new_mask][1] += (F0[mask_old] + F1[mask_old])
+
+   else:  // curr==0
+        for each mask_old in [0, 2^R-1]:
+            dp_next[mask_old][0] += F1[mask_old]
+
+But note: we must remember that the current state has two arrays: F0 and F1 for the previous column.
+
+So the algorithm per column j:
+
+  Let F0[0..(1<<R)-1] = dp[j-1][mask][0] for each mask.
+  Let F1[0..(1<<R)-1] = dp[j-1][mask][1] for each mask.
+
+  Initialize dp_next[mask][0] and dp_next[mask][1] to 0 for all mask.
+
+  For each valid mask 'curr' for column j (which we precomputed for column j):
+        if curr != 0:
+             for each mask_old in [0, (1<<R)-1]:
+                 new_mask = mask_old | curr
+                 dp_next[new_mask][1] += F0[mask_old] + F1[mask_old]
+        else:
+             for each mask_old in [0, (1<<R)-1]:
+                 dp_next[mask_old][0] += F1[mask_old]
+
+  But note: we must not forget that we iterate over all valid curr. So we are doing:
+
+      for each valid curr:
+          if curr != 0:
+              for mask_old: update
+          else:
+              for mask_old: update
+
+  The inner loop is 2^R per curr.
+
+  Total work per column: (number of valid curr) * (2^R).
+
+  In the worst-case, the number of valid curr is 2^R, so total per column: (2^R) * (2^R) = 2^(2R) = 2^28 = 268,435,456 per column.
+
+  Then for 1000 columns: 1000 * 268435456 = 268,435,456,000 operations -> 268 billion. This is still too high (about 268 seconds in C++?).
+
+But note: worst-case R=14 -> 2^14=16384 valid masks? Then 16384 * 16384 = 268,435,456 per column -> 268,435,456,000 for 1000 columns.
+
+We need to optimize further.
+
+We can precompute for all valid curr at once? 
+
+Notice: when we have multiple curr, the update for a fixed curr is independent. But we are doing a loop over curr and then over mask_old.
+
+But we can reverse the loops: iterate by mask_old first, and then by curr? 
+
+Specifically:
+
+  for each mask_old:
+      for each valid curr:
+          if curr != 0:
+              new_mask = mask_old | curr
+              add (F0[mask_old] + F1[mask_old]) to dp_next[new_mask][1]
+          else: 
+              only one curr=0: then add F1[mask_old] to dp_next[mask_old][0]
+
+But then the inner loop is the number of valid curr, which is 2^R. So the total per column is 2^R * (number of valid curr) = 2^(2R) = same.
+
+Alternatively, we can precompute an array T[new_mask] for the non_empty_curr=1 part, and we do:
+
+   for each valid curr (that is non-zero), we want to add (F0[mask_old]+F1[mask_old]) for every mask_old to the state new_mask = mask_old | curr.
+
+   This is equivalent to: for each non-zero valid curr, we have:
+        T1[new_mask] = sum_{mask_old} (F0[mask_old]+F1[mask_old]) for all mask_old such that (mask_old OR curr) = new_mask? 
+        But actually, we are iterating over mask_old and ORing with a fixed curr, we are updating new_mask = mask_old | curr.
+
+        We can do: 
+             for each mask_old, and for each non-zero valid curr, 
+                 new_mask = mask_old | curr
+                 T1[new_mask] += (F0[mask_old]+F1[mask_old])
+
+        But this is the same as the double loop.
+
+But note: we can combine all non-zero valid curr together? 
+
+   Let S = set of non-zero valid masks for column j.
+
+   Then we want to compute for each new_mask:
+        T1[new_mask] = sum_{curr in S} [ sum_{mask_old: mask_old OR curr = new_mask} (F0[mask_old]+F1[mask_old]) ]
+
+   But wait: the inner sum is over mask_old that are such that mask_old OR curr = new_mask, but note that curr is fixed. However, we are summing over multiple curr. This is not separable.
+
+Alternatively, we can do:
+
+   Let G = F0 + F1   (an array of size 2^R)
+
+   Then for each non-zero valid curr, we are doing:
+        for each mask_old: 
+            new_mask = mask_old | curr
+            T1[new_mask] += G[mask_old]
+
+   This is the same as: 
+        T1 = [0]*(1<<R)
+        for each non-zero valid curr:
+            for each mask_old:
+                new_mask = mask_old | curr
+                T1[new_mask] += G[mask_old]
+
+   This is the same as: 
+        for each non-zero valid curr:
+            T1 = T1 + (G shifted by OR with curr)   [where "shifted by OR with curr" means: for each mask_old, we add G[mask_old] to T1[mask_old | curr]
+
+   But note: the OR operation is linear? We can use the fast Walsh–Hadamard transform (FWT) for the OR convolution? 
+
+   Actually, we are doing:
+        T1 = sum_{curr in S} (G OR-convolved with a kernel that has a 1 at the set curr and 0 elsewhere) 
+        But the OR-convolution of two functions f and g is defined as:
+              h[k] = sum_{i OR j = k} f[i] * g[j]
+
+        Here, if we define g_curr as the function that is 1 at 0 and at every subset of curr? Actually, the kernel for the OR convolution with a fixed set curr is a function that is 1 for every subset of curr? But we are not convolving in that way.
+
+   In our case, we are doing:
+        For a fixed curr, the operation is: 
+            for each i: 
+                T1[i | curr] += G[i]
+
+        This is equivalent to: 
+            T1 = G * (a function that is 1 for every superset of the empty set and that has multiplicity for each set containing curr? )
+
+   But note: we can precompute for each bitmask i, the sum of G for all j such that j ORed with the current set of valid curr equals i? This is not a convolution but rather a sum over all curr in S of the shifted G.
+
+   However, we can interchange the summation:
+
+        T1[i] = sum_{curr in S} [ sum_{j: j OR curr = i} G[j] ]
+
+        = sum_{j} G[j] * (number of curr in S such that j OR curr = i)
+
+        But note: j OR curr = i  <=> j is a subset of i and curr is a subset of i and also curr must contain the set (i \ j).
+
+        So the number of curr in S such that j OR curr = i is: the number of valid non-zero masks curr that are subsets of i and supersets of (i \ j) ????? -> This is not straightforward.
+
+   This approach seems complex.
+
+But note: there is a well-known technique: we can iterate by the new_mask and use the inclusion–exclusion to count the number of valid curr that are contained in (new_mask \ mask_old) ? But then we have to do it for every mask_old and new_mask, and that is 2^R * 2^R = 2^(2R) per column, which is the same.
+
+After careful thought, we note that 2^(2R) is 2^28 = 268435456 per column, and 1000 columns gives 268e9, which is borderline in C++ with optimizations? But 268e9 operations might be too many in 2 seconds.
+
+Alternatively, we can try to optimize by iterating only over the valid masks for the current column that are non-zero and then use a more efficient method for the OR update.
+
+But the OR update for a fixed curr is a simple transformation: we are adding G to T1 at indices that are the OR of the index in G and curr. This is a standard monoid operation, and we cannot avoid iterating over all indices of G.
+
+However, we can hope that the valid masks for a column are not the full set? But in the worst-case, if there are no 'v's, then we have 2^R valid masks.
+
+But we can use the following: if the number of valid non-zero masks is large (close to 2^R), then the inner loop is 2^R per valid mask, and total 2^(2R) per column.
+
+If the number of valid masks is small, then we can do better. But worst-case, it is 2^R.
+
+Given R=14, 2^R=16384, and 2^(2R)=268435456 per column, and 1000 columns, total operations: 268435456000. In C++, we might do about 1e9 operations per second, so 268 seconds. This is too slow.
+
+We need a better approach.
+
+Let me change the state: instead of storing the entire coverage mask, can we avoid it? 
+
+We note that the row condition is independent per row. And the only global constraint is that at the end all rows are covered. We can use inclusion-exclusion on the rows: 
+
+  Let F = the number of arrangements that satisfy the consecutive column conditions and that have at least one scarecrow in every row? 
+
+But we can also use: 
+  Answer = arrangements that satisfy the consecutive conditions and cover all rows.
+
+But the consecutive conditions are not independent per row.
+
+Alternatively, we can use a DP that goes row by row? But the consecutive conditions are column-based.
+
+We might try a state that has the last column's placement and the set of rows that have been covered so far. But that is the same state as before.
+
+Another idea: we can use a state for the current column that includes:
+   - the current column's mask
+   - the set of rows that have been covered so far (mask_old) 
+   - the previous column's non-emptiness
+
+ and then we use a 2D array for the previous state. But we cannot avoid the 2^(2R) per column.
+
+Unless we use a different formulation of the row condition. We can defer the row condition to the end with inclusion-exclusion: 
+
+  Let U = the set of all placements that satisfy the consecutive conditions (without worrying about the row condition).
+
+  For a subset S of rows, let F(S) = the number of placements that satisfy the consecutive conditions and that do not cover any row in S (or cover only rows not in S? Actually, we want the rows not in S to be not covered? But wait, we require that every row is covered, so we want to count arrangements that cover all rows.
+
+  By inclusion-exclusion: 
+      Answer = sum_{S} (-1)^{|S|} * F(complement of S)
+
+  where F(T) = number of arrangements that have no scarecrow in any row in T, and that satisfy the consecutive conditions.
+
+  But note: the consecutive conditions: every two consecutive columns have at least one scarecrow (in any row not in T) and each row not in T may have a scarecrow or not, but we don't care about the rows in T (they are banned).
+
+  How to compute F(T) for a fixed T? 
+      We can do a DP over columns, and the state for a column j is:
+          prev_nonempty: whether column j-1 was non-empty (in the allowed rows) 
+          and we also might want to know the placements in the current column in the allowed rows.
+
+      But wait, we don't care about the row coverage anymore because we only care about the consecutive conditions and we have banned some rows.
+
+      The state:
+          dp[j][prev] = number of ways for columns 0..j such that the consecutive conditions for (0,1), (1,2), ... (j-1,j) are satisfied, and such that scarecrows are only placed in rows not in T, and also the non-emptiness of column j-1 is remembered by 'prev'.
+
+      But note: we also have to ensure the consecutive conditions: for each pair (j-1,j), we require that either column j-1 is non-empty (in the allowed rows) or column j is non-empty (in the allowed rows). 
+
+      The state for column j:
+          We remember: 
+              prev: whether column j-1 is non-empty (in the allowed rows) -> 0 or 1.
+          And we also need to know the non-emptiness of column j for the next state? -> but for the next consecutive condition, we will need to know the non-emptiness of column j.
+
+      So state: dp[j][e] = number of ways for columns 0..j such that the consecutive conditions up to column j-1 are satisfied and the non-emptiness of column j is 'e' (0 or 1).
+
+      However, how about the condition for (j-1,j)? We enforce it at column j: 
+          when we are at column j, we know the non-emptiness of column j-1 (from the state we carried) and we are about to choose placements for column j (which will determine e for column j). Then we will check: if state_prev (which is the non-emptiness of column j-1) is true or e is true, then we are good.
+
+      But wait: the state from column j-1 does not include the non-emptiness of column j-1? We should have carried it. 
+
+      Actually, the state for column j-1 should have been: after processing column j-1, we remember the non-emptiness of column j-1. Then when processing column j, we use that to check the consecutive condition for (j-1,j).
+
+      So we design for column0 to column C-1:
+
+          Let dp[j][e] = number of ways for columns 0..j such that the consecutive conditions for pairs (0,1) to (j-1,j) are satisfied and the non-emptiness of column j is e.
+
+          How to initialize j=0:
+               For column0, we can choose any placement on the allowed rows (rows not in T). 
+               Let ways0 = the number of valid placements for column0 on the allowed rows. 
+               But note: a placement is valid if it only has scarecrows in allowed rows and on '.' cells. 
+               However, the grid might have 'v' in some cells in allowed rows: if a cell in an allowed row is 'v', then we cannot put a scarecrow there.
+
+               Also, we can have the empty placement.
+
+               So for column0: 
+                   dp[0][0] = 1 if the empty placement is valid? 
+                   dp[0][1] = number of non-empty placements that are valid? 
+
+               But wait: we can also have the empty placement. 
+
+               However, note: the placements are independent per row. For a fixed column0, for each row i not in T, we can choose to put a scarecrow only if the cell is '.'. 
+
+               Let ways = 1;
+               for each row i not in T:
+                   if grid[i][0] is '.', then we have 2 choices: put or not put.
+                   if grid[i][0] is 'v', then we have 0 choices (cannot put) -> then actually 1 choice: not put.
+
+               But note: if a row is in T, we ignore it.
+
+               So ways = product_{i not in T} ( if grid[i][0]=='.' ? 2 : 1 )
+
+               Then the empty placement is one of the possibilities. So:
+                 dp[0][0] = 1   ? But note: the empty placement has non_empty=0.
+                 dp[0][1] = ways - 1   (because non_empty=1 means at least one scarecrow, so total placements minus the empty placement)
+
+          But wait: we might count the empty placement as one. So:
+                 dp[0][0] = 1   [the empty placement]
+                 dp[0][1] = (ways - 1)   [non-empty placements]
+
+          However, ways includes the empty placement? Actually, the number of non-empty placements is ways-1.
+
+          Alternatively, we can do:
+                 dp[0][0] = 1   if we consider the empty placement as non_empty=0.
+                 dp[0][1] = (number of non-empty placements) = for each non-empty subset of the available rows in column0.
+
+          How to compute the non-empty placements? It is (2^(number of available '.' in column0) - 1.
+
+          But note: the available '.' in column0: only for rows not in T.
+
+          Let a0 = number of rows i not in T such that grid[i][0]=='.' 
+          Then ways = 2^(a0)
+          Then dp[0][0] = 1   [empty]
+                dp[0][1] = 2^(a0) - 1
+
+          But also consider: if there is a 'v' in a row not in T, then that row is not available. So a0 = count of '.' in column0 for rows not in T.
+
+          However, what if a row in T has a '.'? We cannot use it, so it doesn't contribute.
+
+          So we are good.
+
+          Transition for j>=1:
+
+             dp[j][e] = ?
+
+             We consider the placements for column j: which is any assignment to the available '.' in column j for rows not in T.
+
+             Let a_j = number of available '.' in column j for rows not in T.
+             Then the total number of placements for column j is 2^(a_j). The number of non-empty placements is 2^(a_j)-1, and empty is 1.
+
+             But the transition also depends on the previous state (which is the non-emptiness of column j-1) and the consecutive condition.
+
+             We have two states from j-1: 
+                 state0: non_emptiness of column j-1 = 0
+                 state1: non_emptiness of column j-1 = 1
+
+             Now, for the current column j, if we choose a placement that is empty (e=0), then we require that the previous column was non-empty (state1) to satisfy the consecutive condition for (j-1,j). 
+             If we choose a non-empty placement (e=1), then the consecutive condition is satisfied regardless of the previous column.
+
+             Therefore:
+
+                 dp[j][0] = dp[j-1][1] * 1   [because we can only come from a non-empty previous column and we choose the empty placement for column j]
+
+                 dp[j][1] = (dp[j-1][0] + dp[j-1][1]) * (2^(a_j)-1)   [because regardless of the previous column, we choose a non-empty placement]
+
+             However, wait: we can also choose a non-empty placement even if the previous was non-empty. And for empty placement, we can only come from a non-empty previous.
+
+          But note: the empty placement in column j: that is 1 way (the empty set). 
+          and non-empty placements: (2^(a_j)-1) ways.
+
+          So:
+             dp[j][0] = dp[j-1][1] * 1 
+             dp[j][1] = (dp[j-1][0] + dp[j-1][1]) * (2^(a_j)-1)
+
+          Then we carry the non-emptiness of the current column j for the next state.
+
+          But note: the consecutive condition for (j-1,j) is ensured by:
+              if we choose empty in column j, then we require the previous column was non-empty -> then the term is only added if the previous state was non-empty.
+              if we choose non-empty in column j, then the condition is satisfied regardless.
+
+          So this recurrence is for a fixed T.
+
+          Then after processing column C-1, we have:
+
+             F(T) = dp[C-1][0] + dp[C-1][1]   [because we don't care about the non-emptiness of the last column? But note: the consecutive condition for (C-2, C-1) is ensured by the recurrence. However, we don't have a condition for the last column alone.]
+
+          But the consecutive conditions are only up to (C-2, C-1). We have ensured every consecutive pair.
+
+          So F(T) = dp[C-1][0] + dp[C-1][1].
+
+          However, note: the state dp[C-1][0] is valid only if the previous column (C-2) was non-empty? But when we are at the last column, the only condition is the consecutive condition for (C-2, C-1) and we have ensured it in the recurrence.
+
+          Therefore, F(T) = dp[C-1][0] + dp[C-1][1].
+
+          The complexity for a fixed T: O(C) and the state is only 2 states per column. So per T: O(C) and there are 2^R values of T. 
+
+          Total complexity: O(C * 2^R).
+
+          Given R<=14, C<=1000, then 1000 * 2^14 = 1000 * 16384 = 16,384,000, which is acceptable.
+
+          Then we do inclusion-exclusion:
+
+             Answer = sum_{T \subseteq [0, R-1]} (-1)^{|T|} * F(T)
+
+          But note: we banned the rows in T. We want arrangements that cover all rows, so we want to count arrangements that do not miss any row. 
+
+          Let U = all rows. We want arrangements that cover every row. 
+
+          By inclusion-exclusion: 
+
+             Let G(T) = F(T) in our recurrence, which is the number of arrangements that have no scarecrow in any row in T (so they might miss some rows in the complement of T? Actually, no: they are allowed to have scarecrows only in the complement of T, and they might or might not cover the complement of T. In fact, they might not cover a row in the complement of T! 
+
+          But wait: in F(T) we only care about the consecutive conditions and that we don't use any row in T. We do not enforce that the rows in the complement of T are covered. 
+
+          Therefore, F(T) counts arrangements that satisfy the consecutive conditions and that use only rows in the complement of T, but they might not cover all the rows in the complement of T.
+
+          However, in the orignal problem, we require that every row is covered. So the inclusion-exclusion should be:
+
+             Let H(T) = number of arrangements that have no scarecrow in any row in T AND that do not cover the complement of T? 
+             Actually, we want to count arrangements that cover every row. 
+
+             We can use: 
+                 Let F(T) = number of arrangements that have no scarecrow in any row in T (and might or might not cover the complement of T).
+
+             Then by the principle of inclusion-exclusion, the number of arrangements that cover all rows is:
+
+                 Answer = sum_{T} (-1)^{|T|} * F(T) 
+
+             But note: T is ranging over subsets of the set of rows. And F(T) includes arrangements that might not cover the complement of T.
+
+             Why is this formula valid? 
+
+                 For a given arrangement, let Z be the set of rows that are NOT covered. Then the arrangement is counted in F(T) for every T that is disjoint with the scarecrows? Actually, the arrangement only uses rows not in T, so if we choose T that is contained in the set of rows that are not used? 
+
+             Actually, the arrangement has scarecrows only in rows not in T, and if T is a subset of the rows that are not covered, then the arrangement is counted in F(T). 
+
+             More precisely, the arrangement will be counted in F(T) for every T that is a subset of the set of rows that have no scarecrow in the arrangement? But wait, the arrangement has no scarecrow in the rows in T, so T can be any subset of the set of rows that have no scarecrow. Let U be the set of rows that have no scarecrow in the arrangement. Then the arrangement is counted in F(T) for every T \subseteq U. 
+
+             Then the number of times the arrangement is counted is: 
+                 sum_{T \subseteq U} (-1)^{|T|} = (1-1)^{|U|} = 0 if |U|>=1, and 1 if |U|=0.
+
+             And |U|=0 means the arrangement covers all rows.
+
+             So the formula is valid.
+
+          Therefore, we can compute:
+
+             For each subset T of [0, R-1] (represented by a bitmask), 
+                 compute F(T) = the number of arrangements that use only rows not in T and that satisfy the consecutive conditions.
+
+             Then: 
+                 Answer = sum_{T} (-1)^{|T|} * F(T)   [modulo 10^9+7]
+
+          How to compute F(T) for a fixed T?
+             We do a DP for columns j=0 to C-1:
+
+                 a_j = number of available '.' in column j for rows not in T: 
+                     for each row i not in T: if grid[i][j]=='.', then it is available.
+
+                 ways_j = 2^(a_j)   [number of ways to choose scarecrows in column j, including empty]
+
+                 non_empty_j = ways_j - 1
+
+                 Then recurrence:
+                    dp[0][0] = 1   [empty placement for column0]
+                    dp[0][1] = non_empty_0   [non-empty placements for column0]
+
+                    for j from 1 to C-1:
+                         dp[j][0] = dp[j-1][1] * 1   [because we choose empty in column j, so we require that column j-1 was non-empty]
+                         dp[j][1] = (dp[j-1][0] + dp[j-1][1]) * non_empty_j
+
+                 F(T) = dp[C-1][0] + dp[C-1][1]
+
+             Note: the empty placement for column j is 1 way.
+
+          But note: the consecutive condition for the last pair (C-2, C-1) is ensured by the recurrence.
+
+          However, what about the very first column? We don't have a consecutive condition for a pair including a column before 0. The first condition is for (0,1). We have ensured that at column1: 
+             for column1, if we choose empty, then we require column0 to be non-empty.
+
+          But what if the grid has only one column (C=1)? Then we have no consecutive condition. How do we handle?
+
+          The problem says: consecutive two columns. If C=1, then there are no consecutive conditions. Only the row condition: each row must have at least one scarecrow. But wait, the conditions are:
+             - Each row contains at least one scarecrow. 
+             - Each consecutive two columns contain at least one scarecrow.
+
+          If C=1, then there is no consecutive condition. Only the row condition.
+
+          In our F(T) for C=1:
+
+             We would do:
+                 dp[0][0] = 1
+                 dp[0][1] = non_empty_0
+
+             Then F(T) = dp[0][0] + dp[0][1] = 1 + non_empty_0.
+
+          But then we use inclusion-exclusion to count only arrangements that cover all rows. However, our F(T) counts arrangements that may not cover the complement of T. 
+
+          But note: for C=1, the row condition: we require that in the one column, we cover all rows? However, in one column, we can cover multiple rows. But if we don't put a scarecrow in a row not in T, then that row is not covered. 
+
+          The inclusion-exclusion formula is general.
+
+          Example: C=1, R=1, and the grid: ['.'] and T can be {} or {0}.
+          T = {}: 
+               a0 = 1 (only row0 not in T, and it is '.')
+               dp0[0] = 1, dp0[1] = 2-1 = 1.
+               F({}) = 1+1 = 2.
+
+          T = {0}: 
+               a0 = 0 (because row0 is in T, so we ignore)
+               dp0[0] = 1, dp0[1] = 0.
+               F({0}) = 1.
+
+          Answer = F({}) - F({0}) = 2-1 = 1.
+
+          The only arrangement that covers the only row is the one with a scarecrow in row0. So there is only one arrangement.
+
+          But wait: in the arrangement, we can choose to put a scarecrow or not? We have two arrangements: empty and non-empty. But the row condition requires that row0 has at least one scarecrow, so only one arrangement. 
+
+          So it matches.
+
+          How about C=1, R=2, grid:
+                 row0: '.'
+                 row1: '.'
+
+          T = {}: 
+               a0 = 2 -> ways=4, non_empty=3.
+               F({}) = 1+3 = 4.
+
+          T = {0}: 
+               a0 = 1 (only row1) -> non_empty=1
+               F({0}) = 1+1 = 2.
+
+          T = {1}: 
+               a0 = 1 -> non_empty=1 -> F=2.
+
+          T = {0,1}: 
+               a0=0 -> non_empty=0 -> F=1.
+
+          Answer = F({}) - F({0}) - F({1}) + F({0,1}) = 4 - 2 - 2 + 1 = 1.
+
+          But the arrangements that cover both rows in one column: we must have both rows chosen? 
+             There is only one arrangement: the one with scarecrows in both rows.
+
+          Why is the answer 1? 
+
+          However, our inclusion-exclusion: we count arrangements that cover all rows. 
+             The arrangements that cover both rows: only one: both rows are scared.
+
+          But wait: is there only one arrangement that covers both rows? 
+             In the one column, we have to put scarecrows in both rows.
+
+          So there is exactly one arrangement.
+
+          But what about the empty and the ones with only one scarecrow? They are not covering both rows.
+
+          So the formula is correct.
+
+          However, note: the consecutive condition for C=1 is not present. Our recurrence for F(T) did not impose any consecutive condition beyond the first column. And for C=1, we only have one column. So the recurrence is only the first column.
+
+          Now, what about the sample?
+
+          Sample 1: 
+            "2 2
+             v.
+             .."
+
+          R=2, C=2.
+          Grid:
+            row0: "v."  -> [0][0]='v', [0][1]='.' 
+            row1: ".."  -> [1][0]='.', [1][1]='.' 
+
+          We will iterate over T in {00, 01, 10, 11} (bit masks: 0,1,2,3).
+
+          Let's compute F(T) for each T.
+
+          T=0 (no row banned): 
+            column0: 
+               row0: 'v' -> banned? no, but it is 'v' -> not available (because we cannot put on 'v') -> so available for row0: 0.
+               row1: '.' -> available: 1.
+               a0 = 1.
+               ways0 = 2, non_empty0 = 1.
+               dp0[0]=1, dp0[1]=1.
+
+            column1:
+               row0: '.' -> available: 1.
+               row1: '.' -> available: 1.
+               a1=2, non_empty1=3.
+
+            Then:
+               dp1[0] = dp0[1] * 1 = 1.
+               dp1[1] = (dp0[0]+dp0[1]) * 3 = (1+1)*3 = 6.
+               F(0) = 1+6 = 7.
+
+          T=1 (ban row0):
+            column0:
+               row0: banned -> ignore.
+               row1: available -> '.' -> a0=1.
+               non_empty0 = 1.
+               dp0[0]=1, dp0[1]=1.
+            column1:
+               row0: banned -> ignore.
+               row1: available -> '.' -> a1=1 -> non_empty1=1.
+               dp1[0]=dp0[1]=1
+               dp1[1]=(1+1)*1=2
+               F(1)=1+2=3.
+
+          T=2 (ban row1):
+            column0:
+               row0: 'v' -> not available -> a0=0 -> non_empty0=0.
+               dp0[0]=1, dp0[1]=0.
+            column1:
+               row0: available: '.' -> a1=1.
+               non_empty1=1.
+               dp1[0]=dp0[1]=0
+               dp1[1]=(1+0)*1=1
+               F(2)=0+1=1.
+
+          T=3 (ban both):
+            column0: a0=0 -> non_empty0=0 -> dp0[0]=1, dp0[1]=0.
+            column1: a1=0 -> non_empty1=0.
+            dp1[0]=dp0[1]=0, dp1[1]=0 -> F(3)=0.
+
+          Answer = F(0) - F(1) - F(2) + F(3) = 7 - 3 - 1 + 0 = 3.
+
+          Matches sample.
+
+          Sample 2: 
+             "1 3
+              ..."
+
+          R=1, C=3.
+          T: subsets of {0} -> T=0 and T=1.
+
+          T=0:
+             column0: a0=1 -> non_empty0=1 -> dp0[0]=1, dp0[1]=1.
+             column1: a1=1 -> non_empty1=1.
+                 dp1[0] = dp0[1] = 1
+                 dp1[1] = (1+1)*1 = 2
+             column2: a2=1 -> non_empty2=1.
+                 dp2[0] = dp1[1] = 2
+                 dp2[1] = (dp1[0]+dp1[1]) * 1 = (1+2)=3
+             F(0)=2+3=5.
+
+          T=1:
+             column0: a0=0 -> non_empty0=0 -> dp0[0]=1, dp0[1]=0.
+             column1: a1=0 -> non_empty1=0.
+                 dp1[0]=dp0[1]=0
+                 dp1[1]=(1+0)*0=0
+             column2: a2=0 -> non_empty2=0.
+                 dp2[0]=0, dp2[1]=0
+             F(1)=0.
+
+          Answer = 5 - 0 = 5.
+
+          Matches.
+
+          Sample 3:
+             "2 3
+              vvv
+              ..."
+
+          R=2, C=3.
+          First row: "vvv" -> all 'v'
+          Second row: "..." -> all '.'
+
+          We want to count arrangements that cover both rows? 
+
+          But note: the first row has no '.' in any column. So we cannot put any scarecrow in the first row. Therefore, we cannot cover the first row.
+
+          So the answer should be 0.
+
+          Let's compute:
+
+          T in {0,1,2,3} (bit0 for row0, bit1 for row1)
+
+          But note: we cannot cover row0 in any arrangement because every cell in row0 is 'v'. 
+
+          However, our F(T) for a set T that does not include row0 will try to use row0? But we cannot put a scarecrow in row0 even if it is not banned because the cell is 'v'. So in the computation for F(T) where row0 is not banned, we will have for each column: 
+             for row0: not available (because 'v') 
+             for row1: available only if not banned.
+
+          So to cover row0, we would need to put a scarecrow in row0, but we cannot. Therefore, the arrangements that cover row0 are 0.
+
+          In inclusion-exclusion, we will get 0.
+
+          But let's compute F(T) for T that does not include row0? That is T=0 and T=2.
+
+          T=0 (ban nothing):
+            column0: 
+                row0: 'v' -> not available.
+                row1: '.' -> available.
+                a0=1 -> non_empty0=1.
+                dp0[0]=1, dp0[1]=1.
+            column1: same as column0 -> a1=1 -> non_empty1=1.
+                dp1[0]=1, dp1[1]=(1+1)*1=2.
+            column2: same -> a2=1 -> non_empty2=1.
+                dp2[0]=2, dp2[1]=(1+2)*1=3.
+                F(0)=5.
+
+          T=1 (ban row0): 
+            column0: 
+                row0: banned, row1: available -> a0=1 -> non_empty0=1 -> dp0[0]=1, dp0[1]=1.
+            column1: same -> a1=1 -> non_empty1=1 -> dp1[0]=1, dp1[1]=2.
+            column2: same -> F(1)=5.
+          T=2 (ban row1): 
+            column0: 
+                row0: not banned, but 'v' -> not available; row1: banned -> not available -> a0=0 -> non_empty0=0 -> dp0[0]=1, dp0[1]=0.
+            column1: same -> a1=0 -> dp1[0]=0, dp1[1]=0.
+            column2: same -> F(2)=0.
+          T=3: both banned -> F(3)=0.
+
+          Answer = F(0)-F(1)-F(2)+F(3)=5-5-0+0=0.
+
+          Matches.
+
+          Therefore, we can implement:
+
+            Precomputation: 
+              MOD = 1000000007
+              Precompute powers of 2? up to 14? We don't need big powers.
+
+            Steps:
+              for each bitmask T in [0, (1<<R)-1]:
+                 for j in 0 to C-1:
+                    a_j = 0
+                    for i in 0 to R-1:
+                         if (T has bit i set) then skip this row.
+                         else if grid[i][j]=='.' then a_j++
+
+                    non_empty_j = (2^(a_j) - 1) % MOD   [if a_j>0, but if a_j==0, then 0]
+
+                 Then initialize an array dp[0..1] (size 2) for the current column.
+                 dp[0] = 1   [for empty placement for column0]
+                 dp[1] = non_empty_0   [non_empty placements for column0]
+
+                 Then for j from 1 to C-1:
+                    next_dp[0] = dp[1]  * 1   [because we choose empty in column j: then we require the previous column was non-empty]
+                    next_dp[1] = (dp[0] + dp[1]) * non_empty_j   [choose non-empty in column j: then any previous state is okay]
+
+                    Then set dp = next_dp.
+
+                 F(T) = (dp[0] + dp[1]) % MOD
+
+              Then:
+                 ans = 0
+                 for T in [0, 1<<R):
+                     sign = 1
+                     if popcount(T) % 2 == 1:
+                         sign = -1
+                     ans = (ans + sign * F(T)) % MOD
+
+              Then output (ans % MOD + MOD) % MOD.
+
+          But note: the grid is given as R rows and C columns. We are iterating by column j and then row i.
+
+          Complexity: 
+             Number of T: 2^R = 16384.
+             For each T, we iterate over C (1000) and for each column, we iterate over R (14) to compute a_j: 1000*14=14000.
+             Then we do a DP for C=1000 columns: 1000 steps, each step O(1).
+             Total operations: 16384 * (14000 + 1000) = 16384 * 15000 = 245,760,000, which is acceptable.
+
+          Let me check: 2^14 * (1000*14 + 1000) = 16384 * 15000 = 245,760,000.
+
+          In C++ this should run in about 0.2 seconds? But in Python it might be borderline. However, the problem says memory 256MB, and we are storing an array of 2^R integers for F(T), and we do a loop over T and then a loop over columns and rows.
+
+          We can do.
+
+          Let me test with the sample: 
+             "3 3
+              ...
+              .v.
+              ..."
+
+          Expected output: 145.
+
+          We won't do by hand, but we trust.
+
+          We'll write the code in our mind:
+
+          R=3, C=3.
+          Grid:
+            row0: "..."
+            row1: ".v." -> in the middle column, row1 is 'v'
+            row2: "..."
+
+          We'll compute F(T) for T in [0,8).
+
+          How about T=0 (no ban):
+
+             a0: column0: all three rows: '.' -> a0=3 -> non_empty0 = 7.
+             a1: column1: 
+                  row0: '.' 
+                  row1: 'v' -> skip (if not banned) -> but not banned, but it is 'v' -> not available.
+                  row2: '.' -> a1=2 -> non_empty1=3.
+             a2: column2: 3 -> non_empty2=7.
+
+             dp0: [1,7]  -> state for column0: dp0[0]=1, dp0[1]=7.
+             j=1:
+                 dp1[0] = dp0[1] = 7
+                 dp1[1] = (1+7)*3 = 8*3=24
+             j=2:
+                 dp2[0] = dp1[1] = 24
+                 dp2[1] = (7+24)*7 = 31*7 = 217
+             F(0)=24+217=241.
+
+          T=1 (ban row0):
+
+             column0: 
+                 row0: banned -> skip
+                 row1: not banned -> '.' -> available
+                 row2: not banned -> '.' -> available
+                 a0=2 -> non_empty0=3.
+             column1:
+                 row0: banned -> skip
+                 row1: not banned -> but 'v' -> not available
+                 row2: not banned -> '.' -> available
+                 a1=1 -> non_empty1=1.
+             column2: 
+                 a2=2 -> non_empty2=3.
+
+             dp0: [1,3]
+             j=1: 
+                 dp1[0]=3
+                 dp1[1]=(1+3)*1=4
+             j=2:
+                 dp2[0]=4
+                 dp2[1]=(3+4)*3=21
+             F(1)=4+21=25.
+
+          T=2 (ban row1):
+
+             column0: 
+                 row0: not banned: '.' -> available
+                 row1: banned: skip
+                 row2: not banned: '.' -> available
+                 a0=2 -> non_empty0=3.
+             column1:
+                 row0: available: '.' 
+                 row1: banned: skip
+                 row2: available: '.' 
+                 but note: row1 is banned, but the cell is 'v', so even if it were not banned we wouldn't use it. But we don't care: we skip it.
+                 a1=2 -> non_empty1=3.
+             column2: a2=2 -> non_empty2=3.
+
+             dp0: [1,3]
+             j=1: 
+                 dp1[0]=3
+                 dp1[1]=(1+3)*3=12
+             j=2:
+                 dp2[0]=12
+                 dp2[1]=(3+12)*3=45
+             F(2)=12+45=57.
+
+          T=3 (ban row0 and row1):
+
+             column0: 
+                 row0: banned, row1: banned -> skip
+                 row2: not banned: available -> a0=1 -> non_empty0=1.
+             column1: 
+                 row0: banned, row1: banned, row2: available -> a1=1 -> non_empty1=1.
+             column2: a2=1.
+
+             dp0: [1,1]
+             j=1: 
+                 dp1[0]=1
+                 dp1[1]=(1+1)*1=2
+             j=2:
+                 dp2[0]=2
+                 dp2[1]=(1+2)*1=3
+             F(3)=2+3=5.
+
+          T=4 (ban row2):
+
+             column0: 
+                 row0: available, row1: available, row2: banned -> skip
+                 a0=2 -> non_empty0=3.
+             column1:
+                 row0: available, row1: not available (because 'v'), row2: banned -> skip -> a1=1.
+             column2: a2=2.
+
+             same as T=1? 
+                 dp0: [1,3]
+                 j=1: dp1[0]=3, dp1[1]= (1+3)*1=4
+                 j=2: dp2[0]=4, dp2[1]=(3+4)*3=21
+                 F(4)=25.
+
+          T=5 (ban row0 and row2):
+
+             column0: 
+                 only row1: available -> a0=1 -> non_empty0=1.
+             column1:
+                 row0: banned, row1: available? but it is 'v' -> not available, row2: banned -> a1=0 -> non_empty1=0.
+             column2: only row0 and row2 banned, so only row1: but row1 is 'v' in column2? 
+                 row0: banned, row1: not banned -> but grid[1][2] is '.' -> available? 
+                 Actually, row1: column2 is '.' -> available -> a2=1.
+
+             dp0: [1,1]
+             j=1: 
+                 dp1[0] = 1   (because we have to put empty in column1: then we require column0 non-empty -> which is 1) 
+                    but wait: we have non_empty1=0, so we cannot choose non-empty. So we only have empty for column1.
+                 dp1[1]= (1+1)*0 = 0.
+             j=2:
+                 dp2[0] = 0   (from dp1[1])
+                 dp2[1] = (1+0) * (2^1-1) = 1 * 1 = 1.
+             F(5)=0+1=1.
+
+          Actually, we did:
+
+            dp0 = [1,1]   (for column0: we have non_empty0=1, so non-empty placement: one non-empty placement? Actually, the non_empty0=1: it is the placement with a scarecrow in row1, column0.
+
+            column1: we can only choose empty (because non_empty1=0) -> then we require column0 was non-empty -> which it was (state=1) -> so dp1[0]=1, dp1[1]=0.
+
+            column2: 
+                 a2=1 -> non_empty2=1.
+                 we can choose non-empty: then we can come from any state at column1: 
+                     dp2[1] = (dp1[0]+dp1[1]) * 1 = (1+0)*1 = 1.
+                 we can choose empty: then we require column1 was non-empty -> but it wasn't -> so we cannot use empty? 
+                    dp2[0] = dp1[1] = 0.
+
+            So F(5)=0+1=1.
+
+          T=6 (ban row1 and row2):
+
+             column0: 
+                 only row0: available -> a0=1 -> non_empty0=1.
+             column1: 
+                 row0: available -> '.' -> a1=1 -> non_empty1=1.
+             column2: 
+                 row0: available -> '.' -> a2=1.
+
+             dp0: [1,1]
+             j=1: 
+                 dp1[0]=1, dp1[1]=(1+1)*1=2.
+             j=2:
+                 dp2[0]=2, dp2[1]=(1+2)*1=3.
+             F(6)=2+3=5.
+
+          T=7 (ban all):
+
+             a0=0, a1=0, a2=0.
+             dp0: [1,0]
+             j=1: 
+                 dp1[0]=0, dp1[1]=(1+0)*0=0.
+             j=2: 
+                 dp2[0]=0, dp2[1]=0.
+             F(7)=0.
+
+          Now, inclusion-exclusion:
+
+          T: bitmask, popcount, sign, F(T)
+          0: 0 -> +  241
+          1: 1 (popcount=1) -> -  25
+          2: 1 -> -  57
+          3: 2 -> +  5
+          4: 1 -> -  25
+          5: 2 -> +  1
+          6: 2 -> +  5
+          7: 3 -> -  0
+
+          Answer = 241 - 25 - 57 + 5 - 25 + 1 + 5 - 0 = 
+          241 
+          -25 -> 216
+          -57 -> 159
+          +5 -> 164
+          -25 -> 139
+          +1 -> 140
+          +5 -> 145.
+
+          So 145.
+
+          Therefore, we implement this.
+
+          Steps:
+
+            MOD = 1000000007
+            Read R, C.
+            grid = []
+            for i in range(R):
+                grid.append(input().strip())
+
+            nT = 1<<R
+            F = [0] * nT   # F[T] for each T
+
+            # Precomputation: we can precompute for each T the a_j for each column? 
+            # But we do inside the T loop.
+
+            for T in range(nT):
+                # For each column j, compute a_j = number of available '.' in column j for rows not in T and not blocked by 'v'
+                a = []   # a[j] for j in [0, C-1]
+                for j in range(C):
+                    cnt = 0
+                    for i in range(R):
+                        if (T >> i) & 1:   # row i is banned
+                            continue
+                        if grid[i][j] == '.':
+                            cnt += 1
+                    a.append(cnt)
+
+                # Now, non_empty_j = (2^(cnt) - 1) % MOD, but if cnt==0 then 0.
+                # Precompute non_empty for each column
+                non_empty = []
+                for cnt in a:
+                    if cnt==0:
+                        non_empty.append(0)
+                    else:
+                        # Compute pow(2, cnt, MOD) - 1
+                        non_empty.append((pow(2, cnt, MOD) - 1) % MOD)
+
+                # Now, DP for columns
+                # For column0:
+                #   dp0 = [1, non_empty[0]]  -> meaning: state0 (empty) = 1, state1 (non-empty) = non_empty[0]
+                dp0 = 1   # for empty
+                dp1 = non_empty[0]   # for non-empty
+
+                # If C==1, then we skip the loop for j>=1.
+                for j in range(1, C):
+                    # next_dp0 = dp1 (from previous column) * 1   [because we choose empty in column j: then we require the previous was non-empty]
+                    next0 = dp1   # because we choose empty: 1 way for the placement (the empty set)
+                    # next_dp1 = (dp0 + dp1) * non_empty[j]
+                    next1 = (dp0 + dp1) * non_empty[j] % MOD
+
+                    # Then shift: next becomes current for the next column.
+                    dp0, dp1 = next0, next1
+
+                F[T] = (dp0 + dp1) % MOD
+
+            # Now, inclusion-exclusion:
+            ans = 0
+            for T in range(nT):
+                # Count the number of bits in T
+                cnt = bin(T).count('1')
+                if cnt % 2 == 0:
+                    ans = (ans + F[T]) % MOD
+                else:
+                    ans = (ans - F[T]) % MOD
+
+            # Ensure non-negative
+            ans %= MOD
+            if ans < 0:
+                ans += MOD
+            print(ans)
+
+          Note: the DP for the first column: 
+                We set dp0=1 (empty) and dp1=non_empty[0] (non-empty). 
+                This corresponds to: 
+                   state for column0: 
+                      we have the empty placement: 1 way -> non_empty=0 -> state0=1
+                      non_empty placements: non_empty[0] ways -> state1=non_empty[0]
+
+          Then we start the loop at j=1.
+
+          We hope it runs in time: 2^14 * (C*R) = 16384 * 1000*14 = 16384 * 14000 = 229,376,000, which is acceptable in Pyton? Maybe in Pyton it might be borderline (a few seconds) but in C++ it would be fast.
+
+          However, the problem time limit is 2 seconds. In Python, 229e6 iterations might be around 2-3 seconds? We can try to optimize by precomputation of powers? But the exponentiation is only for exponents up to 14 (so we can precompute a list of powers: 2^0 to 2^14, which is 15 numbers).
+
+          Also, we can precompute the a for each T and each column? But we are already doing it. 
+
+          Alternatively, we can precompute for each column j and for each T, but that would be 2^R * C * R, which is the same.
+
+          We can precompute for each column j the base count: the available rows (ignoring T) are the ones that are not 'v'. But then we have to account for T: for a fixed column j, the available count for a set T is: 
+              base_available = the set of rows i such that grid[i][j]=='.' 
+              then a_j = popcount( base_available AND (complement of T) )
+
+          We can precompute base_available for each column j as an integer bitmask: 
+              base[j] = 0
+              for i in range(R):
+                  if grid[i][j]=='.':
+                      base[j] |= (1<<i)
+
+          Then for a given T, a_j = popcount( base[j] & ~T )
+
+          How to compute popcount? We can use bit_count()? But that is for integers.
+
+          Then we do:
+
+            Precompute base = [0]*C
+            for j in range(C):
+                for i in range(R):
+                    if grid[i][j]=='.':
+                        base[j] |= (1<<i)
+
+            Then inside the T loop, for each j:
+                # the available rows in column j: base[j] & ~T
+                a_j = (base[j] & ~T).bit_count()
+
+          This might be faster in Pyton? Because the inner loop becomes O(C) and we avoid the inner R.
+
+          Total: 2^R * C * (constant time for bit_count and bit operations) = 2^R * C = 16384 * 1000 = 16,384,000, which is acceptable.
+
+          Steps:
+
+            Precompute base[0..C-1] as integers.
+
+            nT = 1<<R
+            F = [0]*nT
+
+            for T in range(nT):
+                # Precompute non_empty for each column j:
+                #   a_j = (base[j] & ~T).bit_count()
+                #   non_empty_j = (1 << a_j) - 1   [if a_j>0, else 0] mod MOD? But note: 2^(a_j) might be up to 2^14, so we can compute as an integer? 
+                #   However, we are mod MOD, and 2^14 is 16384, so we can compute by pow(2, a_j, MOD)-1, but we can precompute a table for a_j in [0, R] (R<=14) so we can have a list: 
+                #   power2 = [1]*(R+1)
+                #   for i in range(1, R+1): power2[i] = (power2[i-1]*2) % MOD
+                #   then non_empty_j = (power2[a_j] - 1) % MOD
+
+                # But we precomputed a power2 array for sizes 0..R.
+
+                non_empty = []
+                for j in range(C):
+                    a_j = (base[j] & ~T).bit_count()
+                    non_empty_j = (power2[a_j] - 1) % MOD
+                    non_empty.append(non_empty_j)
+
+                # Then do the DP as before.
+
+          This reduces the inner R loop to a bit_count and a table lookup.
+
+          We'll do that.
+
+          Summary:
+
+            Precomputation:
+                MOD = 1000000007
+                Read R, C, grid.
+                Precompute base[0..C-1] (bitmask for each column j: base[j] has bit i set if grid[i][j]=='.' and the row is not banned? Actually, no: it's the base available without banning, and then we will AND with ~T to account for banning.
+
+                Precompute an array power2[0..R] (R<=14) so that power2[k] = (2^k) % MOD.
+
+                nT = 1<<R
+                F = [0]*nT
+
+                for T in range(nT):
+                    non_empty = []
+                    for j in range(C):
+                        # Get the bitmask of available '.' in column j that are not banned by T.
+                        avail = base[j] & ~T
+                        a_j = bin(avail).count('1')   # or avail.bit_count() if using Python 3.10+
+                        # But to be safe for old Python, we can use bit_count? The problem does not specify. Alternatively, we can precompute popcount for numbers in [0, 2^R) and then use a lookup table? 
+                        # Since R<=14, we can do: 
+                        #   a_j = popcount[avail]   where popcount is precomputed for numbers in [0, 1<<R)
+                        # Or use built-in: we assume the judge uses Python 3.10+? Or we precompute a popcount array for numbers up to (1<<R)-1.
+
+                    Instead, we precompute a popcount array for all numbers from 0 to nT-1 (which is 2^R, so 16384).
+
+                Precomputation of popcount for all x in [0, nT):
+                    popcount = [0] * nT
+                    for x in range(nT):
+                        popcount[x] = bin(x).count('1')   # or use bit_count if available, or we can do: 
+                        # popcount[0]=0, then use recurrence? But 16384 is small.
+
+                Then:
+                    for T in range(nT):
+                        non_empty = []
+                        for j in range(C):
+                            avail = base[j] & ~T
+                            # Since base[j] is in the range [0, 2^R), and we are AND with ~T, it is in [0, 2^R)
+                            a_j = popcount[avail]
+                            non_empty_j = (power2[a_j] - 1) % MOD
+                            non_empty.append(non_empty_j)
+
+                        # Then DP as above.
+
+            This will be efficient.
+
+          Finally, note: we must be cautious for the case when the grid has no available '.' in a column: then non_empty_j=0.
+
+          Let's code accordingly.
+
+          We'll do.
+
+          We output the answer.
+
+          This should be efficient: 2^R * C = 16384 * 1000 = about 16e6, which is acceptable.
+
+          Let's hope.
+
+          We'll run the sample inputs.
+
+          We are done.

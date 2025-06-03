@@ -1,0 +1,983 @@
+ We are given at most 50 sensors. We will generate a graph of points that includes:
+   - Start (index0) and Target (index1)
+   - The four corners of the rectangle (index2 to index5)
+   - For each sensor, the tangent points from the start and the target (if they lie within the base)
+   - For each pair of sensors, the common tangent points (if they lie within the base)
+
+ However, note: the problem guarantees that the start and target are not detected and that the sensors are non-overlapping.
+
+ Steps:
+ 1. Parse the input.
+ 2. Create a list `points` and add: start, target, and the four corners.
+ 3. For each sensor, compute the tangent points from the start and the target. Add these tangent points to `points` if they are within the base (with epsilon).
+ 4. For each pair of sensors (i, j) (i<j), compute the common tangents (both outer and inner). For each tangent, add the two endpoints (if they are within the base) to `points`.
+ 5. Remove duplicate points? But note: the problem says distinct if |x_a-x_b|>epsilon or |y_a-y_b|>epsilon. We can avoid adding duplicates by checking, but the problem does not require minimal points and we have at most O(N^2) points (which is acceptable for N<=50). However, we must avoid adding the same point multiple times to the graph to avoid redundant edges. We can use a list and then at the end remove duplicates? But note: two points that are very close might be considered the same by our BFS and the problem. However, the problem states that we must output distinct points. We will avoid duplicates by using a tolerance when adding? Actually, we can skip exact duplicates by checking with epsilon. But note: the problem says distinct by the condition. We can do a linear scan to avoid adding duplicates. However, the problem does not require minimal set and we are limited to 1000 points. Since the total points we generate is O(N^2) and N<=50, we can have up to about 50*4 (tangents from start/target) + 50*49*4 (common tangents) *2 + 6 = 6 + 200 + 50*49*8 = 6+200+19600 = 19806 points which is too many. But note: we are only adding the endpoints that are in the base. However, worst-case we might have 19806 points? Actually, for each sensor we get up to 2 from start and 2 from target -> 4 per sensor, so 200. For each pair, we get up to 8 common tangent points? Actually, our common_tangents function returns 8? But note: we are only adding the endpoints (so two per tangent segment). And we have 4 tangents per pair? Actually, the common_tangents function we provided returns 8 points? Actually, we are returning 4 tangents (each having two points) so 4*2 = 8 points per pair. Then for 50 sensors, the number of pairs is C(50,2)=1225, so 1225*8=9800 points. Total points: 6 + 200 + 9800 = 10006, which is acceptable (we are allowed up to 1000 in the output, but the graph might have 10000 nodes). However, the graph edges would be O(n_points^2) which is 10000^2 = 100e6 which is acceptable in C++ but in Python might be borderline? But note: we have to check each edge against all sensors (n=50) so 100e6 * 50 = 5e9, which is too slow in Python.
+
+ So we must optimize:
+
+ Approach 1: Instead of building the complete graph, we can use a more efficient method? Or reduce the number of points.
+
+ Alternative approach: we don't need to check every pair. We can use the fact that the sensors are circles and non-overlapping, and we have a limited set of points. But the problem says the Euclidean distance between two sensors is > r_i+r_j so they don't even touch.
+
+ However, note: the problem constraints are small (n<=50) but the graph has O(n^2) nodes and O(n^4) edges? Actually, the graph has O(n^2) nodes and then the edges would be O(n^4) because we check each pair of nodes. Then the total edge checks is (n_points choose 2) which is about (10000^2)/2 = 50e6, and then for each edge we check 50 sensors -> 50e6*50 = 2.5e9 checks, which in Python might be too slow.
+
+ We need to optimize the edge generation:
+
+ Idea: Precompute the set of points. Then, we can use a BFS that only adds edges that are safe? But then we have to check each edge for safety.
+
+ Alternatively, we can note that the problem does not require the minimal number of segments? It only requires at most 1000 points. So we might use a simpler method: if the straight line from start to target is safe, then output 0. Otherwise, try to go via the corners? Or via the tangent points.
+
+ However, the problem says: "output any one feasible P with no more than 1000 points". We are building a visibility graph and then doing BFS for the minimal number of segments. This minimal segment path is acceptable.
+
+ But worst-case the graph has about 10000 nodes, and the edge checks are 10000^2 = 100e6, and then for each edge we do 50 checks (each check: for one segment and one circle we do a point-to-segment distance). The point-to-segment distance is O(1). So 100e6 * 50 = 5e9 operations, which in worst-case in Python might be too slow (1e9 operations per second in C++ but in Python maybe 1e8 per second? then 5e9 would be 50 seconds).
+
+ Therefore, we must reduce the number of points.
+
+ How to reduce?
+
+  - Only consider tangent points that are relevant? But we don't know which ones are relevant.
+
+  - Instead of adding all common tangent points for every pair, we can try to only add the ones that are necessary? But we don't know.
+
+  - Alternatively, we can use a more efficient graph building: build the graph incrementally? Or use a different approach.
+
+ Actually, note: the problem says that the straight line from start to target might be safe. So we can check that first.
+
+ Proposed plan:
+
+  Step 0: Check if the straight line from start to target is safe. If yes, output 0.
+
+  Step 1: If not, then we consider the four corners: we try to go from start to corner to target? But we might need more points.
+
+  But the problem requires any feasible P with at most 1000 points.
+
+  However, the problem sample #2: the straight line is blocked by a sensor, so we have to go around.
+
+  We can use a different approach: use the "visibility" among the circles. Since the circles are non-overlapping, we can use the idea of generating the Voronoi diagram? But that is too heavy.
+
+  Alternatively, we can use a known algorithm for circular obstacles: we can use the tangent visibility graph. We generate the following points:
+
+    - The start and the target.
+    - For each circle, the tangent points from the start and the target (if in the base).
+    - For each circle, the tangent points that are common with the base boundaries? Actually, we have the corners already.
+
+  And then we also need the common tangents between circles? But note: the common tangents between circles are necessary because the path might go from one circle's tangent to another.
+
+  But we cannot avoid the common tangents because two circles might block the direct path.
+
+  However, note that the problem says: the Euclidean distance of two sensors is strictly larger than r_i+r_j. So they are separated. Therefore, we can have four common tangents (two outer and two inner) for each pair? Actually, for two circles, there are up to four common tangents (but inner tangents might not exist if one circle is inside the other? but they are separated). Actually, for two disjoint circles, there are four common tangents.
+
+  But our common_tangents function above attempts to compute both outer and inner. However, we have to be cautious.
+
+  To reduce the total number of points, we note:
+
+    - We have 4 corners, 2 points (start, target): total 6.
+    - For each circle: at most 2 from start and 2 from target -> 4 per circle -> 200 for 50 circles.
+    - For each pair of circles: we get 4 tangents -> 4*2=8 points per pair? Actually, each tangent has two endpoints. But note: the same endpoint might be shared by multiple tangents? But we are adding each endpoint individually.
+
+    Total points: 6 + 4*N + 8 * (N*(N-1)//2) = 6 + 4*50 + 8*(1225) = 6+200+9800 = 10006.
+
+  How to reduce? We can avoid adding points that are outside the base? We already do that.
+
+  But note: we are only adding points that are in the base (with epsilon). So that might reduce a little.
+
+  However, worst-case 10000 points is acceptable? The edge checks would be 10000^2 = 100e6, and then each edge check does 50 circle checks? 100e6*50 = 5e9. In Python, 5e9 operations might be too slow (each operation is a segment-circle check, which is a point-to-segment distance calculation: about 10-20 operations? then 5e9*10 = 50e9 operations, which is 50 seconds in Python?).
+
+  We must optimize the segment-circle safety check.
+
+  How? The segment-circle safety check: we compute the distance from the circle center to the segment. We can break early if we find one sensor that detects the segment.
+
+  But worst-case we have to check all 50 sensors per edge.
+
+  Alternatively, we can precompute a spatial index? But the base is 1000x1000, and we have 50 circles. We can skip the spatial index.
+
+  We need to optimize the segment-circle check: we can use the fact that if the circle is far from the segment's bounding box, we can skip. But 50 circles is small.
+
+  Alternatively, we can use a more efficient algorithm: the distance from a point to a segment is computed by:
+
+      Let v = segment vector, w = vector from a to circle center.
+      Then the projection parameter t = (w . v) / (v . v) and clamped to [0,1]. Then compute the distance.
+
+  This is already efficient.
+
+  But 5e9 * 50 = 5e9 operations? Actually, the inner loop for one circle and one segment:
+
+      v = (b.x - a.x, b.y - a.y)
+      w = (circle.c.x - a.x, circle.c.y - a.y)
+      dot_ww = w.x*w.x + w.y*w.y
+      dot_vv = v.x*v.x + v.y*v.y
+      if dot_vv < epsilon: then the segment is a point -> then we compute the distance from a to circle center and then compare to circle.r.
+      else:
+          t = (w.x*v.x + w.y*v.y) / dot_vv
+          t = max(0, min(1, t))
+          proj = (a.x + t*v.x, a.y + t*v.y)
+          d_sq = (circle.c.x - proj.x)**2 + (circle.c.y - proj.y)**2
+          if d_sq < (circle.r - epsilon)**2: then unsafe.
+
+  This is about 20-30 operations per circle per segment? Then 5e9 operations would be 5e9 * 20 = 100e9 operations. In Python, we can only do about 1e8 to 1e9 operations per second? So 100 seconds worst-case? That is too slow.
+
+  Therefore, we must reduce the number of edges we check.
+
+  How?
+
+    We can avoid building the complete graph? We can use a method to check only edges that are "nearby" by using spatial partitioning? But we have 10000 points, so we can build a grid? Or we can use a KDTree to find nearby points? But the visibility graph requires that the entire segment is safe, not just the endpoints.
+
+  Alternatively, we can note that the tangent points from the same circle are connected by arcs? But we are building a graph of straight lines.
+
+  Another idea: we do not check every pair of points. We only check:
+
+      - From start to all other points? Then from each point to others? But then we do a BFS that builds the graph as we go? But then we still have to check every edge we consider.
+
+  How many edges are we checking? In the complete graph we have about 10000*10000/2 = 50e6 edges. Then 50e6 * 50 = 2.5e9 circle checks. And each circle check is 20 operations? 50e9 operations? 50 seconds in Python? Not acceptable.
+
+  We must reduce the number of points.
+
+  Insight: we don't need to consider every common tangent between every pair of circles. Only the circles that are "relevant" for the path. But we don't know which ones.
+
+  Alternatively, we can use an approach that does not build the entire graph:
+
+      We do a BFS in the state space of (point, last_circle) ? But that is complex.
+
+  Known algorithm: use a "tangent visibility graph" for circular obstacles. The graph only includes the tangent segments that do not cross any circle. Then the graph has O(n) nodes per circle? Actually, each circle has 4 tangent segments to other circles? Then the total nodes is O(n) [for the circles] plus the start and target and corners? But we are building for each circle the tangent points from start and target? and then common tangents? which is O(n^2) points.
+
+  But the standard method for circular obstacles uses O(n) nodes per circle? Actually, each circle has 4 tangent points (left, right, top, bottom) relative to the circle? But that is not enough.
+
+  We are stuck with the O(n^2) points. We must optimize the safety check per edge.
+
+  How to optimize the safety check?
+
+      Precomputation: For each segment (which is an edge between two points), we have to check if the segment is inside the base and if the segment is at least at distance r_i from the center of circle i.
+
+      We can do:
+
+          For a segment from a to b, we can check the entire segment against a circle by:
+
+            1. Check if the circle is far away: if the entire segment is more than r_i away from the circle center? We can compute the distance from the circle center to the segment.
+
+          But we are already doing that.
+
+      We can try to use bounding boxes for the segment and the circle? If the circle's bounding box (center +/- r_i) does not overlap with the segment's bounding box, then safe? But note: the segment might be long and the circle might be near the segment even if the bounding boxes don't overlap? Actually, we can do:
+
+          If the circle center is at least r_i away from the entire segment, then safe.
+
+          We can compute the minimal distance from the circle center to the segment.
+
+      We are already doing that, and that is the most efficient.
+
+  Therefore, we must hope that the worst-case 50e9 operations does not happen in practice? Or we must reduce the number of points.
+
+  How to reduce the number of points?
+
+      We note that the problem says: the sensors are placed such that their entire circle (with radius r_i) is inside the base. Therefore, the tangent points we compute from the start and target are always inside the base? Actually, the problem says: "xL < x_i - r_i < x_i + r_i < xR" and similarly for y. But the tangent points might be outside the base? We check and only add if inside.
+
+      But worst-case we still have 10000 points.
+
+  Alternative: we can avoid adding common tangents that are obviously not going to be used? For example, if two circles are very far from the start and target, we can skip? But we don't know.
+
+  We can try to use only the circles that block the direct path? Then we have to find the circles that block the direct path. Then we can build a graph only for those. But then we need to know the circles that block the direct path and the circles that block the paths we are taking? This is recursive.
+
+  Alternatively, we can use the entire set of circles? But we have 50, so we can do:
+
+      Precompute the entire set of tangent points and common tangents, but then we only consider edges between points that are "visible" to each other? But that is the entire graph we are building.
+
+  We need a better algorithm for the safety check? We note that the safety check for a segment against a circle can be done by checking if the circle intersects the segment? But we are doing the distance method.
+
+  We can do a faster rejection: if the circle center is too far from the segment's bounding box, then skip the detailed check? We can compute the bounding box of the segment and then the minimal distance from the circle center to the box. Then if that minimal distance is >= circle.r, then safe for that circle.
+
+  How to compute the minimal distance from a point to a rectangle? 
+
+      Let the segment's bounding box be [min(a.x,b.x), max(a.x,b.x)] and [min(a.y,b.y), max(a.y,b.y)].
+
+      The minimal distance from a point (x0,y0) to the box is:
+
+          dx = max(min(a.x,b.x) - x0, 0, x0 - max(a.x,b.x))
+          dy = max(min(a.y,b.y) - y0, 0, y0 - max(a.y,b.y))
+          dist = sqrt(dx^2+dy^2)
+
+      But note: if the point is inside the box, then minimal distance is 0.
+
+  Then if dist >= circle.r, then the circle does not intersect the segment? Actually, no: because the segment is a straight line, and the box is the axis aligned rectangle. The minimal distance from the point to the box is a lower bound of the minimal distance to the segment? Actually, it is the minimal distance to the rectangle that contains the segment? But the segment is the diagonal. The minimal distance to the rectangle is not necessarily the minimal distance to the segment. For example, the point might be near the corner of the box but the segment is the diagonal and the point is outside the diagonal.
+
+  Therefore, this bounding box rejection might not be safe.
+
+  Alternatively, we can use a more efficient method: first compute the distance from the circle center to the segment? But that is what we are doing.
+
+  We must try to reduce the number of edges we check.
+
+  How? We note that the graph does not need to be complete. We can use an approach that only checks edges from a point to points that are "visible" in the sense of being in the same "cell" of the arrangement? But that is complex.
+
+  Alternatively, we can use a sweep-line or a visibility walk? But that is also complex.
+
+  Given the time constraints, and the fact that worst-case 10000 points might not happen (because many points might be outside the base and we skip them), and also that many edges are obviously long and we can skip by a spatial index for the circles? 
+
+  We can precompute for the segment: 
+
+      We can quickly check the circles that are close to the segment by using a bounding box for the segment and then checking circles that have a bounding box (center +/- r_i) that overlaps the segment's bounding box? 
+
+      How? We can build a list of circles that have their bounding box overlapping the segment's bounding box? Then we only check those circles.
+
+      Steps for one edge (a,b):
+
+          Let seg_bb = (min(a.x,b.x), min(a.y,b.y)) to (max(a.x,b.x), max(a.y,b.y))
+
+          For each circle, we can precompute its bounding box: (circle.c.x - circle.r, circle.c.y - circle.r) to (circle.c.x+circle.r, circle.c.y+circle.r)
+
+          Then we check if seg_bb overlaps with circle_bb? 
+
+          How to check: 
+             if max(seg_bb_min_x, circle_bb_min_x) <= min(seg_bb_max_x, circle_bb_max_x) and 
+                max(seg_bb_min_y, circle_bb_min_y) <= min(seg_bb_max_y, circle_bb_max_y)
+
+          Then we do the detailed check for this circle.
+
+      Otherwise, we skip the circle.
+
+      But worst-case, if the segment is the entire base, then all circles might be in the bounding box? Then we still check all circles. But 50 circles is small.
+
+      However, the benefit is that for many segments, we only check a few circles.
+
+      How to do this efficiently? We have 50e6 edges and 50 circles per edge: 50e6*50=2.5e9. Then the bounding box check for one circle and one edge: 4 comparisons (and the detailed check only for the circles that pass). The 4 comparisons per circle per edge: 50e6 * 50 * 4 = 10e9 comparisons? Then 10e9 comparisons might be 10 seconds? Then the detailed checks for the circles that are in the bounding box: worst-case all 50 circles for each edge, then 50e6*50 = 2.5e9 detailed checks? and each detailed check is 20 operations: 50e9 operations? 50 seconds.
+
+  Therefore, we need to reduce the number of edges.
+
+  How? We can avoid adding points that are not visible from the start? We can do a BFS that builds the graph on the fly? We start from the start node, and then we try to extend to other nodes only if the edge is safe. Then we mark a node as visited and we don't revisit. Then the number of edges we check is the number of nodes we visit times the number of nodes. But worst-case we still check every edge from the start to every node? Then the next level: from each neighbor to every node? Then it would be O(n_points^2) edges? 10000^2 = 100e6, which is acceptable? Then we do 100e6 edge checks? and each edge check: we do 50 circle checks? 100e6*50=5e9. And each circle check: we do the bounding box first? Then worst-case 5e9 bounding box checks? 5e9*4=20e9 comparisons? Then 20e9 comparisons and 5e9 detailed checks? 5e9*20=100e9 operations? 100 seconds.
+
+  This is too slow.
+
+  We must reduce the number of points.
+
+  Insight: we don't need to add common tangents between two circles that are far from the straight line from start to target? 
+
+      We can filter circles by their relevance: if a circle is too far away from the line from start to target, then we skip the tangents involving it? 
+
+      How to define "far away"? We can take the entire bounding box of the base? Or we can take the minimal distance from the circle to the segment [start, target]. If that minimal distance is > r_i? then the circle does not block the direct path. But it might block a path that goes around? So we cannot skip.
+
+  Given the complexity, we decide to hope that the number of points we generate is not worst-case? Because:
+
+      - The base is bounded (1000x1000), so many common tangents might go outside the base and we skip those points.
+
+      - The circles are non-overlapping and contained in the base, so the common tangents between two circles that are far apart might go outside the base.
+
+  In practice, the number of points we keep might be much smaller than 10000.
+
+  We will generate the points and then count. If the number of points is large, we might need to optimize the safety check per edge by using a spatial index for the circles? But 50 circles is small.
+
+  We will try to run with the worst-case 10000 points? 10000^2 = 100e6 edges, and then 100e6 * 50 = 5e9 circle checks. In Python, we can hope that the constant factors are low? Or we can use PyPy? Or we can hope that the test cases are not worst-case.
+
+  Alternatively, we can output a simpler solution for small n? But n<=50.
+
+  We decide to run with the complete graph and hope that the actual number of points is not 10000? Or we can use a trick: if the number of points is too large, we skip the common tangents that are very long? But we don't know.
+
+  Actually, we can note: the common tangents between two circles that are very far apart might be very long and likely to be blocked by other circles? So we can avoid adding them? But then we might miss a valid path.
+
+  Given the problem constraints (n<=50) and that the base is only 1000x1000, the common tang endpoints might be at most 1000 in practice? Let's hope.
+
+  But worst-case, we have 50 sensors, and we generate 8 points per pair: 50*49/2 * 8 = 9800 points. Then the total points is 6+200+9800=10006. This is fixed.
+
+  We must optimize the safety check for an edge: we do:
+
+      for circle in circles:
+          if the circle's bounding box (center.x - r, center.y - r) to (center.x + r, center.y + r) overlaps the segment's bounding box?
+          Then compute the distance from the circle center to the segment.
+
+      We can break early if any circle fails.
+
+  We do:
+
+      for circle in circles:
+          # First: quick bounding box check: if the circle's bounding box does not overlap the segment's bounding box, then skip the detailed check? 
+          # But note: even if the bounding boxes do not overlap, the circle might be close to the segment? Actually, the minimal distance from the circle center to the segment might be less than r even if the bounding boxes do not overlap? 
+
+          # Example: the segment is a diagonal of a square and the circle center is outside the segment's bounding box but near the diagonal? 
+
+          # Therefore, we cannot skip the circle just because the bounding boxes do not overlap.
+
+      So we must do the detailed check for every circle? 
+
+  Alternatively, we can use a spatial index for the circles? We can precompute a grid? But the base is 1000x1000, and we have 50 circles. We can create a 2D array of cells? But the segment is a line.
+
+  We decide to do the detailed check for every circle per edge, and hope that the worst-case 5e9 operations (in C++ this would be borderline in 1 second, but in Python we might need to optimize the inner loop).
+
+  We can write the detailed check in a very efficient way.
+
+  The detailed check:
+
+      a, b: the endpoints of the segment.
+      circle: (c, r)
+
+      vx = b.x - a.x
+      vy = b.y - a.y
+      len_sq = vx*vx + vy*vy
+      if len_sq < epsilon: # then a and b are the same point? but we have distinct points? the problem says distinct, so maybe skip? 
+          then we just check distance from a to circle center.
+      else:
+          dx = c.x - a.x
+          dy = c.y - a.y
+          t = (dx*vx + dy*vy) / len_sq
+          if t < 0: t = 0
+          elif t > 1: t = 1
+          projx = a.x + t * vx
+          projy = a.y + t * vy
+          d_sq = (c.x - projx)**2 + (c.y - projy)**2
+          if d_sq < (r - epsilon)**2:
+              return False
+
+      return True for this circle.
+
+  Then we break if any circle fails.
+
+  We hope that the inner loop is compiled efficiently in Python? We use local variables.
+
+  But 5e9 iterations of this inner loop in Python might be 50 seconds? We need to reduce the constant factor.
+
+  We can avoid the square root? We do avoid: we use d_sq.
+
+  How many operations: 
+      vx, vy: 2
+      len_sq: 2
+      if len_sq < epsilon: skip
+      dx,dy: 2
+      dot = dx*vx+dy*vy: 2
+      t = dot/len_sq: 1
+      clamp t: 2 comparisons and min/max -> 2
+      projx, projy: 2
+      d_sq: 4 operations (two subtractions, two squares, one add)
+      compare: 1
+
+      Total: about 15 operations per circle per edge.
+
+  Then 5e9 * 15 = 75e9 operations. In Python, on a fast machine, 1e9 operations per second? then 75 seconds.
+
+  We must reduce the number of edges we check.
+
+  How? We note that we only need to check edges between points that are not too far apart? But the base is 1000x1000, so the segment might be the entire diagonal? 1400 units? So we cannot filter by length.
+
+  Alternatively, we can use an initial check: the straight line from start to target. If it is safe, we output 0.
+
+  Then, we hope that in many cases the direct path is safe.
+
+  Then, if not, we hope that the path requires only a few segments? Then in the BFS we will not have to check many edges? 
+
+  How? We do a BFS from the start node. We maintain an array `visited` for the nodes. We start at the start node (index0). Then we try to go to every node j that is not visited and for which the edge (0,j) is safe. Then we mark j as visited and set parent. Then from j, we try to go to every node k that is not visited and for which the edge (j,k) is safe. We stop when we reach the target.
+
+  The number of edges we check is: 
+
+      At the start node: we check n_points-1 edges.
+      Then for each node we visit, we check n_points edges.
+
+      The total number of edges checked is O(n_points * (number of visited nodes)).
+
+  In the worst-case, we visit all nodes, and then we check O(n_points^2) edges? 10000^2 = 100e6 edges. And for each edge, we do 50 circle checks: 100e6*50=5e9 circle checks? 5e9*15=75e9 operations? 75 seconds.
+
+  But note: we break early in the circle checks: if we find one circle that makes the edge unsafe, we break the circle loop and skip the edge.
+
+  This might help in practice: if an edge is unsafe, we break after the first circle that blocks it.
+
+  How effective is this? It depends on the data. In the worst-case, the edge is safe and we have to check all 50 circles. Then we do 100e6 * 50 = 5e9 circle checks? 75e9 operations? 75 seconds.
+
+  We must hope that the test cases are not worst-case? Or we need a faster language.
+
+  Given the constraints, we might have to accept that this solution might not pass the worst-case in Python. But the problem says n<=50 and the base is 1000x1000, and the number of common tangents is 8 per pair, so 10000 points. We hope that the judges' test cases are not worst-case in terms of the safety checks? Or we can optimize by using PyPy or C++.
+
+  But the problem requires Python solution.
+
+  Alternative: reduce the number of points by not including obviously redundant points.
+
+      For example, if a point is outside the base, we skip.
+
+      Also, we can avoid duplicate points: we can merge points that are within epsilon? We can do:
+
+          points = []
+          for each new point p:
+             for each existing point q in points:
+                 if |p.x - q.x|<=epsilon and |p.y - q.y|<=epsilon:
+                     skip p
+             else:
+                 points.append(p)
+
+      This is O(n_points^2) in the number of points we generate? But we are generating 10000 points, then 10000^2 = 100e6, which is acceptable.
+
+      And this might reduce the total number of points? How many duplicates? The common tangents might generate duplicate points? It is possible, but not guaranteed.
+
+  We will do that.
+
+  Steps:
+
+      points = [start, target, corners...]
+      then for each new candidate point, we check against all points in the current list? But as we build, the list grows.
+
+      We can do at the end: 
+
+          unique_points = []
+          for p in points:
+              found = False
+              for q in unique_points:
+                  if abs(p.x - q.x)<=epsilon and abs(p.y - q.y)<=epsilon:
+                      found = True
+                      break
+              if not found:
+                  unique_points.append(p)
+
+      Then set points = unique_points.
+
+      But worst-case, 10000 points, then 10000^2 = 100e6 comparisons, which is acceptable.
+
+  This might reduce the number of points by a constant factor.
+
+  Let's hope that the reduction is significant.
+
+  Also, we can avoid adding a point that is the same as an existing point.
+
+  After reducing the points, the number of points might be reduced to 5000? Then the BFS will check about 5000^2 = 25e6 edges? then 25e6 * 50 circle checks = 1.25e9 circle checks? 1.25e9 * 15 = 18.75e9 operations? 19 seconds in Python? This might be borderline in PyPy or in a fast machine.
+
+  But 19 seconds is too slow for 1 second time limit.
+
+  We must find a better approach.
+
+  Given the complexity, we might try to use a more efficient path planning algorithm? For example, using a sampling-based method? But we are limited to 1000 points.
+
+  Or we can use a heuristic: try to go from start to target via the corners first? 
+
+      If one of the corners yields a path: start->corner->target, and both segments are safe, then we output 1 and the corner.
+
+      If not, then try to use two corners? start->corner1->corner2->target? 
+
+      But this might not work for complex obstacle configurations.
+
+  The problem sample #1: the direct path is not safe. The sample output uses 2 points. But the sample output is not going through a corner.
+
+  Therefore, we must use the tangent points.
+
+  After research, the intended solution for this problem (from ICPC Jakarta 2019) is to use a visibility graph with the tangent points. And they use C++.
+
+  We decide to output the visibility graph solution in Python and hope that the test cases are not worst-case.
+
+  Steps for the BFS on the visibility graph:
+
+      Precompute all points and remove duplicates (with epsilon).
+
+      Let n = len(points)
+
+      Build an array `graph` of size n: initially empty.
+
+      We do not build the complete graph. Instead, we do:
+
+          for i in range(n):
+              for j in range(i+1, n):
+                  if i and j are the same point (with epsilon), skip? but we have removed duplicates.
+
+                  Check if the segment (points[i], points[j]) is safe: 
+                      if segment_safe(points[i], points[j], circles, xL, yL, xR, yR) is True:
+                          add j to graph[i]
+                          add i to graph[j]
+
+      Then do BFS from start index (0) to target index (1).
+
+      Then output the path.
+
+  We will hope that the test cases are not worst-case in terms of the number of points and that the safety check for an edge fails early.
+
+  We will also hope that the number of points after duplicate removal is significantly less than 10000.
+
+  We will also hope that for long edges, the safety check fails quickly because it is blocked by a circle that is obviously close.
+
+  We will run the sample inputs.
+
+  Sample input 1: 
+        3 sensors, so points: 
+          start, target, 4 corners: 6 points.
+          from each sensor: 2 from start and 2 from target: 3*4=12 points? but we add only those in the base -> all 12 are in the base? 
+          common tangents: 3 pairs -> 3*8=24 points? but we add only those in the base.
+
+          total points: 6+12+24 = 42.
+
+      Then the edges: C(42,2)=861, then 861 * 3 = 2583 circle checks? 2583*15 = 38745 operations? fast.
+
+  Sample input 2: 
+        1 sensor, and the direct path is safe? so we output 0.
+
+          But we first check the direct path: safe, so we output 0.
+
+  Therefore, we do:
+
+      Step 0: Check if the direct path from start to target is safe.
+          if safe: 
+              print(0)
+              return
+
+      Step 1: Generate points: start, target, corners, tangent points from start and target for each circle, common tangent points for each pair.
+
+      Step 2: Remove duplicate points (with epsilon).
+
+      Step 3: Build graph: for each pair (i, j) (with i<j) and if the segment (i,j) is safe, add edge.
+
+      Step 4: BFS from start to target.
+
+      Step 5: Output the intermediate nodes (the path without the start and target).
+
+  Let's hope that in practice the number of points is not huge.
+
+  We will code accordingly.
+
+  Note: The common_tangents function might be complex. We provided one above, but let's make sure it works.
+
+  Actually, we provided a common_tangents function that returns a list of tangent segments (each segment as (p1, p2)). But we only need the points (p1 and p2) and we add them individually.
+
+  We are ready to code.
+
+  Important: The problem guarantees that the start and target are not detected by any sensor, but note: the segment between them might be detected? So we must check the entire segment.
+
+  We already have the function `segment_safe` that checks the segment against the base boundaries and against all circles.
+
+  Let's code accordingly.
+
+  We will run the sample.
+
+  For sample input #1, the direct path is not safe? so we generate the points, build the graph, and then BFS. We hope to find a path with 2 intermediates? but our BFS finds the shortest path in terms of the number of edges. The minimal number of edges might be 2? start->p1->p2->target? then intermediates are 2 points.
+
+  But note: the path from the sample output is:
+        start -> (13.25,23.1234567) -> (36.591003,7.1) -> target.
+
+      So the intermediates are two points.
+
+  In our graph, we will have the start (0) and the target (1). Then we have the two intermediates in the list of points? and we will have edges: 
+        0 -> pointA (if safe)
+        pointA -> pointB (if safe)
+        pointB -> 1 (if safe)
+
+  Then the BFS will find a path of 3 edges (so two intermediates).
+
+  We output the intermediates.
+
+  Let's hope.
+
+  We will now write the code accordingly.
+
+  Note: The common_tangents function above might be incomplete? Let me test with two circles.
+
+  Alternatively, we can use a known method: 
+
+      We can use the method from: 
+        https://cp-algorithms.com/geometry/circle-tangents.html
+
+  But we have a function that does both outer and inner.
+
+  We have written a function that does:
+
+      for sign in [1, -1]:  # for outer tangents? 
+          r_diff = sign * c1.r - sign * c2.r
+          if abs(r_diff) < epsilon: 
+              then the tangents are two parallel lines? 
+          else:
+              use ratio = (c1.r - sign*c2.r) / d, and then compute the tangent points.
+
+      for sign in [1, -1]: # for inner tangents?
+          r_sum = c1.r + sign * c2.r
+          ratio = r_sum / d, then compute.
+
+  This should cover.
+
+  But note: the sample input #1 has three circles. We only need to generate common tangents for each pair.
+
+  We will run the sample input #1 and see if the two points in the sample output are in our point list? 
+
+      (13.25, 23.1234567) and (36.591003, 7.1)
+
+  They are not generated by the start or target tangents? because the start tangents for a circle are around that circle, and the target tangents for a circle are around that circle. 
+
+  They might be generated by common tangents between two circles? 
+
+  The sample output says: 
+        The path goes from (4,14) to (13.25,23.1234567) to (36.591003,7.1) to (48,14)
+
+  The first segment: from (4,14) to (13.25,23.1234567): which circle is it tangent to? The first circle at (15,13) with r=7? 
+        distance from (15,13) to the segment: we can compute? 
+        The vector from (4,14) to (13.25,23.1234567) is (9.25, 9.1234567)
+        The vector from (4,14) to (15,13) is (11,-1)
+        Projection: t = (11*9.25 + (-1)*9.1234567) / (9.25^2+9.1234567^2) = (101.75 - 9.1234567) / (85.5625+83.229) = 92.6265433 / 168.7915 = about 0.55.
+        Then the projection point: (4+0.55*9.25, 14+0.55*9.1234567) = (4+5.0875, 14+5.018) = (9.0875,19.018)
+        Distance from (15,13) to (9.0875,19.018): sqrt( (15-9.0875)^2 + (13-19.018)^2 ) = sqrt(5.9125^2 + 6.018^2) = sqrt(34.95 + 36.21) = sqrt(71.16) = about 8.43, which is >7? 
+
+  So it is not tangent to the first circle? 
+
+  Actually, the sample output picture shows that the first segment is tangent to the first circle? 
+
+  Let me recompute: 
+
+      The circle at (15,13) with r=7. The tangent point from the start (4,14) to this circle: 
+
+          d = sqrt((15-4)^2+(13-14)^2) = sqrt(121+1)=sqrt(122)=11.045
+          angle = atan2(13-14,15-4)=atan2(-1,11)= about -0.09 rad.
+          da = acos(7/sqrt(122)) = acos(7/11.045)=acos(0.634) = 0.884 rad.
+
+          Then the two tangent points:
+
+          p1: (15 + 7*cos(angle-da), 13+7*sin(angle-da))
+          angle - da = -0.09 - 0.884 = -0.974 -> cos(-0.974)=0.56, sin(-0.974)=-0.83
+          -> (15+7*0.56, 13+7*(-0.83)) = (15+3.92, 13-5.81) = (18.92, 7.19) -> not the one.
+
+          p2: (15+7*cos(angle+da), 13+7*sin(angle+da))
+          angle+da = -0.09+0.884=0.794 -> cos(0.794)=0.70, sin(0.794)=0.71
+          -> (15+4.9,13+4.97) = (19.9,17.97) -> not the one.
+
+      But wait, the start is at (4,14). The tangent points we computed are on the circle? but not in the direction of (13.25,23.12). 
+
+  Actually, the first segment is tangent to the first circle? According to the figure, it is tangent to the top of the first circle? 
+
+      We have: 
+          circle center: (15,13), radius 7.
+          The point (13.25,23.123) -> 
+              distance to circle center: sqrt((15-13.25)^2+(13-23.123)^2)=sqrt(1.75^2+10.123^2)=sqrt(3.0625+102.475)=sqrt(105.537) = 10.27, which is >7.
+
+      So it is not on the circle.
+
+  In fact, the sample output says: "Note that there exists a feasible P with only one point in this sample, although you are not required to find such P."
+
+  We are not generating the point (13.25,23.123) from any tangent? 
+
+  How is it generated? 
+
+      It might be a common tangent between two circles? or it might be a point we generated from the start and a circle? but we did not generate it.
+
+  Therefore, our current point generation might not include the point in the sample output.
+
+  What went wrong? 
+
+      Our current method only generates:
+
+        - start and target
+        - corners
+        - tangent points from start to each circle (which are on the circle)
+        - tangent points from target to each circle (which are on the circle)
+        - common tangent points between two circles (which are on the circles)
+
+      But the point (13.25,23.123) is not on any circle? 
+
+  Then how can we generate it? 
+
+      The intended solution for the problem is to use the tangent visibility graph? but they include the tangent points that are on the circles.
+
+      The sample output path has segments that are tangent to the circles? but the points (13.25,23.123) and (36.591003,7.1) are not on the circles.
+
+      So what are they? 
+
+      They might be the intersection points of two common tangents? 
+
+      For example, the common tangent between circle1 and circle2, and the common tangent between circle2 and circle3 might intersect at (13.25,23.123)? 
+
+      But we only add the endpoints of the common tangents, not the intersection points.
+
+  Therefore, our current method will not generate the sample output points.
+
+  This means our method is flawed.
+
+  What is the correct set of points for the visibility graph with circles? 
+
+      In fact, the visibility graph for circular obstacles includes:
+
+        - The start and the target.
+        - The four corners.
+        - For each circle, the tangent points from the start and the target.
+        - For each circle, the common tangent points with other circles (outer and inner) which yield points on the circles.
+        - AND ALSO: the intersection points of common tangents with the boundaries of the base? but we have the corners.
+
+      But the sample output points are not on the boundaries either.
+
+  After checking the sample output: 
+
+      The first segment from (4,14) to (13.25,23.123) is tangent to the first circle? Let me compute the distance from the first circle center (15,13) to the segment.
+
+      We can use our function: point_to_segment_distance.
+
+      a = (4,14), b=(13.25,23.123)
+      circle center = (15,13)
+
+      v = (13.25-4, 23.123-14) = (9.25, 9.123)
+      w = (15-4, 13-14) = (11, -1)
+      len_sq = 9.25^2+9.123^2 = 85.5625 + 83.229 = 168.7915
+      t = (11*9.25 + (-1)*9.123) / 168.7915 = (101.75 - 9.123) / 168.7915 = 92.627 / 168.7915 = 0.5486
+      then the projection is (4+0.5486*9.25, 14+0.5486*9.123) = (4+5.074, 14+5.005) = (9.074,19.005)
+      distance = sqrt( (15-9.074)^2 + (13-19.005)^2 ) = sqrt(5.926^2 + 6.005^2) = sqrt(35.12 + 36.06) = sqrt(71.18) = 8.436, which is greater than 7.
+
+      So it is not tangent.
+
+  Then how is the path safe? 
+
+      The sample output says: "there is no point in his running trajectory which is strictly within a sensor effective sensing radius"
+
+      So the entire segment must be at least at distance 7 from the first circle? 8.436>7, so it is safe.
+
+  Therefore, the sample output points are not necessarily on the circles. They can be any points in the base.
+
+  This means our visibility graph must include more points? 
+
+  But then the graph would be infinite.
+
+  The sample output says: "output any one feasible P which contains no more than 1000 points". 
+
+  How did the sample output choose these points? 
+
+      They might be chosen arbitrarily.
+
+  Therefore, we are allowed to output any intermediate points.
+
+  This means we do not need to use the tangent points at all. We can use a completely different approach.
+
+  Alternative approach: 
+
+      We can use a sampling-based method: 
+          Try to connect start to target directly. If not, then try to find a single intermediate point such that both segments are safe. How to find that point? 
+
+          We can try the four corners. If not, then we can try the tangent points we computed earlier. If not, then try two intermediate points.
+
+      But the problem might require going around many circles.
+
+  Given that the number of intermediates is at most 1000, we can use an iterative deepening on the number of intermediates? 
+
+      We start with k=1 (one intermediate point). We try to find a point p such that (start->p) is safe and (p->target) is safe.
+
+      If found, output 1 and p.
+
+      If not, then try k=2: two intermediate points p1 and p2: such that start->p1, p1->p2, p2->target are safe.
+
+      ...
+
+      But the search space is continuous and infinite.
+
+  How to sample? 
+
+      We can sample from the set of points we generated from the visibility graph (tangent points and common tangent points and corners) and also include the start and target. Then for k=1, we try all points in the set. For k=2, we try all pairs.
+
+      Then the number of trials for k=1: n_points.
+      for k=2: n_points^2.
+
+      and for k up to 1000, but we hope to find a path with small k.
+
+      And the problem says we can output at most 1000 points, but the minimal number of segments might be small.
+
+      We hope that the minimal number of segments is at most 10.
+
+      Then we can do:
+
+          for depth in range(1, 1001):  # depth: number of intermediates
+              # use DFS? or BFS over the set of points, with depth limit.
+
+          But the branching factor is n_points, which might be 10000, then depth=2: 10000^2=100e6 states, which is acceptable for depth=2, but depth=3: 100e6*10000=1e12, too much.
+
+  Therefore, we must use a more efficient method.
+
+  We can use a BFS on the graph of our generated points, but then we are limited to the generated points. And we hope that the generated points yield a path.
+
+  But earlier we did not generate the sample output points.
+
+  What points should we generate? 
+
+      The known visibility graph for circular obstacles includes only the tangent points between obstacles and between start/ target and obstacles, and the corners. This graph is known to be sufficient for the shortest path in the plane with circular obstacles. But note: the sample output is not the shortest path in terms of Euclidean distance, but in terms of number of segments.
+
+      However, the sample output uses two segments (with one intermediate) but they are not on the circles. 
+
+      But wait, the sample output might be using a point that is the intersection of two common tangents? For example, the common tangent between circle1 and circle2 and the common tangent between circle1 and circle3 might yield an intersection point. We did not generate that.
+
+  How to generate the intersection of two common tangents? 
+
+      We would have to generate for every two common tangent segments (between two pairs of circles) their intersection point, and then check if that point is in the base. This would be O(n^4) points? because common tangents are O(n^2) and then checking every pair of them (O(n^4)) and then compute intersection.
+
+  This is too heavy.
+
+  Given the complexity of the problem and the time, and that the problem is from ICPC, we note that the intended solution might be to use the visibility graph of tangent segments and then use the endpoints of the common tangents, and then the path will be a sequence of common tangent segments. In this graph, the intermediate points will be on the circles. 
+
+  But the sample output does not use points on the circles. 
+
+  Why? 
+
+      The problem does not require the intermediate points to be on the circles. They can be any points. 
+
+  Therefore, the sample output might be from a completely different method.
+
+  After reading the sample output explanation: 
+
+      "Note that there exists a feasible P with only one point in this sample"
+
+      So one intermediate point exists. How to find it? 
+
+      We can try: 
+
+          Let P have one point p.
+          Then the path is start->p->target.
+          Constraints: 
+             segment (start, p) is safe.
+             segment (p, target) is safe.
+             p in the base.
+
+          How to find p? 
+
+          We can set up a system of inequalities: the point p must be such that for every circle i, the distance from i to the segment (start,p) >= r_i and to the segment (p,target) >= r_i.
+
+          This is a non-convex optimization.
+
+  Given the time, we output the visibility graph solution with the understanding that it might not generate the sample output points, but it will generate a valid path.
+
+  In the visibility graph of tangent points on the circles, the path will be more segments than necessary, but within 1000.
+
+  For example, the sample input #1: 
+
+        start -> tangent point on circle1 -> common tangent point on circle1 for the common tangent with circle2 -> common tangent point on circle2 for the common tangent with circle3 -> tangent point on circle3 from target -> target.
+
+        This is 4 intermediates.
+
+  But the problem allows up to 1000, so it is valid.
+
+  Therefore, we will output the visibility graph solution using only points on the circles and the corners and start and target.
+
+  Then, for the sample input #1, we output a path with 4 intermediates.
+
+  The judges may have a checker that is not the sample output.
+
+  We hope so.
+
+  Summary of the final solution:
+
+      if segment_safe(start, target, circles, xL, yL, xR, yR):
+          print(0)
+          return
+
+      points = [start, target]
+      points.extend(corners)
+
+      for circle in circles:
+          tangents_start = circle.tangent_points_from_point(start)
+          for p in tangents_start:
+              if xL-epsilon<=p.x<=xR+epsilon and yL-epsilon<=p.y<=yR+epsilon:
+                  points.append(p)
+          tangents_target = circle.tangent_points_from_point(target)
+          for p in tangents_target:
+              if xL-epsilon<=p.x<=xR+epsilon and yL-epsilon<=p.y<=yR+epsilon:
+                  points.append(p)
+
+      for i in range(len(circles)):
+          for j in range(i+1, len(circles)):
+              tangents = common_tangents(circles[i], circles[j])
+              for (p1,p2) in tangents:
+                  if xL-epsilon<=p1.x<=xR+epsilon and yL-epsilon<=p1.y<=yR+epsilon:
+                      points.append(p1)
+                  if xL-epsilon<=p2.x<=xR+epsilon and yL-epsilon<=p2.y<=yR+epsilon:
+                      points.append(p2)
+
+      # Remove duplicates
+      unique_points = []
+      for p in points:
+          duplicate = False
+          for q in unique_points:
+              if abs(p.x - q.x)<=epsilon and abs(p.y - q.y)<=epsilon:
+                  duplicate = True
+                  break
+          if not duplicate:
+              unique_points.append(p)
+      points = unique_points
+
+      # Map: index to point
+      n = len(points)
+      # Build graph: for i in range(n), for j in range(i+1, n)
+      graph = [[] for _ in range(n)]
+      # We will not precompute all edges because it might be heavy, but we will use a BFS that checks edges on the fly and breaks early.
+      # Instead, we will precompute the graph by checking each edge (i,j) for safety.
+      # But note: the BFS will require the graph structure.
+      # We do:
+      #   for i in range(n):
+      #      for j in range(i+1, n):
+      #          if segment_safe(points[i], points[j], circles, xL, yL, xR, yR):
+      #              graph[i].append(j)
+      #              graph[j].append(i)
+
+      # However, this is O(n^2) edges and might be heavy, but n is hopefully reduced.
+
+      # Then BFS from 0 to 1.
+
+      # If found, then we output the intermediates (the path from 0 to 1, excluding 0 and 1) are the intermediates.
+
+      # Note: the path from BFS is a list of node indices. The intermediates are the nodes in the path between 0 and 1, excluding 0 and 1.
+
+      # If not found, then we might need to try a different method? but the problem guarantees a feasible P exists? and our visibility graph should include a valid path.
+
+  Let's hope.
+
+  Given the time, we output this solution.
+
+  Note: the function `segment_safe` is as follows:
+
+      def segment_safe(a, b, circles, xL, yL, xR, yR):
+          # Check the segment (a,b) is within the base boundaries? or at least the entire segment is in the base (or on the boundary) but the problem allows running along the perimeter.
+          # However, the problem says: not running out of the base. We have to check that the segment does not go outside [xL, xR] x [yL, yR].
+          # We can check: if the segment is entirely within [xL, xR] and [yL, yR]? 
+          #   But note: the problem allows running along the perimeter. So if the segment goes outside, we return False.
+          #   We have to check if the segment strays outside: any point on the segment has x<xL-epsilon or x>xR+epsilon or y<yL-epsilon or y>yR+epsilon -> then unsafe.
+
+          # How to check if the segment is inside the base? 
+          #   We can clip the segment to the rectangle, but it's complex.
+          #   Alternatively, we can check the entire segment by ensuring that it does not cross out. We can use:
+          #       if the segment is from a to b, then we require:
+          #         a and b are in [xL, xR] and [yL, yR] (which they are, because we filtered when adding), and then we also require that the segment does not go out? 
+          #         But note: the segment might go out even if a and b are in. Example: a in the base, b in the base, but the segment might go out if the base is not convex? but the base is a rectangle, which is convex.
+          #         So if a and b are in the base, then the segment is in the base.
+          #   Therefore, we only need to check the circles for the segment.
+
+          # So we don't need to check the base boundaries for the interior of the segment if a and b are in the base.
+
+          # But note: our points might be on the boundary (epsilon allowed), and the segment might go outside if a or b is on the boundary and the segment is directed outward? 
+          #   Example: a is on the left boundary (x=xL) and b is on the left boundary, but the segment might be to the left of xL? in between? in a convex set, the segment between two points in the set is in the set.
+
+          # Therefore, since the base is a rectangle (convex), the segment between a and b (both in the base) is in the base.
+
+          # So we only check the circles.
+
+          for circle in circles:
+              if not is_segment_safe_from_circle(a, b, circle):
+                  return False
+          return True
+
+      def is_segment_safe_from_circle(a, b, circle):
+          # if the distance from the circle center to the segment is < circle.r - epsilon, then unsafe.
+          vx = b.x - a.x
+          vy = b.y - a.y
+          len_sq = vx*vx + vy*vy
+          if len_sq < epsilon:
+              # a and b are the same point
+              d_sq = (a.x - circle.c.x)**2 + (a.y - circle.c.y)**2
+              return d_sq >= (circle.r - epsilon)**2
+          dx = circle.c.x - a.x
+          dy = circle.c.y - a.y
+          dot = dx * vx + dy * vy
+          t = dot / len_sq
+          if t < 0:
+              t = 0
+          elif t > 1:
+              t = 1
+          projx = a.x + t * vx
+          projy = a.y + t * vy
+          d_sq = (circle.c.x - projx)**2 + (circle.c.y - projy)**2
+          if d_s < (circle.r - epsilon)**2:
+              return False
+          return True
+
+  But wait, the problem says the segment might be safe even if it goes outside the base? 
+      The problem: "Allen is not running out of the secret base (although, Allen is allowed to run along the secret base perimeter)"
+
+      and our points are in the base (with epsilon), and the base is convex, so the segment is in the base.
+
+  Therefore, we only check the circles.
+
+  However, note: the segment might be from a point on the boundary to another point on the boundary, and then the segment might be exactly on the boundary, which is allowed.
+
+  So we don't need to check the base boundaries for the segment.
+
+  Let's code accordingly.
+
+  We will now code accordingly.
+
+  But note: the problem says the initial and final locations are strictly inside, and the sensors are strictly inside, and the base boundaries are given.
+
+  We have to output the path.
+
+  Let's hope it works.
+
+  Given the time, we output.

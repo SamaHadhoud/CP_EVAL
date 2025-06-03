@@ -1,0 +1,7 @@
+At first glance, it looks like this problem can be solved by a greedy approach. Indeed, greedy works for this problem.
+
+First, we should compute the length of the given $K$ in binary representation. Let’s say the length is $len(K)$. If $len(K) < |S|$, then simply output 0 as $K$ is already no larger than the decimal representation of $S$. The *real* problem is when $len(K) \ge |S|$.
+
+If $len(K) > |S|$, we need to remove bits from $K$ such that its length in binary representation is at most $|S|$. The question is, which bit to remove? Our objective is to make $K$ as low as possible by removing a minimum number of bits. Thus, we should prioritize the **second** most significant 1 bit because it’s the second bit which contributes the most to the value of $K$. Note that the most significant 1 bit (the first one) cannot be removed as the problem states that the resulting binary string must not contain any leading zeroes. Perform this action repeatedly until $len(K) = |S|$ or there is no more 1 bit (except the most significant one). If there is no more 1 bit to be removed while $len(K) > |S|$, then remove any 0 bit to make $len(K) = |S|$. Once we get $len(K) = |S|$ with this method, we still need one additional check.
+
+If $len(K) = |S|$ but $K$ is still larger than the decimal representation of $S$, then simply remove any one 0 bit from $K$, and we’re done.

@@ -1,0 +1,167 @@
+### Approach
+The problem involves simulating the annual replacement of employees in a company over M years and determining if Randall (the first employee) remains after M years under Q different scenarios. Each scenario modifies the performance value of one new employee in a specific year, and these modifications are cumulative. The challenge is to efficiently handle these scenarios without reprocessing all years for each query.
+
+#### Key Insights:
+1. **Randall's Survival Condition**: Randall remains in the company after year \( t \) if, at the start of year \( t \), there are at least \( R_t \) employees with performance strictly worse than his. If at any year this condition fails, Randall is removed and does not return.
+2. **Tracking Employee Counts**: For each year \( t \), we track:
+   - \( F(t) \): The number of employees with performance worse than Randall's at the start of year \( t \).
+   - \( G(t) \): The number of new employees added in year \( t \) with performance worse than Randall's.
+3. **Recurrence Relation**: The value of \( F(t) \) can be derived as:
+   \[
+   F(t) = F(1) - \sum_{i=1}^{t-1} R_i + \sum_{i=1}^{t-1} G(i)
+   \]
+   The condition for Randall's survival in year \( t \) is \( F(t) \geq R_t \).
+4. **Efficient Updates with Segment Tree**: For each scenario, updating one new employee's performance in year \( X \) affects \( G(X) \), which in turn affects \( F(t) \) for all \( t > X \). Using a segment tree with lazy propagation, we can efficiently apply these suffix updates and query the minimum value of \( D(t) = F(t) - R_t \) across all years to determine if all conditions \( D(t) \geq 0 \) hold.
+
+### Solution Code
+```python
+import sys
+
+class SegmentTree:
+    def __init__(self, data, n):
+        self.n = n
+        self.size = 1
+        while self.size < n:
+            self.size *= 2
+        self.tree = [10**18] * (2 * self.size)
+        self.lazy = [0] * (2 * self.size)
+        for i in range(n):
+            self.tree[self.size + i] = data[i]
+        for i in range(self.size-1, 0, -1):
+            self.tree[i] = min(self.tree[2*i], self.tree[2*i+1])
+    
+    def apply(self, node, delta):
+        self.tree[node] += delta
+        if node < self.size:
+            self.lazy[node] += delta
+            
+    def push(self, node):
+        if self.lazy[node] != 0:
+            self.apply(2*node, self.lazy[node])
+            self.apply(2*node+1, self.lazy[node])
+            self.lazy[node] = 0
+            
+    def update_range(self, l, r, delta, node, segL, segR):
+        if r < segL or segR < l:
+            return
+        if l <= segL and segR <= r:
+            self.apply(node, delta)
+            return
+        self.push(node)
+        mid = (segL + segR) // 2
+        self.update_range(l, r, delta, 2*node, segL, mid)
+        self.update_range(l, r, delta, 2*node+1, mid+1, segR)
+        self.tree[node] = min(self.tree[2*node], self.tree[2*node+1])
+        
+    def update(self, l, r, delta):
+        if l > r:
+            return
+        self.update_range(l, r, delta, 1, 0, self.size-1)
+        
+    def query_range(self, l, r, node, segL, segR):
+        if r < segL or segR < l:
+            return 10**18
+        if l <= segL and segR <= r:
+            return self.tree[node]
+        self.push(node)
+        mid = (segL + segR) // 2
+        left_val = self.query_range(l, r, 2*node, segL, mid)
+        right_val = self.query_range(l, r, 2*node+1, mid+1, segR)
+        return min(left_val, right_val)
+    
+    def query(self, l, r):
+        return self.query_range(l, r, 1, 0, self.size-1)
+    
+    def global_min(self):
+        return self.query(0, self.n-1)
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    it = iter(data)
+    n = int(next(it)); m = int(next(it)); q = int(next(it))
+    A = [int(next(it)) for _ in range(n)]
+    A0 = A[0]
+    F1 = sum(1 for x in A if x < A0)
+    
+    R_arr = [0] * (m+1)
+    B_arr = [None] * (m+1)
+    G_current = [0] * (m+1)
+    
+    for i in range(1, m+1):
+        R_i = int(next(it))
+        R_arr[i] = R_i
+        B_i = [int(next(it)) for _ in range(R_i)]
+        B_arr[i] = B_i
+        count_less = sum(1 for val in B_i if val < A0)
+        G_current[i] = count_less
+        
+    H = [0] * (m+1)
+    H[1] = F1
+    for t in range(2, m+1):
+        H[t] = H[t-1] + G_current[t-1] - R_arr[t-1]
+        
+    D_base = [0] * m
+    for t in range(1, m+1):
+        D_base[t-1] = H[t] - R_arr[t]
+        
+    if m > 0:
+        seg_tree = SegmentTree(D_base, m)
+    else:
+        seg_tree = None
+        
+    out_lines = []
+    for _ in range(q):
+        X = int(next(it)); Y = int(next(it)); Z = int(next(it))
+        idx = Y - 1
+        old_val = B_arr[X][idx]
+        old_contrib = 1 if old_val < A0 else 0
+        new_contrib = 1 if Z < A0 else 0
+        delta = new_contrib - old_contrib
+        
+        if delta != 0 and m > 0:
+            start_index = X
+            if start_index < m:
+                seg_tree.update(start_index, m-1, delta)
+            B_arr[X][idx] = Z
+            G_current[X] += delta
+            
+        if m == 0:
+            min_val = 0
+        else:
+            min_val = seg_tree.global_min()
+            
+        if min_val >= 0:
+            out_lines.append("1")
+        else:
+            out_lines.append("0")
+            
+    sys.stdout.write("\n".join(out_lines) + "\n")
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation
+1. **Initial Setup**: 
+   - Read the number of employees \( N \), years \( M \), and scenarios \( Q \).
+   - Read the initial employee performances and compute \( F(1) \), the count of initial employees worse than Randall.
+
+2. **Processing Years**:
+   - For each year, read \( R_i \) (employees to replace) and the new employees' performances.
+   - Compute \( G(i) \), the count of new employees worse than Randall for each year.
+
+3. **Precompute Conditions**:
+   - Compute \( H(t) \) for each year \( t \), representing the number of worse employees at the start of year \( t \).
+   - Derive \( D(t) = H(t) - R_t \), which must be non-negative for Randall's survival in year \( t \).
+
+4. **Segment Tree for Efficient Updates**:
+   - Build a segment tree over \( D \) to support range updates (suffix updates) and global minimum queries.
+   - For each scenario:
+     - Update the performance of a new employee in a specific year.
+     - Adjust \( G(X) \) and propagate the change to \( D(t) \) for \( t > X \) via the segment tree.
+     - Query the global minimum of \( D \). If all values are non-negative, Randall survives; otherwise, he is removed.
+
+This approach efficiently handles each scenario in logarithmic time relative to the number of years, leveraging the segment tree for dynamic updates and queries.

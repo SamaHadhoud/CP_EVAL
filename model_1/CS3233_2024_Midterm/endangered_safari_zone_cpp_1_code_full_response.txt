@@ -1,0 +1,212 @@
+To solve this problem, we need to efficiently handle two types of operations on an array: updating the species of a Pokémon at a specific zone and querying the number of distinct species that appear at most K times in a given range [A, B]. Given the constraints (N, M, K up to 100,000), a direct approach for each query would be too slow. Instead, we use an offline processing technique known as **Mo's Algorithm with Updates**, which efficiently handles range queries and point updates by processing them in a specific order.
+
+### Approach
+1. **Problem Analysis**: The problem involves two operations:
+   - **Update (Type 1)**: Change the species of a Pokémon in a specific zone.
+   - **Query (Type 2)**: For a range [A, B], count the number of distinct species where the frequency of each species in the range is at most K. This can be derived by subtracting the number of species with frequency > K from the total distinct species in the range.
+
+2. **Key Insights**:
+   - **Frequency Tracking**: Maintain a frequency array to count occurrences of each species in the current range.
+   - **Distinct and Bad Species**: Track the number of distinct species (`distinct_count`) and species with frequency > K (`bad_count`). The answer for each query is `distinct_count - bad_count`.
+   - **Handling Updates**: Use Mo's algorithm with an additional dimension (time) to manage point updates. Queries are sorted by blocks of left endpoints, right endpoints (with alternating order for optimization), and the number of updates applied.
+
+3. **Algorithm Selection**:
+   - **Block Size**: Optimal block size is \(N^{2/3}\), leading to a time complexity of \(O((N + Q) \cdot N^{2/3})\), feasible for \(N, Q \leq 100,000\).
+   - **Processing Queries**:
+     - **Adjust Time**: Apply or revert updates to match the query's timestamp.
+     - **Adjust Range**: Expand or shrink the current range to match the query's range.
+     - **Update Frequencies**: Modify `distinct_count` and `bad_count` when species frequencies change.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+
+using namespace std;
+
+const int MAXN = 100005;
+
+struct Query {
+    int time, l, r, idx;
+};
+
+struct Update {
+    int pos, old_val, new_val;
+};
+
+int block_size;
+vector<int> arr;
+vector<Query> queries;
+vector<Update> updates;
+vector<int> ans;
+vector<int> freq;
+int distinct_count, bad_count;
+int N, M, K;
+
+bool cmp(const Query &a, const Query &b) {
+    int block_a_l = a.l / block_size;
+    int block_b_l = b.l / block_size;
+    if (block_a_l != block_b_l) {
+        return block_a_l < block_b_l;
+    }
+    int block_a_r = a.r / block_size;
+    int block_b_r = b.r / block_size;
+    if (block_a_r != block_b_r) {
+        if (block_a_l % 2 == 0) {
+            return block_a_r < block_b_r;
+        } else {
+            return block_a_r > block_b_r;
+        }
+    }
+    return a.time < b.time;
+}
+
+void add_element(int i) {
+    int species = arr[i];
+    int &count = freq[species];
+    if (count == 0) {
+        distinct_count++;
+    }
+    count++;
+    if (count == K + 1) {
+        bad_count++;
+    }
+}
+
+void remove_element(int i) {
+    int species = arr[i];
+    int &count = freq[species];
+    if (count == K + 1) {
+        bad_count--;
+    }
+    count--;
+    if (count == 0) {
+        distinct_count--;
+    }
+}
+
+void apply_update(const Update &u, int current_l, int current_r) {
+    if (u.old_val == u.new_val) {
+        return;
+    }
+    if (current_l <= u.pos && u.pos <= current_r) {
+        remove_element(u.pos);
+        arr[u.pos] = u.new_val;
+        add_element(u.pos);
+    } else {
+        arr[u.pos] = u.new_val;
+    }
+}
+
+void unapply_update(const Update &u, int current_l, int current_r) {
+    if (u.old_val == u.new_val) {
+        return;
+    }
+    if (current_l <= u.pos && u.pos <= current_r) {
+        remove_element(u.pos);
+        arr[u.pos] = u.old_val;
+        add_element(u.pos);
+    } else {
+        arr[u.pos] = u.old_val;
+    }
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    cin >> N >> M >> K;
+    arr.resize(N);
+    for (int i = 0; i < N; i++) {
+        cin >> arr[i];
+        arr[i]--;
+    }
+
+    vector<int> current_array = arr;
+    int time_count = 0;
+    int query_count = 0;
+    vector<int> output_ans;
+
+    for (int i = 0; i < M; i++) {
+        int q, a, b;
+        cin >> q >> a >> b;
+        if (q == 1) {
+            a--;
+            int b0 = b - 1;
+            int old_val = current_array[a];
+            if (old_val != b0) {
+                current_array[a] = b0;
+            }
+            updates.push_back({a, old_val, b0});
+            time_count++;
+        } else {
+            a--;
+            b--;
+            queries.push_back({time_count, a, b, query_count++});
+        }
+    }
+
+    if (queries.empty()) {
+        return 0;
+    }
+
+    block_size = (int)pow(N, 2.0/3.0);
+    if (block_size < 1) block_size = 1;
+    sort(queries.begin(), queries.end(), cmp);
+
+    arr = current_array;
+    freq.assign(MAXN, 0);
+    distinct_count = 0;
+    bad_count = 0;
+    int current_l = 0, current_r = -1, current_time = updates.size();
+    ans.resize(query_count);
+
+    for (const auto &q : queries) {
+        while (current_time < q.time) {
+            apply_update(updates[current_time], current_l, current_r);
+            current_time++;
+        }
+        while (current_time > q.time) {
+            current_time--;
+            unapply_update(updates[current_time], current_l, current_r);
+        }
+
+        while (current_l > q.l) {
+            add_element(--current_l);
+        }
+        while (current_r < q.r) {
+            add_element(++current_r);
+        }
+        while (current_l < q.l) {
+            remove_element(current_l++);
+        }
+        while (current_r > q.r) {
+            remove_element(current_r--);
+        }
+
+        ans[q.idx] = distinct_count - bad_count;
+    }
+
+    for (int i = 0; i < query_count; i++) {
+        cout << ans[i] << '\n';
+    }
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Initialization**: Read the initial array of species, converting species to 0-indexed for efficiency.
+2. **Processing Operations**:
+   - **Update (Type 1)**: Store the position, old species, and new species. Update the current array if the species changes.
+   - **Query (Type 2)**: Store the query parameters along with the number of updates applied before it.
+3. **Sorting Queries**: Queries are sorted by blocks of left endpoints, right endpoints (with alternating order), and the number of updates to minimize operations during processing.
+4. **Mo's Algorithm**:
+   - **Time Adjustment**: Apply or revert updates to match the query's timestamp.
+   - **Range Adjustment**: Expand or shrink the current range to match the query's range, updating species frequencies.
+   - **Tracking Counts**: Maintain `distinct_count` (species with frequency ≥ 1) and `bad_count` (species with frequency > K). The answer for each query is `distinct_count - bad_count`.
+5. **Output**: Results for each query are output in the original order.
+
+This approach efficiently handles dynamic updates and range queries within feasible time complexity for large constraints.

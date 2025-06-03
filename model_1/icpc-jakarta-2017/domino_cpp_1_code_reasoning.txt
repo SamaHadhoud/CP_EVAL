@@ -1,0 +1,1008 @@
+ We are going to read the input, sort the edges by w (which is guaranteed to be in the range [1, N] and unique).
+ We maintain a dictionary (hash map) `slots` that maps a node value (A) to the number of available child slots for that value.
+ Steps:
+   - Sort the edges by w (increasing).
+   - Initialize `trees = 0` and an empty map for `slots`.
+   - For each edge (u, v, w) in sorted order:
+        If `slots[u]` exists and is > 0, then we can use one slot of u to attach this edge.
+            Then: 
+                slots[u] = slots[u] - 1
+                slots[v] = slots[v] + M   [because the new node v can have M children]
+        Else:
+            We need to create a new tree (so increment `trees` by 1). This edge becomes a root edge? 
+            But note: the root node (with A=u) is created and this edge is its first child? Actually, the root doesn't have an incoming edge, but it can have up to M children.
+            However, when we create a root, we are using one slot for the root to have a child? Actually, the root node u is created and it can have up to M children. We are using one child slot for the current edge, so we have M-1 left.
+            Then:
+                trees += 1
+                slots[u] = slots[u] + (M - 1)   [because we are using one child now, so remaining M-1 for future children]
+                slots[v] = slots[v] + M
+
+ Important: We are not storing the entire tree, only the available slots per node value. Note that multiple nodes might have the same A value? The problem does not say that A values are unique per node. Actually, the problem states: each node has a value x.A. It is possible that multiple nodes have the same A value? The sample input: 
+        "4 4 5" -> two nodes with A=4? 
+
+ However, note: the tuples are (u_i, v_i, w_i). We are using the A value as the key in our `slots` map. But if two different nodes have the same A, we are aggregating their available child slots under the same key. This is acceptable because the requirement is per node? Actually, the requirement says: each node has at most M children. But our map aggregates the available slots for all nodes that have that A value.
+
+ Why is this correct?
+   Consider: when we have a node with value 'a', we don't care which specific node it is, only how many more children we can attach to any node with value 'a'. Since the condition (requirement 5) is about the edge weights and we are processing in increasing order, we know that any existing node with value 'a' must have been created by an edge with weight less than the current edge (because we are processing in increasing order). Therefore, we can attach the current edge to any node with value 'a' that has an available slot.
+
+ But note: what if a node with value 'a' is created in two different ways? 
+   Actually, the algorithm doesn't care: we are aggregating the slots per A value. When we create a new node with value 'a', we add M slots (if it is a child) or M (if it is a root) minus one for the edge that created it? Actually:
+
+   When we attach an edge (u, v, w) to an existing node u (with available slot), we are effectively:
+      - Using one slot from the pool of slots for u.
+      - Then we create a new node with value v. This new node can have up to M children, so we add M to the pool for v.
+
+   When we create a new tree for edge (u, v, w):
+      - We create a root node for u (which did not exist? or maybe we are creating the root and then attaching the child). But note: the root node u is created and it has one child (v). So the root node u has one child already and can have up to M-1 more children. Therefore, we add (M - 1) to the pool for u.
+      - Also, we create the child node v, which adds M to the pool for v.
+
+ However, what if there is already a node with value u? 
+   The problem does not require that the entire forest has distinct node labels (A values). So multiple nodes can have the same A value. Therefore, we are aggregating the available child slots for all nodes that have the same A value. 
+
+ Example: the sample input "4 4 5" -> u=4, v=4, w=5. This means a node with A=4 (as parent) and a child node with A=4. 
+   When processing this edge, we check the available slots for 4. If there is an available slot, we use one and then the new node (with A=4) will add M to the slots for 4.
+
+ Implementation note: We use a map (dictionary) that defaults to 0 for keys not present.
+
+ Steps for the first sample (N=5, M=2) in sorted order by w:
+   edges sorted by w: 
+        w=1: (4,7,1) -> no slot for 4? initially map is empty -> so trees=1. Then:
+            slots[4] = (M-1) = 1
+            slots[7] = M = 2
+
+        w=2: (4,8,2) -> slots[4] is 1 (so use it). Then:
+            slots[4] becomes 0, and slots[8] becomes 0 + 2 = 2.
+
+        w=3: (2,4,3) -> slots[2] is 0 -> new tree: trees=2.
+            slots[2] becomes 0 + (2-1)=1
+            slots[4] becomes 0 + 2 = 2   [so now 4 has 2 slots]
+
+        w=4: (7,2,4) -> slots[7] is 2 -> use one: slots[7]=1, then slots[2] becomes 1 + 2 = 3? (because we add M=2 to the existing 1 -> 3)
+
+        w=5: (4,4,5) -> slots[4] is 2 -> use one: slots[4]=1, then slots[4] gets M=2 added? -> becomes 1 + 2? Actually: 
+            We do: slots[4] = 2 - 1 = 1; then we add M=2 to slots[4] -> so then slots[4] becomes 1 + 2 = 3.
+
+        Total trees = 2.
+
+ However, note: the edge (4,4,5) is attaching a child with A=4 to a parent with A=4. So we are using one slot from the pool of 4 (which was 2) and then we are adding M=2 to the pool for the new node (which is also 4). So the pool for 4 becomes 2-1+2 = 3.
+
+ But the sample input says output 2.
+
+ This matches.
+
+ However, in the second sample: same edges but M=1.
+
+   edges sorted by w:
+        w=1: (4,7,1) -> trees=1; slots[4] = 1-1? Actually: new tree: so we do slots[4] = M-1 = 0, slots[7] = M=1.
+
+        w=2: (4,8,2) -> we need a slot for 4 -> but slots[4] is 0 -> so new tree: trees=2.
+                slots[4] becomes 0 + (M-1)=0, slots[8]=1.
+
+        w=3: (2,4,3) -> no slot for 2? so new tree: trees=3.
+                slots[2]=0, slots[4]=0+1=1? [because we add M=1 to 4]
+
+        w=4: (7,2,4) -> we need a slot for 7: slots[7] is 1 -> use it: slots[7]=0, then add M=1 to slots[2]: so slots[2] becomes 0+1=1.
+
+        w=5: (4,4,5) -> we need a slot for 4: slots[4] is 1 -> use it: then slots[4] becomes 0, and then we add M=1 to slots[4] -> slots[4]=1.
+
+        Total trees=3.
+
+ The second sample output is 3.
+
+ Therefore, the algorithm is correct.
+
+ Code in C++:
+
+   Steps:
+     Read N and M.
+     Read N lines: each with u, v, w.
+     Create a vector of tuples (w, u, v) and sort by w (since w is unique and in [1, N]).
+     Use an unordered_map for slots (we can also use a map, but the keys are integers that can be up to 2e9, so we need a hash map).
+
+     Initialize trees = 0.
+
+     For each edge in sorted order:
+        if (slots[u] > 0) {
+            slots[u]--;
+            slots[v] += M;   // Note: if v is not present, it will be created and set to M? But the map should initialize to 0 for new keys.
+        } else {
+            trees++;
+            // Then we are creating a root for u? Actually, we are creating a root node for u and then attaching the child v to it.
+            // The root node u is created and it uses one slot for the current child, so it has M-1 remaining.
+            slots[u] += (M - 1);   // This M-1 is the available slots for u (if M==0 then M-1=-1, but M>=1 by constraints).
+            slots[v] += M;
+        }
+
+     Print trees.
+
+ However, note: what if the same node value appears multiple times? We are aggregating the slots per value.
+
+ Important: The map should be updated with the new values. We must be cautious that when we update `slots[u]`, if u is not in the map, then it will be default initialized to 0. Then:
+
+        In the else branch: we set `slots[u] = (M-1) + current (0) = M-1`.
+        Then for `slots[v]`, if v is not present, it becomes M.
+
+ But note: what if the same edge uses the same u and v again? Actually, the edges are distinct by w and we are processing in increasing w.
+
+ However, what if an edge (u, v, w) is processed and then later we have an edge (v, u, w')? That is acceptable because when we process the first edge, we add M to v. Then when the second edge (v, u, w') is processed (with w' > w), we check slots for v (which is M at that time) and then use one slot.
+
+ But note: the direction: the edge is from parent to child. So the first edge: parent=u, child=v. The second edge: parent=v, child=u. This is a different edge.
+
+ However, the problem does not say anything about the uniqueness of u and v pairs? But the weights are unique.
+
+ But note: the sample input has (4,4,5) which is an edge from a node with A=4 to a node with A=4.
+
+ Therefore, the algorithm handles same values naturally.
+
+ Implementation in C++:
+
+   We will use:
+      #include <iostream>
+      #include <vector>
+      #include <algorithm>
+      #include <unordered_map>
+
+   Steps:
+
+      int main() {
+          int N, M;
+          std::cin >> N >> M;
+          std::vector<std::tuple<int, int, int>> edges;
+          for (int i = 0; i < N; i++) {
+              int u, v, w;
+              std::cin >> u >> v >> w;
+              edges.push_back(std::make_tuple(w, u, v));
+          }
+          std::sort(edges.begin(), edges.end());
+
+          long long trees = 0;
+          std::unordered_map<long long, long long> slots;
+
+          for (auto &edge : edges) {
+              int w = std::get<0>(edge);
+              long long u = std::get<1>(edge);
+              long long v = std::get<2>(edge);
+
+              // Check if u has any available slot
+              if (slots.find(u) != slots.end() && slots[u] > 0) {
+                  slots[u]--;
+                  // For v: if exists, add M; if not, set to M.
+                  slots[v] += M;   // This is safe: if v doesn't exist, it will be created by the operator[]? But we are adding to it -> if not present, it initializes to 0 then adds M -> becomes M.
+              } else {
+                  trees++;
+                  // For u: we are going to add M-1. If u is already present, then we add M-1 to the existing value (which might be 0 or positive? but we are in the else branch so either u not present or present but 0).
+                  slots[u] += (M - 1);   // This handles both: if u not present, it becomes M-1; if present and 0, then becomes M-1.
+                  slots[v] += M;
+              }
+          }
+
+          std::cout << trees << std::endl;
+          return 0;
+      }
+
+ However, note: the above code for the map: 
+        slots[v] += M   -> if v is not present, then it will be initialized to 0 by the operator[] and then add M -> becomes M.
+
+        Similarly, for u in the else branch: if u is not present, then we do `slots[u]` which creates an entry with 0 and then adds (M-1).
+
+ But what if M is large? And what if we have many distinct u and v? The memory is acceptable because we have at most 2*N distinct keys? (each edge has two keys, but many may repeat). So worst-case distinct keys is 2*N, which is 200,000 -> acceptable.
+
+ However, the problem constraints: N, M up to 100,000. So the map will have at most 200,000 entries.
+
+ But note: the keys are long long (because u and v can be up to 2e9). The unordered_map should be efficient enough for 200,000 entries.
+
+ However, worst-case performance of unordered_map is O(n) per operation? But on average O(1). We have N operations (each edge) so total O(N) average.
+
+ But worst-case the unordered_map might have collisions? We can use a custom hash for long long? The standard library for C++11 and later has a good hash for long long.
+
+ Alternatively, we can use a map (std::map) which is O(log n) per operation, so total O(N log N). Since we are already sorting (O(N log N)), the overall complexity is acceptable.
+
+ However, unordered_map might be faster on average.
+
+ Let's use unordered_map.
+
+ But note: the keys are long long, and we are going to have up to 200000 keys. We can reserve space.
+
+   slots.reserve(2 * N);
+
+ However, we don't know the exact number, but we can reserve 2*N.
+
+ But note: the sample input might be small. We can reserve 2*N.
+
+ Code:
+
+   #include <iostream>
+   #include <vector>
+   #include <algorithm>
+   #include <unordered_map>
+
+   int main() {
+       std::ios::sync_with_stdio(false);
+       std::cin.tie(0);
+
+       int N, M;
+       std::cin >> N >> M;
+
+       std::vector<std::tuple<int, int, int>> edges;
+       edges.reserve(N);
+       for (int i = 0; i < N; i++) {
+           long long u, v;
+           int w;   // because w is between 1 and N, which is up to 100000 -> fits in int.
+           std::cin >> u >> v >> w;
+           edges.push_back(std::make_tuple(w, u, v));
+       }
+
+       std::sort(edges.begin(), edges.end());
+
+       long long trees = 0;
+       std::unordered_map<long long, long long> slots;
+       slots.reserve(2*N); // reserve buckets for 2*N keys? but reserve takes the number of buckets, which should be about the number of elements? Actually, reserve the number of elements we expect to store.
+
+       // Alternatively, we can set the bucket count: but reserve(2*N) should be good.
+
+       for (const auto& edge : edges) {
+           int w = std::get<0>(edge);
+           long long u = std::get<1>(edge);
+           long long v = std::get<2>(edge);
+
+           auto it_u = slots.find(u);
+           if (it_u != slots.end() && it_u->second > 0) {
+               // Use one slot from u
+               it_u->second--;
+               // For v: update or create
+               slots[v] += M;   // This will create if not exists? Yes, but we can use an iterator for v? Or we do:
+               // Alternatively: we can do slots[v] += M; which is acceptable.
+           } else {
+               trees++;
+               // For u: if exists, we add (M-1) to the existing value (which might be 0) OR if doesn't exist, we set to M-1?
+               // We can do: slots[u] += (M-1);
+               slots[u] += (M-1);   // if u doesn't exist, it will be created and set to (M-1) (because default 0 + (M-1)).
+               slots[v] += M;
+           }
+       }
+
+       std::cout << trees << "\n";
+       return 0;
+   }
+
+ However, there is a potential issue: when we update `slots[v]` in the if branch, we do `slots[v] += M`. This might create a new entry for v if it doesn't exist. Similarly, in the else branch, we do the same.
+
+ But note: in the if branch, we are updating `slots[u]` via the iterator (so we know u exists) and then updating `slots[v]` which might create an entry if it doesn't exist.
+
+ This is acceptable.
+
+ But what about the else branch: we update `slots[u]` and `slots[v]` which may create new entries if they don't exist.
+
+ However, we must note that the else branch condition: if u is not found OR found but value 0. So in the else branch, we are updating u: `slots[u] += (M-1)`. This will create an entry for u if it didn't exist. Similarly, `slots[v] += M` will create an entry for v if it didn't exist.
+
+ But what if u exists and has 0? Then we do `slots[u] += (M-1)` -> becomes M-1.
+
+ This is correct.
+
+ However, we can avoid two lookups for u in the else branch? In the if condition we did a lookup for u. Then in the else branch we update u and v. We can restructure:
+
+   Instead, we can do:
+
+        if (slots.count(u) && slots[u] > 0) {
+            slots[u]--;
+            slots[v] += M;
+        } else {
+            trees++;
+            slots[u] += (M - 1);   // This will create if not exists? Yes, but if exists then it adds M-1 to the existing (which is 0? because we checked count and >0? Actually, we checked that if it exists then we checked if >0. So if it exists and is 0, then we are in the else branch. Then we add M-1: becomes M-1.
+            slots[v] += M;
+        }
+
+ But note: the condition `slots.count(u) && slots[u] > 0` is two lookups? Actually, we can do:
+
+        auto it = slots.find(u);
+        if (it != slots.end() && it->second > 0) {
+            it->second--;
+            // Then update v: we can do
+            slots[v] += M;
+        } else {
+            trees++;
+            slots[u] += (M-1);
+            slots[v] += M;
+        }
+
+ This avoids two lookups for u? Actually, we did one lookup with find. Then in the else branch, we update u: which is one lookup (if exists) or insertion. Similarly, for v: one lookup.
+
+ But note: the else branch: we update u and v. That's two lookups (or one for u and one for v).
+
+ Alternatively, we can do:
+
+        long long& ref_u = slots[u];
+        if (ref_u > 0) {
+            ref_u--;
+            slots[v] += M;
+        } else {
+            trees++;
+            ref_u += (M - 1);   // because ref_u is a reference to the value of u, which we just set to 0 if it didn't exist? Actually, if it didn't exist, then ref_u was set to 0 by the operator[].
+            slots[v] += M;
+        }
+
+ However, the operator[] creates an entry for u if it doesn't exist. But in the if branch we don't want to create an entry for u if it doesn't exist? Actually, in the if branch we want to avoid creating an entry if u doesn't exist? But the condition is: if u has an available slot. If u doesn't exist, then it has 0 slot -> we go to else.
+
+ But with the above: we do `slots[u]` which creates an entry if it doesn't exist. Then we check if that value (which is 0 for a new entry) is >0 -> false -> go to else.
+
+ Then in the else branch we update the same u (which we just created) to M-1.
+
+ This would be acceptable? But we are creating an entry for u in every case? Then the map size might be larger? But worst-case we have 2*N distinct keys, so it's acceptable.
+
+ But note: the same u might appear multiple times? Then we are updating an existing entry? That's fine.
+
+ However, the problem: we might create an entry for u that we don't need? Actually, we do need it: in the else branch we update u. But what about the if branch? We create an entry for u even if we don't use it? Actually, we are going to use the entry for u in the if branch: we decrement it. So we have to create it if it doesn't exist? Actually, we don't want to create an entry for u in the if branch if u doesn't exist? Because if u doesn't exist, then we cannot use it.
+
+ So the above code:
+
+        long long& ref_u = slots[u];   // This creates an entry for u if it doesn't exist (with value 0).
+        if (ref_u > 0) {
+            ref_u--;
+            slots[v] += M;
+        } else {
+            trees++;
+            ref_u += (M - 1);   // so if it was 0 (newly created or existing zero), we add M-1 -> becomes M-1.
+            slots[v] += M;
+        }
+
+ This is simpler and does only one lookup for u? And then we update u and v.
+
+ But note: the else branch does two updates: one for u and one for v. The if branch also does two: one for u and one for v.
+
+ However, we are doing one lookup for u (in the initial ref_u) and then one lookup for v (in the slots[v]) in both branches.
+
+ How to avoid creating an entry for u if we don't need it? Actually, we don't care: we are going to have at most 2*N distinct keys. So creating an entry for every u that appears in the edges is acceptable. Each edge has a u and a v. So at most 2*N distinct keys.
+
+ Therefore, we can use:
+
+        if (slots[u] > 0) {   // This will create an entry for u if it doesn't exist, and set to 0? Actually, no: the operator[] for an unordered_map creates the key and sets it to 0 if not present. Then we check if >0 -> false.
+            slots[u]--;
+            slots[v] += M;
+        } else {
+            trees++;
+            // Now, if u was created above, then we update: slots[u] = 0 + (M-1) = M-1.
+            // But if u was already present and 0, then we do M-1 as well.
+            slots[u] += (M - 1);   // This is the same entry we created? or if we didn't create it above? Actually, in the if condition we created it? Then in the else branch we update the same entry? That's acceptable.
+            slots[v] += M;
+        }
+
+ But note: the if condition does a lookup for u and creates it if it doesn't exist. Then we check the value: if it is >0 -> then we do the if branch. Otherwise, we do the else branch. Then in the else branch we update the same u.
+
+ However, we are doing two lookups for u: one in the condition and one in the update? Actually, we can avoid by storing the reference? But the condition `slots[u]` is one lookup and then the update `slots[u] += (M-1)` is another? Actually, no: the condition `slots[u]` returns the value, but then we update the same key again? Then we have two lookups for u? 
+
+ We can do:
+
+        auto it = slots.find(u);
+        if (it != slots.end() && it->second > 0) {
+            it->second--;
+            // Then update v: 
+            slots[v] += M;
+        } else {
+            trees++;
+            // If it exists but is 0, then we update it; if it doesn't exist, we create and set to M-1?
+            if (it != slots.end()) {
+                it->second += (M-1);
+            } else {
+                slots[u] = M-1;
+            }
+            slots[v] += M;
+        }
+
+ This avoids creating an entry for u in the if branch when u doesn't exist? And then in the else branch we do one insertion for u and one for v? Actually, we do:
+
+        For u: if we found an iterator but the value was 0, then we update it. If we didn't find, then we insert u with value M-1.
+
+        For v: we update v: which might create an entry if it doesn't exist.
+
+ This is one lookup for u and then one for v.
+
+ But the condition `slots.find(u)` is one lookup. Then in the else branch, if u is not found, we do `slots[u] = M-1` which is another lookup? Actually, `slots[u] = M-1` does a lookup and insertion.
+
+ Alternatively, we can do:
+
+        long long current_u = 0;
+        auto it = slots.find(u);
+        if (it != slots.end()) {
+            current_u = it->second;
+        }
+
+        if (current_u > 0) {
+            // we update the existing entry for u: decrement by one
+            slots[u] = current_u - 1;
+            slots[v] += M;
+        } else {
+            trees++;
+            // Update u: set to (current_u + M - 1) -> if it exists: current_u is 0 -> becomes M-1; if not, then we set to M-1? But we don't have an entry for u if it didn't exist? Then we do:
+            if (it != slots.end()) {
+                it->second = current_u + (M-1);
+            } else {
+                slots[u] = M-1;
+            }
+            slots[v] += M;
+        }
+
+ But note: we already did one lookup for u. Then we do:
+
+        In the if branch: `slots[u] = current_u - 1` -> we are updating by key, which is another lookup? Actually, we have the iterator, but we cannot update the iterator because we are not storing it? We can update via the iterator:
+
+        if (it != slots.end()) {
+            if (it->second > 0) {
+                it->second--;
+                // update v: which might be done by:
+                slots[v] += M;
+            } else {
+                trees++;
+                it->second += (M-1);
+                slots[v] += M;
+            }
+        } else {
+            trees++;
+            slots[u] = M-1;
+            slots[v] += M;
+        }
+
+ This is efficient? We do one lookup for u at the beginning. Then:
+
+        Case 1: u exists and it->second>0 -> then we update u via iterator (O(1)) and then update v (one lookup for v).
+        Case 2: u exists and it->second==0 -> then we update u via iterator (O(1)) and update v.
+        Case 3: u doesn't exist -> we insert u (which is one insertion) and update v.
+
+ So total: for each edge, we do one lookup for u and one for v.
+
+ However, the insertion for u in case 3 is one operation, and the update for v is one operation.
+
+ This is acceptable.
+
+ But note: we are updating v: which might require a lookup and then update or insertion. That is one operation per v.
+
+ Therefore, total operations: 2 lookups per edge? That is 2*N = 200,000 operations -> acceptable.
+
+ Let's write accordingly:
+
+        for (const auto& edge : edges) {
+            int w = std::get<0>(edge);
+            long long u = std::get<1>(edge);
+            long long v = std::get<2>(edge);
+
+            auto it = slots.find(u);
+            if (it != slots.end() && it->second > 0) {
+                it->second--;
+                // Then update v: 
+                slots[v] += M;
+            } else if (it != slots.end()) {   // exists but value 0
+                trees++;
+                it->second += (M-1);
+                slots[v] += M;
+            } else {
+                trees++;
+                slots[u] = M-1;
+                slots[v] += M;
+            }
+        }
+
+ But note: the condition: 
+        if (it != slots.end() && it->second > 0) -> then we do the if branch.
+        else if (it != slots.end()) -> then we do the else branch for existing but 0.
+        else -> not exist.
+
+ Alternatively, we can combine the else branch:
+
+        if (it != slots.end()) {
+            if (it->second > 0) {
+                it->second--;
+                slots[v] += M;
+            } else {
+                trees++;
+                it->second += (M-1);
+                slots[v] += M;
+            }
+        } else {
+            trees++;
+            slots[u] = M-1;
+            slots[v] += M;
+        }
+
+ This is acceptable.
+
+ However, we can also use the initial method that creates an entry for u unconditionally? It might be simpler and the performance difference might be negligible.
+
+ But the problem: if we create an entry for every u, then the map becomes larger? But we are going to have at most 2*N distinct keys anyway? Because each edge gives two keys? And we process N edges -> 2*N keys. So the map size is bounded.
+
+ Therefore, for simplicity, we can do:
+
+        slots[u] exists now by the operator[]? Then:
+
+        if (slots[u] > 0) {
+            slots[u]--;
+            slots[v] += M;
+        } else {
+            trees++;
+            slots[u] += (M-1);   // becomes M-1 (if it was 0) -> but note: if u didn't exist, then we created it to 0 and then add M-1 -> M-1.
+            slots[v] += M;
+        }
+
+ This is simpler and we do one lookup for u (by operator[]) and one for v.
+
+ However, the operator[] for u creates an entry if it doesn't exist. Then we check the value. Then we update u and v.
+
+ But note: the else branch updates u again: so two updates for u? Actually, the operator[] in the condition and then the update in the else branch? But that's two lookups? 
+
+ Actually, the condition `slots[u]` does one lookup and returns a reference? Then the update `slots[u] += (M-1)` is updating the same reference? So we are doing:
+
+        Step 1: Lookup u (if not exists, create and set to 0) -> then check: if value>0 -> false -> go to else.
+        Step 2: In else: then update the same u: we do `slots[u] = 0 + (M-1) = M-1`.
+
+        So we did two lookups for u? Actually, the condition did one and the update did one? Or the compiler might optimize by storing the reference? 
+
+        We can avoid by:
+
+            long long& ref_u = slots[u];
+            if (ref_u > 0) {
+                ref_u--;
+                slots[v] += M;
+            } else {
+                trees++;
+                ref_u += (M-1);
+                slots[v] += M;
+            }
+
+        This does one lookup for u and then one for v.
+
+        And the update for u is via reference (no second lookup).
+
+        Similarly, for v: we do `slots[v]` which is one lookup (and update).
+
+        So total: two lookups per edge: one for u and one for v.
+
+        But note: the same u and v might appear multiple times? Then we are updating existing entries.
+
+        The total number of distinct keys is at most 2*N.
+
+        And we have N edges -> 2*N lookups? Actually, each edge does two lookups (one for u and one for v). So 2*N lookups -> O(2*N) in the average case with unordered_map? Which is acceptable.
+
+        We can do:
+
+            #include <unordered_map>
+            ... [code]
+
+            for (const auto& edge : edges) {
+                long long u = std::get<1>(edge);
+                long long v = std::get<2>(edge);
+                long long& ref_u = slots[u];
+                if (ref_u > 0) {
+                    ref_u--;
+                    slots[v] += M;   // This is one lookup for v? And update.
+                } else {
+                    trees++;
+                    ref_u += (M-1);
+                    slots[v] += M;
+                }
+            }
+
+        But note: the `slots[v] += M` does:
+            If v exists: update the value.
+            If v doesn't exist: create it and set to M.
+
+        This is acceptable.
+
+        However, we can also use a reference for v? But we don't update v again in the same block? So it's not necessary.
+
+        But we can do:
+
+            long long& ref_v = slots[v];
+            if (ref_u > 0) {
+                ref_u--;
+                ref_v += M;
+            } else {
+                trees++;
+                ref_u += (M-1);
+                ref_v += M;
+            }
+
+        This does two lookups: one for u and one for v? And then we update via references.
+
+        However, we are doing two lookups per edge: one for u and one for v. That is 2*N lookups -> acceptable.
+
+        How about performance? We are reserving 2*N.
+
+        Let's code accordingly.
+
+        Also note: we must sort the edges by w.
+
+        We'll use:
+
+            edges.push_back(std::make_tuple(w, u, v));
+
+        Then sort: the tuple of (int, long long, long long) -> the first element is w (int) so it will sort by w.
+
+        But note: the w is unique and in [1, N]. So we can also use:
+
+            std::vector<std::pair<int, std::pair<long long, long long>>> edges;
+
+        Then sort by the first (w). Alternatively, we can use:
+
+            std::vector<std::tuple<int, long long, long long>> edges;
+
+        Then sort: it will sort by the first element (w) and then by the others? But w is unique, so it doesn't matter.
+
+        We'll use tuple.
+
+        Code:
+
+            #include <iostream>
+            #include <vector>
+            #include <algorithm>
+            #include <unordered_map>
+
+            int main() {
+                std::ios::sync_with_stdio(false);
+                std::cin.tie(0);
+
+                int N, M;
+                std::cin >> N >> M;
+
+                std::vector<std::tuple<int, long long, long long>> edges;
+                edges.reserve(N);
+                for (int i = 0; i < N; i++) {
+                    long long u, v;
+                    int w;
+                    std::cin >> u >> v >> w;
+                    edges.push_back(std::make_tuple(w, u, v));
+                }
+
+                std::sort(edges.begin(), edges.end());
+
+                long long trees = 0;
+                std::unordered_map<long long, long long> slots;
+                slots.reserve(2*N);   // reserve at least 2*N buckets? reserve the number of elements we plan to store.
+
+                for (const auto& edge : edges) {
+                    long long u = std::get<1>(edge);
+                    long long v = std::get<2>(edge);
+
+                    long long& ref_u = slots[u];
+                    long long& ref_v = slots[v];   // This creates an entry for v if it doesn't exist? But in the if branch we update ref_v? And in the else branch we update ref_v? So we are going to use it.
+
+                    if (ref_u > 0) {
+                        ref_u--;
+                        ref_v += M;
+                    } else {
+                        trees++;
+                        ref_u += (M - 1);
+                        ref_v += M;
+                    }
+                }
+
+                std::cout << trees << "\n";
+                return 0;
+            }
+
+        But note: in the else branch, we update ref_u: which is the same as the one we got by `slots[u]`. And we update ref_v: which we got by `slots[v]`. This is safe.
+
+        However, what if u and v are the same? Then we have:
+
+            long long& ref_u = slots[u];
+            long long& ref_v = slots[u];   // because u==v -> same reference? 
+
+            Then:
+                if (ref_u > 0) {
+                    ref_u--;   // decrements ref_u -> then ref_v is the same reference so becomes ref_u-1.
+                    ref_v += M;   // becomes (ref_u-1) + M = ref_u + M - 1.
+                } else {
+                    trees++;
+                    ref_u += (M-1);
+                    ref_v += M;   // becomes (M-1) + M = 2*M - 1? But we want: 
+                        // We are creating a root edge? Then we are creating a node u (which is also the child v) and we are updating the same value.
+                }
+
+            For the edge (4,4,5) in the sample: 
+                Initially: slots[4] = 0? Then we go to else branch: 
+                    trees += 1
+                    ref_u = 0 + (M-1) = M-1   -> if M=2, then 1.
+                    then ref_v = same as ref_u -> so we do: ref_v += M -> becomes 1 + 2 = 3.
+
+                But what should happen?
+                    We are creating a root for u=4? Then the root node 4 gets M-1=1 available slot? Then we create a child node 4? That child node has M=2 slots? So the total for 4 becomes 1 (from the root) + 2 (from the child) = 3? -> which matches.
+
+            But in the sample, after processing (4,4,5): we have slots[4]=3.
+
+            Then the next edge? There is none.
+
+            So it matches.
+
+            However, what if we have an edge (u, u, w)? Then we are updating the same key twice via two references? That is safe? 
+
+            Actually, the two references are references to the same value. So when we update ref_u and then ref_v, we are updating the same value twice.
+
+            And that is the desired behavior.
+
+        Therefore, we can use references for both u and v.
+
+        However, note: we are creating an entry for v even if we don't update it? Actually, we update it in both branches. So we must create an entry for v? 
+
+        But what if v didn't exist? Then we create it by `long long& ref_v = slots[v]` (which creates an entry and sets it to 0). Then we update it: either in the if branch (ref_v += M) or in the else branch (ref_v += M). So we are creating an entry for v unconditionally.
+
+        This is acceptable.
+
+        But note: the problem says that the forest has exactly N edges? And we are processing each edge. So we are creating the nodes that appear? So we must create an entry for every node that appears? So we are not creating extra nodes.
+
+        Therefore, the code is:
+
+            #include <iostream>
+            #include <vector>
+            #include <algorithm>
+            #include <unordered_map>
+
+            int main() {
+                std::ios::sync_with_stdio(false);
+                std::cin.tie(0);
+                int N, M;
+                std::cin >> N >> M;
+                std::vector<std::tuple<int, long long, long long>> edges;
+                for (int i = 0; i < N; i++) {
+                    long long u, v;
+                    int w;
+                    std::cin >> u >> v >> w;
+                    edges.push_back({w, u, v});
+                }
+                std::sort(edges.begin(), edges.end());
+                long long trees = 0;
+                std::unordered_map<long long, long long> slots;
+                slots.reserve(2*N);   // reserve space for up to 2*N distinct keys.
+
+                for (auto &edge : edges) {
+                    auto [w, u, v] = edge;   // C++17 structured binding? Or we can use:
+                    // If not C++17: 
+                    //   int w = std::get<0>(edge);
+                    //   long long u = std::get<1>(edge);
+                    //   long long v = std::get<2>(edge);
+
+                    // We get references to the slots for u and v. This creates entries for u and v if they don't exist.
+                    long long &ref_u = slots[u];
+                    long long &ref_v = slots[v];
+
+                    if (ref_u > 0) {
+                        ref_u--;
+                        ref_v += M;
+                    } else {
+                        trees++;
+                        ref_u += M - 1;
+                        ref_v += M;
+                    }
+                }
+
+                std::cout << trees << '\n';
+                return 0;
+            }
+
+        But note: the variable `trees` is a long long? But N is up to 100000, so trees is at most N (so int is enough). But we defined as long long? It's safer to use long long for trees? Because N can be 100000 -> fits in int? But the problem says N up to 100000 -> int is enough.
+
+        However, we'll use long long for trees? Actually, no: trees is the number of trees -> integer. But we are counting up to N, which is 100000 -> fits in int.
+
+        But let's use `long` or `int`? The problem says output an integer.
+
+        We can use int for trees.
+
+        However, to be safe for large M? But trees is the count of trees, which is at most N -> 100000 -> int is enough.
+
+        Let me change:
+
+            int trees = 0;
+
+        But note: the problem constraints: N up to 100000 -> maximum trees = 100000 -> fits in int.
+
+        But the variables u and v are long long? Yes.
+
+        Let me test the sample with M=2 and the first sample? We did above.
+
+        But note: we are using C++17? The problem doesn't specify, but we can use structured bindings if the judge supports C++17? Otherwise, we use the get<>
+
+        We'll write without structured bindings for compatibility.
+
+        Final code:
+
+            #include <iostream>
+            #include <vector>
+            #include <algorithm>
+            #include <unordered_map>
+
+            int main() {
+                std::ios::sync_with_stdio(false);
+                std::cin.tie(0);
+                int N, M;
+                std::cin >> N >> M;
+
+                std::vector<std::tuple<int, long long, long long>> edges;
+                for (int i = 0; i < N; i++) {
+                    long long u, v;
+                    int w;
+                    std::cin >> u >> v >> w;
+                    edges.push_back(std::make_tuple(w, u, v));
+                }
+
+                std::sort(edges.begin(), edges.end());
+
+                int trees = 0;
+                std::unordered_map<long long, long long> slots;
+                slots.reserve(2 * N); // Reserve space for up to 2 * N keys.
+
+                for (int i = 0; i < N; i++) {
+                    int w = std::get<0>(edges[i]);
+                    long long u = std::get<1>(edges[i]);
+                    long long v = std::get<2>(edges[i]);
+
+                    // We get references to the values for u and v (creating if not exists)
+                    long long& ref_u = slots[u];
+                    long long& ref_v = slots[v];
+
+                    if (ref_u > 0) {
+                        ref_u--;
+                        ref_v += M;
+                    } else {
+                        trees++;
+                        ref_u += (M - 1);
+                        ref_v += M;
+                    }
+                }
+
+                std::cout << trees << std::endl;
+                return 0;
+            }
+
+ Let me run the first sample:
+
+        Input: 
+            5 2
+            2 4 3
+            4 4 5
+            4 7 1
+            7 2 4
+            4 8 2
+
+        Sort by w: 
+            (4,7,1) -> w=1: u=4, v=7
+                ref_u = slots[4] -> 0 -> else: trees=1, ref_u = 0 + (2-1)=1, ref_v=0+2=2.
+            (4,8,2) -> w=2: u=4, v=8
+                ref_u = slots[4]=1 -> if: ref_u=0, ref_v=slots[8] becomes 0+2=2.
+            (2,4,3) -> w=3: u=2, v=4
+                ref_u = slots[2]=0 -> else: trees=2, ref_u=0+1=1, ref_v=slots[4]=0+2=2 -> then becomes 2? Actually, we do: ref_v = 2 (from the previous value) + 2 = 4? 
+                Actually: 
+                    Before: slots[4] was 0? But wait: after the first edge, we set 4:1 then we decremented to 0 in the second edge? Then in the third edge: 
+                        u=2: not present? Then we create ref_u for 2: 0, then we go to else: trees=2.
+                        Then we set ref_u (for 2) = 0 + (2-1)=1.
+                        Then we set ref_v (for 4) = current value of slots[4] (which is 0) + 2 -> becomes 2.
+            (7,2,4) -> w=4: u=7, v=2
+                ref_u = slots[7] -> 2 (from the first edge) -> so if branch: ref_u becomes 1, ref_v = slots[2] (which is 1) + 2 -> becomes 3.
+            (4,4,5) -> w=5: u=4, v=4
+                ref_u = slots[4] = 2 -> if: ref_u becomes 1, then ref_v = slots[4] (same as ref_u) becomes 1 + 2 = 3.
+
+        Then trees = 2.
+
+        This matches.
+
+        But note the third edge: (2,4,3) -> we set slots[4] to 0+2=2? But previously, after the second edge, slots[4] was 0. Then we do ref_v = 0+2=2 -> so becomes 2.
+
+        Then the last edge: (4,4,5) -> we start with slots[4]=2 -> then we decrement to 1 and then add 2 -> becomes 3.
+
+        However, the sample input: after processing (2,4,3) we set slots[4]=2? Then the edge (7,2,4) updates slots[2] to 1+2=3? Then the last edge: (4,4,5) uses one slot from 4 (so 2->1) and then adds 2 to 4 -> becomes 3.
+
+        So the code is correct.
+
+        We'll submit this.
+
+        But note: the second sample: M=1.
+
+            edges sorted by w:
+                (4,7,1): trees=1, slots[4]=0, slots[7]=1.
+                (4,8,2): u=4: slots[4]=0 -> else: trees=2, slots[4]=0+(1-1)=0, slots[8]=0+1=1.
+                (2,4,3): u=2: else: trees=3, slots[2]=0+0=0, slots[4]=0+1=1.  [because M-1=0, and then we add M=1 to 4 -> becomes 1]
+                (7,2,4): u=7: slots[7]=1 -> if: decrement to 0, then slots[2]=0+1=1 -> becomes 1.
+                (4,4,5): u=4: slots[4]=1 -> if: decrement to 0, then slots[4]=0+1=1.
+
+            trees=3 -> correct.
+
+        Third sample: 
+            Input: 5 10
+                1000 3000 3
+                2000 4000 5
+                1000 2000 1
+                3000 2000 4
+                2000 3000 2
+
+            Sort by w:
+                w=1: (1000,2000,1): trees=1, slots[1000]=9, slots[2000]=10.
+                w=2: (2000,3000,2): u=2000 -> slots[2000]=10 -> if: 10>0 -> decrement to 9, then slots[3000]=0+10=10.
+                w=3: (1000,3000,3): u=1000: 9>0 -> decrement to 8, then slots[3000]=10+10=20.
+                w=4: (3000,2000,4): u=3000: 20>0 -> decrement to 19, then slots[2000]=9+10=19.
+                w=5: (2000,4000,5): u=2000: 19>0 -> decrement to 18, then slots[4000]=0+10=10.
+
+            trees=1.
+
+        Therefore, the code is correct.
+
+        Let me write the final code accordingly.
+
+        Note: We must reserve enough space in the unordered_map to avoid rehashing. Reserve at least 2*N.
+
+        Also, we can set the max_load_factor to 0.5 or something? But reserve(2*N) should be enough.
+
+        Alternatively, we can do:
+
+            slots.reserve(2*N);
+
+        This reserves the number of buckets for at least 2*N elements? The standard says: reserve(n) sets the number of buckets to at least n. Actually, it sets the bucket count to at least the number required for n elements.
+
+        So we do:
+
+            slots.reserve(2*N);
+
+        And we are inserting at most 2*N elements.
+
+        We'll run on the sample and hope.
+
+        But note: the worst-case performance of unordered_map might be bad if there are many collisions? We can use a custom hash for long long? The standard hash for long long is available in C++11? We are using std::unordered_map<long long, long long> -> the standard library has a hash for long long.
+
+        So we don't need to define one.
+
+        Code:
+
+            #include <iostream>
+            #include <vector>
+            #include <algorithm>
+            #include <unordered_map>
+
+            int main() {
+                std::ios::sync_with_stdio(false);
+                std::cin.tie(0);
+                int N, M;
+                std::cin >> N >> M;
+
+                std::vector<std::tuple<int, long long, long long>> edges;
+                for (int i = 0; i < N; i++) {
+                    long long u, v;
+                    int w;
+                    std::cin >> u >> v >> w;
+                    edges.push_back(std::make_tuple(w, u, v));
+                }
+
+                std::sort(edges.begin(), edges.end());
+
+                int trees = 0;
+                std::unordered_map<long long, long long> slots;
+                slots.reserve(2 * N);   // Reserve space for 2*N elements.
+
+                for (int i = 0; i < N; i++) {
+                    int w = std::get<0>(edges[i]);
+                    long long u = std::get<1>(edges[i]);
+                    long long v = std::get<2>(edges[i]);
+
+                    long long& ref_u = slots[u];
+                    long long& ref_v = slots[v];
+
+                    if (ref_u > 0) {
+                        ref_u--;
+                        ref_v += M;
+                    } else {
+                        trees++;
+                        ref_u += (M - 1);
+                        ref_v += M;
+                    }
+                }
+
+                std::cout << trees << "\n";
+                return 0;
+            }
+
+        We output the trees.
+
+        Let me test with the first sample: output 2 -> correct.
+
+        Submit.
+
+        Note: The problem constraints: N, M up to 100000. The map operations are O(1) average, so overall O(N). Sorting is O(N log N) which is acceptable for N=100000.
+
+        We hope it passes.
+
+        However, note: the problem says w_i in the input is between 1 and N and unique. So sorting by w (int) is safe.
+
+        We are done.

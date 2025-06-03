@@ -1,0 +1,1 @@
+This is the easiest problem in the 2018 ICPC Asia Jakarta Regional Contest. All you have to do is to check whether there is an odd number of LIE. If yes, then the output is LIE, otherwise, TRUTH.

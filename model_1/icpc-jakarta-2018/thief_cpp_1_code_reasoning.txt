@@ -1,0 +1,1627 @@
+ We are building a string that starts with an initial state (a string of N-1 digits) and then we add digits one by one.
+ Each time we add a digit, we form a new PIN (of length N) and then update the state to the last N-1 digits (which is the new state).
+
+ We use a rolling hash (double hashing) to represent the state (which is the last N-1 digits) and the PIN (which is the state plus the new digit, forming a string of length N).
+
+ Steps:
+ 1. If N == 1: then we simply output the first K distinct digits (each digit is a PIN). But note: we have M digits and we need K distinct, so we output the first K of the available digits.
+
+ 2. For N>=2:
+    - We start with an initial state of length N-1. We choose the first available digit repeated N-1 times.
+    - We precompute the rolling hash for the initial state.
+
+ 3. We maintain:
+    - The current state as a deque (or we can use a circular buffer) but we also maintain the rolling hash for the state (of length N-1) for quick update.
+    - A set (or unordered_set) of visited PINs (represented by their double hash: (h1, h2)).
+
+ 4. We also precompute base^(N-2) mod mod1 and mod2 for rolling hash update? Actually, note:
+        state: [d0, d1, ..., d_{N-2}]
+        Then we add a new digit d: the PIN becomes [d0, d1, ..., d_{N-2}, d].
+        Then the next state becomes [d1, ..., d_{N-2}, d].
+
+    How to update the state hash?
+        Let the current state hash (for the state of length L = N-1) be H.
+        The state is stored in a deque: we remove the front (d0) and add the new digit (d) at the back.
+
+        The hash for the state can be computed as a polynomial hash: 
+            H = d0 * base^(L-1) + d1 * base^(L-2) + ... + d_{L-1} * base^0
+
+        When we remove the front d0 and add a new digit d at the back, the new state is [d1, d2, ..., d_{L-1}, d].
+        We can compute:
+            H' = (H - d0 * (base^(L-1))) * base + d
+
+        However, note: we have to do modulo. Also, we precomputed base_power = base^(L-1) mod mod.
+
+        But note: our L is N-1, so we need base_power = base^(N-2) mod mod? Actually, the exponent for the front element is base^(N-2) because the state length is N-1, so the front element is multiplied by base^(N-2).
+
+        Actually, let L = N-1, then the exponent for the front element is base^(L-1) = base^(N-2).
+
+    So we precompute:
+        base_power1 = base1^(N-2) mod mod1
+        base_power2 = base2^(N-2) mod mod2
+
+ 5. The algorithm:
+    - Start with the initial state (string of N-1 digits, all the first digit in the available list) and the initial state hash.
+    - We haven't recorded any PIN yet. So we start adding digits until we have K distinct PINs or the string becomes too long (but constrained by the problem that the answer has at most 100000 digits).
+
+    - For each step:
+        Try each available digit (in the order given) to append to the current state to form a PIN.
+        Compute the hash of the PIN: 
+            h1_pin = (current_state_hash1 * base1 + d) % mod1
+            h2_pin = (current_state_hash2 * base2 + d) % mod2
+
+        If (h1_pin, h2_pin) is not in the visited_pins set, then we have a new PIN.
+            - Mark this PIN as visited.
+            - Append the digit to the string.
+            - Update the current state: remove the front, add the new digit at the back.
+            - Update the state hash: 
+                H1 = (H1 - front_digit * base_power1) % mod1   -> then multiply by base1 and add d, but note: we also have to do modulo and avoid negative.
+
+                Actually: 
+                    H1 = ( (H1 - front_digit * base_power1) * base1 + d ) % mod1
+                However, we can break it down:
+
+                    Step 1: Remove the front: 
+                        temp1 = (H1 - front_digit * base_power1) % mod1
+                    Step 2: Shift left (multiply by base1) and add the new digit:
+                        H1 = (temp1 * base1 + d) % mod1
+
+            Similarly for H2.
+
+            Then break the inner loop (since we found a new PIN) and move on.
+
+        If none of the digits in the available list leads to a new PIN, then we have to move anyway: we pick the last digit in the available list (as per the problem: any digit, but we choose the last arbitrarily) and append it. This does not yield a new PIN, but it changes the state so that we might get new PINs in the next steps.
+
+    - We break when we have collected K distinct PINs.
+
+ 6. Output the entire string: which is the initial state (N-1 digits) plus the appended digits.
+
+ Important: We have to avoid negative mod: so we can adjust by adding mod.
+
+ Let's adjust the update for state hash to avoid negative:
+
+        H1 = ( ( (H1 - (front_digit * base_power1) % mod1 + mod1) % mod1 * base1 + d ) % mod1
+
+ However, note: the state hash update must be consistent with the new state: [d1, d2, ..., d_{L-1}, d]
+
+ But we can also update the state hash by computing from the new state? Actually, we are updating the state as a deque: we remove the front and push the new digit at the back.
+
+ Alternatively, we can maintain the entire current state as a deque? But we also use the rolling hash to avoid storing the entire state (which is of length N-1, and N can be up to 100000, but we are only storing one state). Actually, we are storing the state as a deque to know the front digit? But we can avoid storing the entire state by storing the deque? However, the problem says the answer has at most 100000 digits, so the entire state (N-1) plus the added digits (which are at most 100000 - (N-1)) is acceptable? But N can be 100000, so the initial state is 99999 digits, and then we add up to 100000 digits? That would be 199999, which is too long? 
+
+ But note the constraint: "the answer contains no longer than 100000 digits". So we are guaranteed that the entire string (initial state and the added digits) is at most 100000? Actually, the problem says: "You may also assume that the values of N, M, and K are chosen such that the answer contains no longer than 100000 digits."
+
+ Therefore, we can store the entire string? Actually, the initial state is N-1, and then we add at most (K + some duplicates) but the problem says the entire string is at most 100000. So we can store the entire string as a list of characters? But note: N can be 100000, so the initial state is 99999 digits. Then we are only allowed to add 1 digit? That doesn't make sense because K can be 100000. 
+
+ Actually, the constraint says: the answer contains no longer than 100000 digits. So the entire string we build (including the initial state) must be <= 100000.
+
+ Therefore, we must note: the initial state is N-1, and then we add 'steps' digits. The entire string length = N-1 + steps. And steps must be such that N-1 + steps <= 100000.
+
+ Since K is at most 100000, and we are adding at least K digits (each step we add one digit, but sometimes we don't get a new PIN) and at most 100000 - (N-1) digits, we are safe.
+
+ However, the problem says: "the answer contains no longer than 100000 digits", so we are guaranteed that the total length is <= 100000.
+
+ Implementation:
+
+    We'll maintain:
+        current_state: a deque of the last N-1 digits (so we can pop the front and push the back).
+        s_list: a list of characters that we are building. We start with the initial state (N-1 digits), then we append digits one by one.
+
+    Steps:
+        count = 0   (number of distinct PINs so far)
+        visited_pins: a set of tuples (h1_pin, h2_pin)
+
+        base_power1 = pow(base1, N-2, mod1)   [if N>=2, then N-2 >=0? if N==2, then base_power1 = base1^0 = 1]
+        base_power2 = pow(base2, N-2, mod2)
+
+        initial_state = [digits[0]] * (N-1)
+        current_state = deque(initial_state)
+
+        Precompute H1 and H2 for initial_state:
+
+            H1 = 0
+            for digit in initial_state:
+                H1 = (H1 * base1 + digit) % mod1
+
+            Similarly for H2.
+
+        Then we start the loop: while count < k and total_length < 100000 (but the problem says the answer is at most 100000, so we break by total_length? Actually, the problem says the answer is at most 100000, so we are safe to break when the total length becomes 100000? But we are required to output the shortest string. We break when we have K distinct PINs, and we are guaranteed that we can do so within 100000 digits.
+
+        In each step:
+
+            found = false
+            for each digit d in digits:
+                h1_pin = (H1 * base1 + d) % mod1
+                h2_pin = (H2 * base2 + d) % mod2
+
+                if (h1_pin, h2_pin) not in visited_pins:
+                    visited_pins.insert((h1_pin, h2_pin))
+                    count++ 
+                    s_list.append(d)
+                    front_digit = current_state.popleft()
+                    current_state.append(d)
+                    # Update the state hash: remove front_digit and add d at the end? Actually, we have the entire state as the current_state? We update the hash as described.
+
+                    H1 = ( (H1 - front_digit * base_power1) % mod1
+                    H1 = (H1 * base1 + d) % mod1   # But note: after removing the front, we have a state of length N-2? Then we shift and add d -> actually we are updating the state to be the last N-1 digits: which is [old state without the front] and then we add d at the end? Actually, the state becomes the last N-1 digits: which is the old state without the front and then d at the end.
+
+                    However, let me check:
+
+                        We have state S = [a0, a1, ..., a_{N-2}]
+                        Then we add d -> PIN = [a0, a1, ..., a_{N-2}, d]
+                        Then the new state is [a1, a2, ..., a_{N-2}, d]
+
+                    How to update the state hash for the new state?
+
+                        Old state hash: H = a0 * base1^(N-2) + a1 * base1^(N-3) + ... + a_{N-2} * base1^0.
+
+                        Then we remove a0: the new hash for [a1, ..., a_{N-2}] is: 
+                            H' = (H - a0 * base1^(N-2)) / base1   ??? But we don't want division? We can shift and then add d? Actually, we can compute:
+
+                        The new state is: [a1, a2, ..., a_{N-2}, d]
+
+                        And we can compute the hash by:
+                            H_new = ( (H_old - a0 * base1^(N-2)) * base1 + d ) % mod1
+
+                    But note: base1^(N-2) is precomputed as base_power1.
+
+                    So:
+                        H1 = (H1 - front_digit * base_power1) % mod1   -> this gives the hash of [a1, a2, ... a_{N-2}] multiplied by base1^(N-2)? Actually, no: because the exponents are not aligned.
+
+                    Let me write:
+
+                        H_old = a0 * (base1^(N-2)) + a1 * (base1^(N-3)) + ... + a_{N-2} * (base1^0)
+
+                        Then H_old * base1 = a0 * (base1^(N-1)) + a1 * (base1^(N-2)) + ... + a_{N-2} * base1.
+
+                        Then subtract a0 * (base1^(N-1)) and add d? Actually, we are building the hash for the new state of length N-1: [a1, a2, ... a_{N-2}, d] as:
+
+                        H_new = a1 * (base1^(N-2)) + a2 * (base1^(N-3)) + ... + a_{N-2} * (base1^1) + d * (base1^0)
+
+                        And note: 
+                            H_old = a0 * (base1^(N-2)) + a1 * (base1^(N-3)) + ... + a_{N-2} * (base1^0)
+
+                        Then: 
+                            H_new = (H_old - a0 * (base1^(N-2))) * base1 + d
+
+                        Why multiply by base1? Because we are shifting the entire polynomial by one (which multiplies by base1) and then add d at the end.
+
+                    So the update is:
+
+                        H1 = ( (H1 - front_digit * base_power1) % mod1 ) * base1 + d
+                        Then mod mod1.
+
+                    However, we must avoid negative: so we do:
+
+                        H1 = (H1 - front_digit * base_power1) % mod1
+                        if H1 < 0: H1 += mod1   OR we can do: 
+                        H1 = ( (H1 - front_digit * base_power1) % mod1 + mod1) % mod1
+                        then H1 = (H1 * base1 + d) % mod1
+
+            If we found a new PIN, we break the inner loop and continue.
+
+            If none of the digits gives a new PIN, we pick the last digit in the available list (digits[-1]) and do the same update without increasing the count.
+
+        We break the outer loop when count >= k.
+
+ 7. Finally, we output the entire s_list as a string.
+
+ However, note: the initial state is already in s_list (as the initial N-1 digits) and then we append the new digits.
+
+ 8. We choose base1 and base2? We can choose base1 and base2 as primes? We use 131 and 131? Actually, we can use two different bases? Or same? But the problem says M<=10, so we can use base=10? Actually, base must be larger than the maximum digit (which is 9). So base1 and base2 must be >= 11? We choose base1=131, base2=131? Actually, we can choose two different primes? But the problem says M=10, so we have digits 0..9. We can use base1=131 and base2=131? But then the hash might be the same? Actually, we are using two mods: mod1=10**9+7 and mod2=10**9+9? That should be safe.
+
+ But note: the PIN has length N, which can be up to 100000, so we need to precompute base1^(N-2) mod mod1? That exponentiation might be expensive? We can use pow(base, exponent, mod) which is O(log(exponent)).
+
+ Since N-2 can be up to 99998, but the exponentiation with modulus is efficient (using pow with modulus is logarithmic in the exponent).
+
+ However, note: we are using base1 and base2 as integers. We can precompute:
+
+        base_power1 = pow(base1, N-2, mod1)   # if N>=2, else not used.
+
+ 9. Special note: when N==2, then the state length is 1, and base_power1 = base1^(0) = 1.
+
+ Let's test with N=2, state=[d0]. Then we add a digit d -> the PIN is [d0, d]. Then we update the state to [d]. The state hash update:
+
+        H_old = d0
+        Then we remove d0: so we do H1 = (d0 - d0 * base_power1) = d0 - d0*1 = 0? Then we multiply by base1 and add d: so H_new = 0 * base1 + d = d.
+
+        Alternatively, we can compute the state [d] as d.
+
+        So it matches.
+
+ Implementation:
+
+        We'll use:
+            base1 = 131
+            base2 = 131   (or we can use different? Let's use 131 and 137? But the problem says M<=10, so we can use same base? Actually, double hashing with two mods is enough.
+
+        But to be safe, we use two different bases? Actually, the problem does not require that. We can use base1=131 and base2=137? Or any primes above 10.
+
+        We choose base1=131 and base2=137.
+
+        mod1 = 10**9+7, mod2=10**9+9.
+
+ 10. We must be cautious with the modulus operations and negative.
+
+ 11. Code structure:
+
+        if n==1:
+            output the first k digits (if k<=m, then the first k digits; if k>m, then we cannot? but k<=min(M^N,100000) and M^1 = m, so k<=m, so we output the first k)
+
+        else:
+            base1 = 131
+            base2 = 137
+            mod1 = 1000000007
+            mod2 = 1000000009
+
+            base_power1 = pow(base1, n-2, mod1)   # because state length is n-1, and the front element is multiplied by base1^(n-2)
+            base_power2 = pow(base2, n-2, mod2)
+
+            initial_state = deque([digits[0]]*(n-1))
+
+            # Compute initial state hash for state of length n-1
+            H1 = 0
+            H2 = 0
+            for d in initial_state:
+                H1 = (H1 * base1 + d) % mod1
+                H2 = (H2 * base2 + d) % mod2
+
+            s_list = [str(d) for d in initial_state]
+            visited = set()
+            count = 0
+            total_len = n-1   # current length of the string
+
+            while count < k and total_len < 100000:
+                found = false;
+                for d in digits:
+                    # Compute the PIN hash: which is the hash of the current state + d (so string of length n)
+                    pin_h1 = (H1 * base1 + d) % mod1
+                    pin_h2 = (H2 * base2 + d) % mod2
+
+                    if (pin_h1, pin_h2) not in visited:
+                        visited.add((pin_h1, pin_h2))
+                        count += 1
+                        s_list.append(str(d))
+                        total_len += 1
+
+                        front_digit = initial_state.popleft()   # but note: we are updating the state: we have a deque called initial_state? Actually, we named it initial_state but it is the current state. Let me rename to current_state.
+
+                        current_state.append(d)
+
+                        # Update H1 and H2 for the new state (which is the last n-1 digits: the current_state after popping front and pushing back)
+                        # Step 1: subtract the front_digit * base_power1 (which is base1^(n-2)) from H1, then multiply by base1 and add d?
+                        # Actually, the update for state hash: 
+                        #   H1 = ( (H1 - front_digit * base_power1) % mod1 * base1 + d ) % mod1
+                        # But we break it down to avoid negative.
+
+                        H1 = (H1 - (front_digit * base_power1) % mod1) % mod1
+                        H1 = (H1 * base1 + d) % mod1
+                        # Same for H2
+                        H2 = (H2 - (front_digit * base_power2) % mod2) % mod2
+                        H2 = (H2 * base2 + d) % mod2
+
+                        # But wait: the above update for H1 and H2 is exactly the same as the way we computed the state hash? Actually, we are updating the state to the new state.
+
+                        found = true
+                        break
+
+                if not found:
+                    d = digits[-1]
+                    s_list.append(str(d))
+                    total_len += 1
+                    front_digit = current_state.popleft()
+                    current_state.append(d)
+                    H1 = (H1 - (front_digit * base_power1) % mod1) % mod1
+                    H1 = (H1 * base1 + d) % mod1
+                    H2 = (H2 - (front_digit * base_power2) % mod2) % mod2
+                    H2 = (H2 * base2 + d) % mod2
+
+            print(''.join(s_list))
+
+ 12. However, note: when we update the state hash, we are doing modulo and then subtracting, which might lead to negative? So we adjust:
+
+        Instead of:
+            H1 = (H1 - (front_digit * base_power1) % mod1) % mod1
+
+        We can do:
+            H1 = (H1 - front_digit * base_power1) % mod1
+            if H1 < 0: H1 += mod1   (then do next step)
+
+        But in the code above, we do:
+
+            H1 = (H1 - (front_digit * base_power1) % mod1) % mod1
+
+        This might be negative? Actually, we can do:
+
+            H1 = (H1 - front_digit * base_power1) % mod1
+            H1 = (H1 % mod1 + mod1) % mod1   # to normalize to [0, mod1-1]
+
+        But then we multiply by base1 and add d? Alternatively, we can avoid the normalization until the entire update? Because we are going to do:
+
+            H1 = (H1 * base1 + d) % mod1
+
+        And modulo arithmetic with negative: the modulo operation in Python gives non-negative? Actually, no: if H1 becomes negative, then we can adjust.
+
+        Let me test: 
+            Suppose mod1=7, H1=3, front_digit=2, base_power1=1: then 3-2*1 = 1 -> positive.
+            If H1=2, front_digit=3: then 2-3 = -1 -> then modulo 7: -1 % 7 = 6? Actually in Python, -1 % 7 is 6.
+
+        But we are doing: (H1 - (front_digit * base_power1)) % mod1. This will give a result in [0, mod1-1]? Actually no: the modulo operation in Python for a negative will give a nonnegative in [0, mod1-1]. So we don't need to adjust.
+
+        However, the subtraction might be negative and then modulo mod1 will make it positive? Yes.
+
+        But note: when we do (a - b) % mod, if a-b is negative, then we get a-b+mod? So we can do:
+
+            H1 = (H1 - front_digit * base_power1) % mod1
+            # This might be negative? Then we do:
+            # Actually, we can do: H1 = (H1 + mod1 - (front_digit * base_power1) % mod1) % mod1   to avoid negative? 
+
+        Alternatively, we can do:
+
+            H1 = (H1 - front_digit * base_power1) % mod1
+            if H1 < 0:
+                H1 += mod1
+
+        Then we do: H1 = (H1 * base1 + d) % mod1
+
+        But the modulo operation in Python for negative: we can rely on the fact that % gives nonnegative? Actually, we want the value to be in [0, mod1-1]. The operation (x % mod1) for negative x gives a nonnegative. However, if we do:
+
+            x = -5
+            x % mod1 = mod1 - 5? 
+
+        So we can just do:
+
+            H1 = (H1 - front_digit * base_power1) % mod1
+            H1 = (H1 * base1 + d) % mod1
+
+        without explicit normalization? But if H1 becomes negative, then (H1 * base1 + d) might be negative? Then we do modulo again? Actually, we do modulo at the end. But we can do:
+
+            H1 = ( ( (H1 - front_digit * base_power1) % mod1 ) * base1 + d ) % mod1
+
+        This is safe because the modulo operation in the inner parentheses will make the value nonnegative? Actually, the inner modulo will make it in the range [0, mod1-1]? Not exactly: 
+
+            The expression: (H1 - front_digit * base_power1) % mod1
+
+        This gives a value in [0, mod1-1]? Actually, no: it gives a value in the range [0, mod1-1] if positive, and if negative, it gives mod1 - (|negative| mod mod1). But the modulo operation for negative: it returns a nonnegative in [0, mod1-1]. So we are safe.
+
+        So we can do:
+
+            H1 = ( ( (H1 - front_digit * base_power1) % mod1 ) * base1 + d ) % mod1
+
+        Similarly for H2.
+
+        But note: we are doing two steps: first we subtract and mod, then we multiply and add and mod.
+
+        So we can write:
+
+            H1 = ( ( (H1 - front_digit * base_power1) % mod1 ) * base1 + d ) % mod1
+
+        However, we break it into two steps for clarity? Or one step? The two-step update is:
+
+            H1 = (H1 - front_digit * base_power1) % mod1
+            H1 = (H1 * base1 + d) % mod1
+
+        This is acceptable.
+
+ 13. Let me test with a small example: n=3, state = [a0, a1] (n-1=2). Then we add d.
+
+        The new state: [a1, d]
+
+        The current state hash: H = a0 * base1^(1) + a1 * base1^0.
+
+        Then we remove a0: we do H' = (H - a0 * base1^(1)) -> then we have a1, then we multiply by base1 and add d: 
+            becomes: a1 * base1 + d.
+
+        And the new state [a1, d] has hash: a1 * base1^(1) + d * base1^0 = a1*base1 + d.
+
+        So it matches.
+
+ 14. Implementation:
+
+        We'll use:
+            base1 = 131, base2 = 137
+            mod1 = 1000000007, mod2 = 1000000009
+
+        Precompute base_power1 = pow(base1, n-2, mod1)   # because the exponent is (n-2) for the front element? Actually, the state length is n-1, and the front element has exponent base1^(n-2). So yes.
+
+        We maintain:
+            current_state: deque of integers (the digits in the current state, which is of length n-1)
+
+        Steps:
+
+            for d in digits:
+                pin_hash1 = (H1 * base1 + d) % mod1
+                pin_hash2 = (H2 * base2 + d) % mod2
+                if not visited: then we add, update state and hashes, and break.
+
+            else: (if no break) then use the last digit.
+
+        We break the outer loop when count>=k.
+
+ 15. Edge: when k==0? but k>=1, so we don't have to worry.
+
+ 16. Let's run the sample: n=3, m=2, k=5, digits=[4,7]
+
+        initial_state = [4,4] -> string so far: "44"
+
+        H1 for state [4,4]: 
+            H1 = 4*131 + 4 = 524 + 4 = 528
+
+        base_power1 = base1^(n-2) = 131^(1) = 131.
+
+        Then we try d=4 and d=7.
+
+        Step 1: d=4:
+            pin_hash1 = (528 * 131 + 4) % mod1 = (69168 + 4) % mod1 = 69172
+            not visited -> visited.add(69172) -> count=1.
+            s_list becomes "444"
+            pop front: 4, state becomes [4,4] -> then we push 4 -> becomes [4,4]? Actually, we pop the front (which is 4) and then push 4 -> state = [4,4] -> so state doesn't change? Then we update the state hash:
+
+                H1 = (528 - 4*131) % mod1 = (528-524)=4 -> then 4*131 + 4 = 524+4 = 528.
+
+        Then we try next step: 
+            Now we are at state [4,4]. We try d=4: pin_hash1 = 69172 -> visited -> skip.
+            d=7: pin_hash1 = (528*131+7)=69168+7=69175 -> new -> count=2.
+            s_list: "4447"
+            state: pop front 4 -> state becomes [4] then push 7 -> state=[4,7]
+            Update H1: 
+                H1 = (528 - 4*131) = 4 -> then 4*131+7 = 524+7=531.
+
+        Then state=[4,7]. Then next step:
+            d=4: pin_hash1 = (531*131+4)=69561+4=69565 -> new -> count=3, s_list="44474", state: pop front 4 -> [7] then push 4 -> state=[7,4]
+            H1: (531 - 4*131) = 531-524=7 -> then 7*131+4 = 917+4=921.
+
+        Then state=[7,4]. Then next step:
+            d=7: pin_hash1 = (921*131+7)=120651+7=120658 -> new -> count=4, s_list="444747", state: pop front 7 -> [4] then push 7 -> state=[4,7] (which we have seen before? but the PIN is new: 747)
+            H1: (921 - 7*131) = 921-917=4 -> 4*131+7=524+7=531.
+
+        Then state=[4,7] again. Then next step:
+            We try d=4: 531*131+4=69561+4=69565 -> visited (from state [4,7] and d=4 we got 69565 before? Actually, we had state [4,7] and d=4 -> PIN was 474? But now state [4,7] and d=4 -> PIN=474 -> same as before? -> skip.
+            d=7: 531*131+7=69561+7=69568 -> new? -> count=5 -> we break.
+
+            Then we output "4447477"
+
+        But the sample output is "7477447", which is different. However, the problem says: if there is more than one possible string, output any. And we are required to output the shortest.
+
+        How long is our string? "4447477" -> 7 digits, same as sample.
+
+        But the sample output is "7477447", which also has 7 digits.
+
+        Why the difference? We started with 44, but the sample output starts with 74? Actually, we started with the first digit (4) repeated. The problem does not specify the initial state? It says we start with an initial state of the first digit repeated. So that is acceptable.
+
+        However, the sample output: 
+            PINs: 447, 477, 744, 747, 774.
+
+        Our string "4447477" produces:
+
+            positions 0:2 -> "444" -> 444 (but our available digits are 4,7? so that's valid)
+            positions 1:3 -> "447"
+            positions 2:4 -> "474"
+            positions 3:5 -> "747"
+            positions 4:6 -> "477"
+
+        We have 444, 447, 474, 747, 477 -> distinct PINs: 444, 447, 474, 747, 477 -> 5 distinct.
+
+        But the sample expected distinct PINs: 447, 477, 744, 747, 774 -> which we don't have 744 and 774. 
+
+        Why? Because our initial state was 44, so we started with 44 and then added digits. The sample output starts with 74? How did they get 744? 
+
+        Actually, the problem says: the initial state is of length N-1 (which is 2) and then we add digits. The sample output "7477447" has:
+
+            initial state: the first two digits? Actually, the entire string is 7 digits. How do they form the first PIN? 
+
+            The problem says: we start by entering the entire PIN? Actually, the PINs are formed by consecutive windows of length 3.
+
+            For "7477447":
+
+                [0:3] -> 747
+                [1:4] -> 477
+                [2:5] -> 774
+                [3:6] -> 744
+                [4:7] -> 447
+
+            So the distinct PINs: 747, 477, 774, 744, 447 -> 5 distinct.
+
+        So the initial state for the sample output is the first two digits: "74", then they add the rest: '7','7','4','4','7'. 
+
+        But our solution started with "44". How can we start with "74"? We are using the first digit in the available list to form the initial state. The available list is [4,7]. The first digit is 4. So we started with 44.
+
+        The problem does not specify the initial state? But we can choose any initial state? Actually, the problem says: "Ayu has to input ...", and we are building the entire string. The initial state is part of our string. We can choose the initial state arbitrarily? The problem says: "Ayu doesn’t care which PIN she’s going to test". 
+
+        However, we are constrained to the available digits.
+
+        But note: we are free to choose any initial state as long as it is composed of the available digits. Why not choose a state that might lead to more new PINs? 
+
+        However, the problem says: if there is more than one possible string, output any.
+
+        But our solution is fixed: we choose the first digit repeated. 
+
+        The sample output "7477447" starts with 7 and 4. How can we start with 7? We could choose the initial state arbitrarily? Actually, we can choose any state of length n-1? 
+
+        The problem does not specify the initial state. We can change the initial state to be the last digit? Or we can choose the state that minimizes the overall length? 
+
+        Actually, the problem does not require a particular initial state. So we can choose any state? But note: the available digits are given, and the state must be composed of these digits.
+
+        How about we set the initial state to the last digit? Or the first? 
+
+        However, the sample input: digits = [4,7] -> the first digit is 4, so we start with 44. But the sample output starts with 74. How do we get 74? 
+
+        We can start with any state? We can choose the initial state as [7,4]? 
+
+        How? We can set:
+
+            initial_state = [digits[0]] * (n-1)   -> [4,4]
+
+        But if we set initial_state = [digits[1]] * (n-1) -> [7,7]? Then the first PIN would be 77? and then we add 4 -> 774? etc.
+
+        How about we set the initial state to be the last digit? That might not be optimal.
+
+        Actually, we are free to choose any state? But note: we are going to traverse the graph arbitrarily. The problem does not specify the starting state. 
+
+        However, to cover the PINs we need to traverse the graph. The graph is connected? Actually, the de Bruijn graph for this is strongly connected? So we can start at any node? 
+
+        But the problem: we want to minimize the length of the string. The length of the string is (n-1) + (number of steps). The initial state is fixed as n-1. Then we add steps.
+
+        The number of steps depends on the starting state? 
+
+        Actually, the Eulerian path in the de Bruijn graph is independent of the start? But we are only required to cover K edges (not necessarily all). And the graph is not necessarily symmetric.
+
+        Therefore, we might get a shorter string by choosing a different start? 
+
+        But note: the problem says: the answer contains no longer than 100000 digits. And we are guaranteed that the answer is at most 100000. So we are safe with any start? 
+
+        However, we want the shortest. How to choose the initial state to minimize the steps? 
+
+        Since we are not required to cover all edges, we can start arbitrarily? 
+
+        But the problem does not specify. So we can choose any initial state? 
+
+        How about we choose the initial state that is the lexicographically smallest? Or we can choose arbitrarily? 
+
+        Actually, we can choose the initial state arbitrarily. The problem says: "if there is more than one possible string for S, you can output any of them".
+
+        So we can choose the initial state arbitrarily. Why not choose the state that is the last digit? Or the first? 
+
+        However, the sample output uses two different digits? 
+
+        We can change the initial state to be:
+
+            initial_state = [digits[0]] * (n-1)   # as we did.
+
+        But if we start with [7,4] we might get the sample output? 
+
+        How to get the sample output? 
+
+            We want to output "7477447"
+
+            initial_state: we choose [7,4]? Then the string starts with "74", then we add the rest: "77447"
+
+            Steps:
+
+                state = [7,4]
+                Then we try digits: 
+                    d=7: PIN=747 -> new -> count=1 -> state becomes [4,7] -> string "747"
+                state = [4,7]:
+                    d=7: PIN=477 -> new -> count=2 -> state becomes [7,7] -> string "7477"
+                state = [7,7]:
+                    d=4: PIN=774 -> new -> count=3 -> state becomes [7,4] -> string "74774"
+                state = [7,4]:
+                    d=4: PIN=744 -> new -> count=4 -> state becomes [4,4] -> string "747744"
+                state = [4,4]:
+                    d=7: PIN=447 -> new -> count=5 -> break -> then we output "7477447" (if we add 7 at the end)
+
+            So we have the string "7477447", which matches the sample.
+
+        Therefore, we can choose the initial state arbitrarily. How about we choose the initial state as [digits[1], digits[0]]? 
+
+        Actually, we can choose the initial state as the last two digits? But we don't know the order.
+
+        Alternatively, we can note: we are going to traverse the graph arbitrarily. The problem does not require a particular initial state. 
+
+        We can change the initial state to be:
+
+            initial_state = [digits[0]] * (n-1)   if n-1>=1
+
+        But the sample output started with 74, which is [digits[1], digits[0]]. How can we generate that? 
+
+        Actually, the problem does not require a particular starting state. We can choose any state? 
+
+        How about we choose the initial state as the first digit for the first n-2, then the next digit? 
+
+        But we are free. We can choose any state? 
+
+        However, to maximize the chance of getting new PINs quickly, we might choose a state that uses multiple digits? 
+
+        But the problem does not specify. So we can output any.
+
+        How about we set:
+
+            initial_state = [digits[0]] * (n-1)   # as before
+
+        That worked for the sample? It produced "4447477", which is 7 digits and 5 distinct PINs.
+
+        But the problem sample output is "7477447", which is also 7 digits. 
+
+        However, the problem says: "if there is more than one possible string, you can output any of them".
+
+        So we are allowed to output "4447477". 
+
+        But the sample expected "7477447". 
+
+        Why did the sample output use 74? Maybe because they started with a state that is not the first digit? 
+
+        How did the sample solution start? The problem does not specify.
+
+        Therefore, we can stick to starting with the first digit repeated. 
+
+        Alternatively, we can start with a state that is the first two digits (if available) and then the rest the first digit? 
+
+        Actually, to mimic the sample output, we can set:
+
+            if n-1 >= 2:
+                initial_state = [digits[1], digits[0]] + [digits[0]]*(n-3)   if n>2? 
+            if n==2, then initial_state = [digits[1]]? 
+
+        But that is arbitrary.
+
+        Actually, we don't know which initial state gives the minimal length. So we choose arbitrarily: we choose the first digit repeated.
+
+        But note: the sample input 2 5 9: digits=[1,2,3,4,5] -> output "1234554321", which has 10 digits.
+
+        How do we generate that?
+
+            n=2: so state length=1. We start with [digits[0]] = [1]. Then we add digits until we have 9 distinct PINs.
+
+            PINs: 
+                state=[1], then we add 2: PIN=12 -> new -> state becomes [2]
+                then add 3: 23 -> new -> state=[3]
+                then add 4: 34 -> new -> state=[4]
+                then add 5: 45 -> new -> state=[5]
+                then add 5: 55 -> new -> state=[5]
+                then add 4: 54 -> new -> state=[4]
+                then add 3: 43 -> new -> state=[3]
+                then add 2: 32 -> new -> state=[2]
+                then add 1: 21 -> new -> count=9 -> break.
+
+            Then the string is "1" (initial) + "234554321" -> "1234554321", which matches.
+
+        So we are consistent.
+
+        Therefore, we stick to:
+
+            initial_state = [digits[0]] * (n-1)
+
+        And then we proceed.
+
+ 17. Let me run the sample input 3: 
+        Input: 6 3 2
+               9 3 5
+
+        Our solution: 
+            n=6, m=3, k=2, digits=[9,3,5]
+
+            initial_state = [9,9,9,9,9] -> string starts with "99999"
+
+            Then we need to get 2 distinct PINs.
+
+            Step1: try d=9: 
+                PIN = 999999 -> new? -> yes -> count=1 -> state becomes [9,9,9,9,9] -> same state? 
+            Step2: try d=9: PIN=999999 -> duplicate -> skip.
+                    d=3: PIN=999993 -> new -> count=2 -> break.
+
+            Then we output "999993" -> length=6? But the sample output is "9353593" (length=7).
+
+            Why is our solution shorter? 
+
+            But the problem: the entire string must be at least n-1 + the steps we added. We added 1 digit? Then total length=5+1=6. 
+
+            However, the sample output has 7 digits. And the problem says: the answer must be the shortest string.
+
+            So our solution "999993" (length=6) is shorter than the sample output (length=7). 
+
+            Why the sample output is 7? 
+
+            The sample output: "9353593" -> the two PINs are: 
+                [0:6] -> 935359 -> one PIN
+                [1:7] -> 353593 -> another PIN.
+
+            So they have two distinct PINs.
+
+            But we have two distinct PINs: 999999 and 999993 -> two distinct.
+
+            Therefore, our solution is valid and shorter.
+
+            But the sample output is "9353593", which is 7. Why did they output 7? 
+
+            The problem says: the shortest string. So our 6-digit string is shorter.
+
+            Therefore, we output "999993"
+
+            However, the problem states: "the answer contains no longer than 100000 digits", and we are within.
+
+        But wait: the problem says: "the values of N, M, and K are chosen such that the answer contains no longer than 100000 digits". So we are safe.
+
+        However, the problem sample output is "9353593", which is 7. Why? 
+
+        They might have started with a different initial state? 
+
+        How did they form the PINs? 
+
+            They start with "9353593": 
+                PIN1: 935359
+                PIN2: 353593
+
+            They did not form the initial state as [9,9,9,9,9]? 
+
+        Our initial state is [9,9,9,9,9] and we added '3' -> so the entire string is "999993", which is 6 digits. The PINs:
+
+            [0:6] -> "999999" -> but wait: the string "999993" has length 6? Then we have only one window: [0:6] -> "999993", not "999999". 
+
+        We made a mistake: 
+
+            The initial state is "99999" (length 5) and we add the digit '3' -> then the entire string is "999993", which has length 6.
+
+            How many windows? 
+                [0:6] -> "999993" (one PIN) -> but we also need the window [1:7]? But the string length is 6, so only one window? 
+
+        Why? 
+
+            The problem: when you enter the string, you start with the initial state (5 digits) and then you add one digit: then the PIN becomes the entire 6 digits? Then the next PIN would be the last 5 digits (state) and then we add another digit? 
+
+            But note: the problem says: "Whenever your entered PIN is wrong, it removes the oldest (first) digit and shifts all the remaining to the left, thus, you only need to enter one more (last) digit to make it N length again."
+
+            This implies that the PINs are consecutive windows of the entire string? 
+
+            The example: 
+                Input: 204320435 -> then the PINs are:
+                    [0:4] -> 2043
+                    [1:5] -> 0432
+                    [2:6] -> 4320
+                    [3:7] -> 3204
+                    [4:8] -> 2043
+                    [5:9] -> 0435
+
+            So the PINs are consecutive windows of the entire string. Therefore, the number of PINs in a string of length L is L-N+1.
+
+            For our string "999993" (length=6) and N=6: we have 1 PIN: the entire string? 
+
+            Then we need to have at least two distinct PINs? So we need at least two windows? 
+
+            That requires the string length to be at least 6+1 = 7? 
+
+            Because: 
+                window0: [0:6] -> PIN0
+                window1: [1:7] -> PIN1
+
+            So we need 7 digits.
+
+            How did we get two PINs in our simulation? 
+
+            We recorded:
+                Step1: when we added the first digit (3) to the initial state (5 nines) -> we got the PIN: "999993" (which is one PIN) -> but then we break because we have two distinct? 
+
+            Actually, we break when we have k=2 distinct PINs? 
+
+            How did we get two? 
+
+            We recorded the first PIN: "999999" -> wait, that was when we added 9? Then we updated the state to [9,9,9,9,9] -> then we added 3 -> then the PIN was "999993" -> that's the second distinct PIN.
+
+            But note: the PIN when we added 9: the entire PIN was the initial state (99999) plus the added digit 9: so "999999". Then the next PIN? 
+
+            The problem: after that, we remove the oldest digit? Then the state becomes the last 5 digits: "99999", then we add 3 -> then the PIN becomes "999993". 
+
+            But the entire string we built is "9999993"? 
+
+            How did we build the string? 
+
+                We start with the initial state: "99999" -> then we add a digit: first we added 9 -> then the string becomes "99999" + "9" = "999999". Then we added 3 -> then the string becomes "9999993". 
+
+            Then the two PINs are:
+                [0:6] -> "999999"
+                [1:7] -> "999993" -> but wait, the string is "9999993", so [1:7] is "999993" -> which is 6 digits? 
+
+            Actually, the string is 7 digits: 
+                positions: 0: '9', 1: '9', 2: '9', 3: '9', 4: '9', 5: '9', 6: '3'
+
+                window0: [0:6] -> "999999"
+                window1: [1:7] -> "999993" -> that's 6 digits? 
+
+            But the PIN length is 6, so each window is 6 digits.
+
+            Therefore, we have two windows: two PINs.
+
+            So the entire string is "9999993", which is 7 digits.
+
+            We did:
+
+                s_list initially: ["9","9","9","9","9"] -> then we add "9" -> then we add "3"
+
+            So the string is "9999993", which is 7 digits.
+
+            Why did I say we output "999993"? That would be 6 digits, which is missing the initial state? 
+
+            Actually, the initial state is included. The entire string is the initial state (5 digits) plus the digits we added (2 digits: first 9 then 3) -> 7 digits.
+
+            So we output "9999993", which is 7 digits.
+
+            But the sample output is "9353593", which is 7 digits. 
+
+            So both are 7 digits. 
+
+        Therefore, we are consistent.
+
+        Correction: we build the entire string as:
+
+            s_list = [str(d) for each digit in the initial state] -> then we append the digits we add.
+
+        So the total length is (n-1) + (number of steps).
+
+        For the sample n=6: 
+            initial state: 5 digits -> then we add 2 digits? -> total 7.
+
+        How many steps? 
+            We broke after two steps? Actually, we broke after the second step (which is the second digit we added) because we reached k=2.
+
+        Therefore, we output 5+2 = 7 digits.
+
+        How about if k=1? Then we only add one digit? total length = 5+1 = 6? 
+
+            Then the entire string is 6 digits: then we get one window: [0:6] -> one PIN.
+
+        So we output 6 digits.
+
+        The problem says: the answer contains no longer than 100000 digits. And we are adding at most k digits? But k can be 100000, and n-1 can be 100000? Then the total length would be 100000 + 100000 = 200000? 
+
+        But the problem says: "the answer contains no longer than 100000 digits". So we are guaranteed that n-1 + the number of steps we add <= 100000.
+
+        Therefore, we are safe.
+
+ 18. Code:
+
+        We'll do:
+
+            if n==1: 
+                output the first k digits.
+
+            else:
+                base1 = 131, base2 = 137
+                mod1 = 10**9+7, mod2 = 10**9+9
+                base_power1 = pow(base1, n-2, mod1)
+                base_power2 = pow(base2, n-2, mod2)
+
+                current_state = deque([digits[0]]*(n-1))
+                H1 = 0; H2 = 0
+                for d in current_state:
+                    H1 = (H1 * base1 + d) % mod1
+                    H2 = (H2 * base2 + d) % mod2
+
+                s_list = [str(d) for d in current_state]
+                visited = set()
+                count = 0
+                total_len = n-1
+
+                while count < k and total_len < 100000:
+                    found = False
+                    for d in digits:
+                        pin_h1 = (H1 * base1 + d) % mod1
+                        pin_h2 = (H2 * base2 + d) % mod2
+                        if (pin_h1, pin_h2) not in visited:
+                            visited.add((pin_h1, pin_h2))
+                            count += 1
+                            s_list.append(str(d))
+                            total_len += 1
+                            front_digit = current_state.popleft()
+                            current_state.append(d)
+                            H1 = (H1 - front_digit * base_power1) % mod1
+                            H1 = (H1 * base1 + d) % mod1
+                            H2 = (H2 - front_digit * base_power2) % mod2
+                            H2 = (H2 * base2 + d) % mod2
+                            found = True
+                            break
+
+                    if not found:
+                        d = digits[-1]
+                        s_list.append(str(d))
+                        total_len += 1
+                        front_digit = current_state.popleft()
+                        current_state.append(d)
+                        H1 = (H1 - front_digit * base_power1) % mod1
+                        H1 = (H1 * base1 + d) % mod1
+                        H2 = (H2 - front_digit * base_power2) % mod2
+                        H2 = (H2 * base2 + d) % mod2
+
+                print(''.join(s_list))
+
+ 19. We must be cautious: the modulo operations for negative? We rely on Python's modulo which returns nonnegative? 
+
+        For example: 
+            H1 = (H1 - front_digit * base_power1) % mod1
+
+        If negative, Python adds mod1 until nonnegative? 
+
+        But the subtraction might be negative? Then we do:
+
+            H1 = (H1 - front_digit * base_power1) % mod1
+
+        This will give a nonnegative value in [0, mod1-1]. Then we do the next step.
+
+ 20. Let me test with a negative: 
+        H1 = 10, front_digit=20, base_power1=1, mod1=1000: 
+            then H1 - 20 = -10 -> (-10) % 1000 = 990? 
+
+        Then we do: (990 * base1 + d) % mod1.
+
+        But the correct value for the new state? 
+
+        The state hash update: 
+            We have the old state: [a0, a1, ..., a_{n-2}]
+            Then we remove a0 and add d at the end: new state = [a1, ..., a_{n-2}, d]
+
+            The hash: 
+                H1_new = ( (H1_old - a0 * base_power1) * base1 + d ) % mod1
+
+        This formula holds regardless of negative? Because the modulo operation normalizes.
+
+ 21. We'll write the code accordingly.
+
+ 22. We assume that the total_len will not exceed 100000 (because the problem says the answer has at most 100000 digits). So we break when total_len>=100000? But we also break when count>=k.
+
+ 23. We write in C++? 
+
+        Constraints: 
+            n, m, k: n up to 100000, m up to 10, k up to 100000.
+
+        We need:
+            - A deque for current_state? We are doing pop_front and push_back. We can use a deque.
+
+        But note: we are storing the entire string? The total length is at most 100000, so we can store the entire string.
+
+        However, the current_state is of fixed length: n-1. And n can be 100000, so the deque has 99999 elements? That is acceptable? 
+
+        But the problem says: the entire answer is at most 100000 digits. Therefore, n-1 <= 100000? 
+
+        Actually, the entire string length is n-1 + (number of steps). And the problem says the entire string is at most 100000. So n-1 <= 100000, which is true. But if n=100000, then the initial state is 99999 digits, and then we can only add 1 digit? Then the total length is 100000.
+
+        Then the deque for current_state has 100000-1 = 99999 elements? That is acceptable in C++? 
+
+        However, we are also storing the entire string as a list of characters? That is 100000 characters, which is about 100KB.
+
+        We also store the visited set: which can be up to k (100000) entries. Each entry is a pair of long long (or unsigned long long? but mod1 and mod2 are 10^9+7 and 10^9+9, so the hash values are integers in the range [0, 10^9+6] and [0,10^9+8]? So we can store as two integers? That is 16 bytes per entry? 100000*16 = 1.6MB.
+
+        So overall memory: 
+            deque: 99999 integers (if we store integers) -> 99999 * 4 = 400KB? 
+            s_list: 100000 characters -> 100000 bytes = 100KB.
+            visited: 100000 pairs of long long? 100000 * 16 = 1.6MB.
+
+        Total: about 2.1 MB, which is within 256MB.
+
+ 24. C++ code:
+
+        We'll use:
+            #include <iostream>
+            #include <deque>
+            #include <vector>
+            #include <unordered_set>
+            #include <string>
+            #include <cmath>
+            #include <algorithm>
+            #include <cctype>
+
+        We need to compute power for base1^(n-2) mod mod1? We can use modular exponentiation.
+
+        Steps:
+
+            if (n == 1) {
+                // output first k digits
+                for (int i=0; i<k; i++) {
+                    cout << digits[i];
+                }
+                cout << endl;
+                return;
+            }
+
+            long long base1 = 131, base2 = 137;
+            long long mod1 = 1000000007, mod2 = 1000000009;
+
+            // Precompute base_power1 = base1^(n-2) mod mod1, base_power2 = base2^(n-2) mod mod2
+            long long base_power1 = 1;
+            long long base_power2 = 1;
+            long long exponent = n-2;
+            // If exponent==0, then base_power=1, but if exponent>0, we compute.
+            if (exponent > 0) {
+                base_power1 = mod_pow(base1, exponent, mod1);
+                base_power2 = mod_pow(base2, exponent, mod2);
+            } else if (exponent == 0) {
+                // do nothing: already 1.
+            } else {
+                // exponent negative? n-2 can be negative only if n==1, but we are in n>=2 so exponent>=0.
+            }
+
+            // Create initial state: a deque of n-1 copies of digits[0]
+            deque<long long> current_state;   // we store the digits as integers? Because the digits are given as integers.
+            for (int i=0; i<n-1; i++) {
+                current_state.push_back(digits[0]);
+            }
+
+            long long H1 = 0, H2 = 0;
+            for (auto d : current_state) {
+                H1 = (H1 * base1 + d) % mod1;
+                if (H1 < 0) H1 += mod1;   // but the operations are positive? so we don't need?
+                H2 = (H2 * base2 + d) % mod2;
+                if (H2 < 0) H2 += mod2;
+            }
+
+            // We'll build the string as a vector of characters? Then we output by combining.
+            vector<char> s_list;
+            for (auto d : current_state) {
+                s_list.push_back('0' + d);
+            }
+
+            // visited set: store pairs (h1, h2)
+            unordered_set<long long> visited;   // but we have two mods? How to store a pair? 
+            // We can do: key = h1 * (mod2+100) + h2? But mod2=10^9+9, so h2 in [0,10^9+8]. Then key = h1 * (10^10) + h2? 
+            // Or we can use a set of pairs: but unordered_set doesn't have pair by default? We can define a hash for pair.
+
+            // Alternatively, we can do: 
+            //   key = h1 * 10000000000 + h2   [if h2 < 10000000000, which mod2=1000000009, so h2<2000000000? Then 10000000000 is 10^10, which is larger than mod2?]
+            //   Then key = h1 * 10000000000 + h2 is unique? 
+
+            // But h1 is about 10^9, so key is about 10^9 * 10^10 = 10^19, which fits in long long? (since 2^63 is about 9e18, so 10^19 is too big for long long? in C++ long long is 64-bit: max 9e18)
+
+            // Alternatively, we can use a set of pairs: but unordered_set with custom hash? 
+
+            // We'll use a set of pairs: but if we use set (ordered) then insertion is O(log(k)), and k up to 100000, so total 100000*log(100000) which is about 1.7e6, acceptable.
+
+            // Or unordered_set with a hash function for pairs? 
+
+            // We'll do unordered_set with a custom hash for pairs.
+
+            // But to be safe, we can use a set of pairs: since k is at most 100000, and set has O(log k) per insertion, which is acceptable.
+
+            // Let me use set<pair<long long, long long>> visited;
+
+            set<pair<long long, long long>> visited;
+            int count = 0;
+            int total_len = n-1;
+
+            // We have to be cautious: the modulo operations might be negative? We'll do modulo and then adjust to nonnegative.
+
+            while (count < k && total_len < 100000) {
+                bool found = false;
+                for (int i=0; i<m; i++) {
+                    long long d = digits[i];
+                    long long pin_h1 = (H1 * base1 + d) % mod1;
+                    if (pin_h1 < 0) pin_h1 += mod1;
+                    long long pin_h2 = (H2 * base2 + d) % mod2;
+                    if (pin_h2 < 0) pin_h2 += mod2;
+
+                    if (visited.find({pin_h1, pin_h2}) == visited.end()) {
+                        visited.insert({pin_h1, pin_h2});
+                        count++;
+                        s_list.push_back('0' + d);
+                        total_len++;
+                        long long front_digit = current_state.front();
+                        current_state.pop_front();
+                        current_state.push_back(d);
+
+                        // Update H1 and H2 for the state
+                        H1 = (H1 - front_digit * base_power1) % mod1;
+                        H1 = (H1 * base1 + d) % mod1;
+                        if (H1 < 0) H1 += mod1;
+                        H2 = (H2 - front_digit * base_power2) % mod2;
+                        H2 = (H2 * base2 + d) % mod2;
+                        if (H2 < 0) H2 += mod2;
+
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    long long d = digits[m-1];   // last digit
+                    s_list.push_back('0' + d);
+                    total_len++;
+                    long long front_digit = current_state.front();
+                    current_state.pop_front();
+                    current_state.push_back(d);
+
+                    H1 = (H1 - front_digit * base_power1) % mod1;
+                    H1 = (H1 * base1 + d) % mod1;
+                    if (H1 < 0) H1 += mod1;
+                    H2 = (H2 - front_digit * base_power2) % mod2;
+                    H2 = (H2 * base2 + d) % mod2;
+                    if (H2 < 0) H2 += mod2;
+                }
+            }
+
+            // Output the string
+            string res(s_list.begin(), s_list.end());
+            cout << res << endl;
+
+        We need a mod_pow function:
+
+            long long mod_pow(long long base, long long exp, long long mod) {
+                long long res = 1;
+                base %= mod;
+                while (exp > 0) {
+                    if (exp & 1) {
+                        res = (res * base) % mod;
+                    }
+                    base = (base * base) % mod;
+                    exp >>= 1;
+                }
+                return res;
+            }
+
+ 25. But note: the base_power1 = base1^(n-2) mod mod1, and n-2 can be 0? then we return 1.
+
+        Also, n-2 can be 0 when n=2.
+
+ 26. Let me test with n=2: 
+        base_power1 = base1^0 = 1.
+
+        Then update state: 
+            state = [d0] -> then we add d: 
+                PIN hash = (d0 * base1 + d) mod mod1.
+            Then we update the state to [d]? 
+                H1_new = (d0 - d0 * 1) = 0 -> then 0 * base1 + d = d.
+
+        That matches.
+
+ 27. We'll code accordingly.
+
+ 28. Important: the input digits: the next line has M integers. We read them.
+
+ 29. Code structure:
+
+        #include <iostream>
+        #include <vector>
+        #include <deque>
+        #include <set>
+        #include <cmath>
+        #include <cctype>
+        #include <algorithm>
+        #include <unordered_set>
+        #include <string>
+
+        using namespace std;
+
+        long long mod_pow(long long base, long long exp, long long mod) {
+            base %= mod;
+            long long res = 1;
+            while (exp > 0) {
+                if (exp & 1) {
+                    res = (res * base) % mod;
+                }
+                base = (base * base) % mod;
+                exp >>= 1;
+            }
+            return res;
+        }
+
+        int main() {
+            long long n, m, k;
+            cin >> n >> m >> k;
+            vector<long long> digits;
+            for (int i=0; i<m; i++) {
+                long long x;
+                cin >> x;
+                digits.push_back(x);
+            }
+
+            if (n == 1) {
+                for (int i=0; i<k; i++) {
+                    cout << digits[i];
+                }
+                cout << endl;
+                return 0;
+            }
+
+            long long base1 = 131, base2 = 137;
+            long long mod1 = 1000000007, mod2 = 1000000009;
+
+            long long exponent = n-2;
+            long long base_power1 = 1;
+            long long base_power2 = 1;
+
+            if (exponent > 0) {
+                base_power1 = mod_pow(base1, exponent, mod1);
+                base_power2 = mod_pow(base2, exponent, mod2);
+            } else if (exponent == 0) {
+                // leave as 1
+            }
+
+            deque<long long> current_state;
+            for (int i=0; i<n-1; i++) {
+                current_state.push_back(digits[0]);
+            }
+
+            long long H1 = 0, H2 = 0;
+            for (auto d : current_state) {
+                H1 = (H1 * base1 + d) % mod1;
+                if (H1 < 0) H1 += mod1;
+                H2 = (H2 * base2 + d) % mod2;
+                if (H2 < 0) H2 += mod2;
+            }
+
+            vector<char> s_list;
+            for (auto d : current_state) {
+                s_list.push_back('0' + d);
+            }
+
+            set<pair<long long, long long>> visited;
+            long long count = 0;
+            long long total_len = n-1;
+
+            while (count < k && total_len < 100000) {
+                bool found = false;
+                for (int i=0; i<m; i++) {
+                    long long d = digits[i];
+                    long long pin_h1 = (H1 * base1 + d) % mod1;
+                    if (pin_h1 < 0) pin_h1 += mod1;
+                    long long pin_h2 = (H2 * base2 + d) % mod2;
+                    if (pin_h2 < 0) pin_h2 += mod2;
+
+                    if (visited.find(make_pair(pin_h1, pin_h2)) == visited.end()) {
+                        visited.insert(make_pair(pin_h1, pin_h2));
+                        count++;
+                        s_list.push_back('0' + d);
+                        total_len++;
+                        long long front_digit = current_state.front();
+                        current_state.pop_front();
+                        current_state.push_back(d);
+
+                        H1 = (H1 - front_digit * base_power1) % mod1;
+                        H1 = (H1 * base1 + d) % mod1;
+                        if (H1 < 0) H1 += mod1;
+
+                        H2 = (H2 - front_digit * base_power2) % mod2;
+                        H2 = (H2 * base2 + d) % mod2;
+                        if (H2 < 0) H2 += mod2;
+
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    long long d = digits[m-1];
+                    s_list.push_back('0' + d);
+                    total_len++;
+                    long long front_digit = current_state.front();
+                    current_state.pop_front();
+                    current_state.push_back(d);
+
+                    H1 = (H1 - front_digit * base_power1) % mod1;
+                    H1 = (H1 * base1 + d) % mod1;
+                    if (H1 < 0) H1 += mod1;
+
+                    H2 = (H2 - front_digit * base_power2) % mod2;
+                    H2 = (H2 * base2 + d) % mod2;
+                    if (H2 < 0) H2 += mod2;
+                }
+            }
+
+            string res = "";
+            for (char c : s_list) {
+                res += c;
+            }
+            cout << res << endl;
+            return 0;
+        }
+
+ 30. But note: the input digits: they are integers from 0 to 9. So we can store as long long? But they are small.
+
+ 31. We test with the provided examples.
+
+        Example 1: n=3, m=2, k=5, digits=[4,7] -> we expect a string of length 5 (initial state) + 2 = 7.
+
+        Example 2: n=2, m=5, k=9, digits=[1,2,3,4,5] -> we expect a string of length 1 (initial state) + 9 = 10.
+
+        Example 3: n=6, m=3, k=2, digits=[9,3,5] -> we expect 5+2=7.
+
+ 32. However, the sample output for example 1 is "7477447", which we don't generate? We generate "4447477"? 
+
+        But the problem says: any solution. So we are allowed.
+
+ 33. Let me run the example 1:
+
+        n=3, m=2, k=5, digits=[4,7]
+
+        initial_state = [4,4] -> then we start.
+
+        Step1: try d=4: 
+            pin_h1 = ( (4*131+4) * 131 + 4 ) % mod1 = (528*131+4) % mod1 = 69168+4 = 69172 -> new -> count=1
+            Then update: 
+                front_digit = 4
+                state becomes [4,4] -> then push 4 -> [4,4] -> same?
+                H1 = ( (4*131+4) - 4*131 ) = (524+4 - 524) = 4 -> then 4*131+4 = 528 -> same as initial.
+
+        Step2: try d=4: 
+            pin_h1 = (528*131+4) = 69172 -> visited -> skip.
+            try d=7: 
+                pin_h1 = (528*131+7) = 69168+7=69175 -> new -> count=2
+                state: pop front 4 -> [4] then push 7 -> [4,7]
+                H1 = (528 - 4*131) = 528-524=4 -> then 4*131+7=524+7=531.
+
+        Step3: state=[4,7]: 
+            try d=4: 
+                pin_h1 = (531*131+4) = 69561+4=69565 -> new -> count=3
+                state: pop front 4 -> [7] then push 4 -> [7,4]
+                H1 = (531 - 4*131) = 531-524=7 -> then 7*131+4=917+4=921.
+            try d=7: 
+                pin_h1 = (531*131+7)=69561+7=69568 -> we haven't tried? -> but we break at d=4.
+
+        Step4: state=[7,4]:
+            try d=7: 
+                pin_h1 = (921*131+7)=120651+7=120658 -> new -> count=4
+                state: pop front 7 -> [4] then push 7 -> [4,7] -> H1 = (921 - 7*131)=921-917=4 -> 4*131+7=531.
+
+        Step5: state=[4,7] (again):
+            try d=4: 531*131+4=69565 -> visited -> skip.
+            try d=7: 531*131+7=69568 -> new -> count=5 -> break.
+
+        Then the string is "44" (initial) + "4" (step1) + "7" (step2) + "4" (step3) + "7" (step4) + "7" (step5) -> "4447477"
+
+        Then we output "4447477", which is 7 digits.
+
+        The distinct PINs:
+
+            [0:3] -> 444
+            [1:4] -> 447
+            [2:5] -> 474
+            [3:6] -> 747
+            [4:7] -> 477
+
+        So 5 distinct.
+
+        The problem says the sample output is "7477447", which has distinct PINs: 747,477,774,744,447.
+
+        But we have 444,447,474,747,477.
+
+        Both are 5 distinct. So it is acceptable.
+
+ 34. We output the code accordingly.
+
+ 35. Note: we are using set<pair<long long, long long>> which is O(log k) per insertion. k up to 100000 -> each insertion O(log(100000)) which is about 17 comparisons. Then total operations: about 100000*10*17 = 17e6, which might be borderline in C++? But 10 is m, so 100000*10=1e6, then 1e6*17=17e6, which is acceptable in 1 second.
+
+        But worst-case we do 100000 steps, and each step we try up to m=10 digits -> 100000*10=1e6, and each set lookup is O(log k) (which is about 17) so 17e6 operations? 
+
+        Alternatively, we can use an unordered_set with a custom hash. But k is only 100000, and set might be acceptable.
+
+        But to be safe, we can use unordered_set.
+
+        How to hash a pair? We can do:
+
+            struct pair_hash {
+                template <class T1, class T2>
+                std::size_t operator () (const std::pair<T1,T2> &p) const {
+                    auto h1 = std::hash<T1>{}(p.first);
+                    auto h2 = std::hash<T2>{}(p.second);
+                    return h1 ^ (h2 << 1);
+                }
+            };
+
+            unordered_set<pair<long long, long long>, pair_hash> visited;
+
+        But this might have collisions? 
+
+        Alternatively, we can do: 
+
+            key = (pin_h1 * (mod2+100)) + pin_h2;   // mod2+100 is 1000000109, which is > mod2? 
+            But then key = pin_h1 * 1000000109 + pin_h2, and pin_h1 in [0,mod1-1] and pin_h2 in [0,mod2-1]. 
+            Then the key is unique? 
+
+            Since mod1 and mod2 are about 10^9, then key can be as large as 10^9 * 10^9 = 10^18, which fits in long long? (long long is 64-bit: max 9e18) -> so 10^18 is 1e18, which is < 9e18.
+
+            Then we can store as long long.
+
+        So:
+
+            long long key = pin_h1 * 1000000109LL + pin_h2;
+
+            Then we use unordered_set<long long> visited.
+
+        But 1000000109 is mod2+100? Actually, we can choose a constant that is > mod2 (which is 10^9+9). We can choose 2000000000? 
+
+        Actually, we can choose a constant that is > max(mod1, mod2). Let MOD = 2000000000. Then:
+
+            key = pin_h1 * MOD + pin_h2;
+
+        Then key is unique? Because pin_h1 in [0, mod1-1] and mod1=10^9+7, and MOD=2000000000, so MOD>mod1? Then pin_h1 * MOD + pin_h2 is unique? 
+
+        Yes, because pin_h2 < MOD (since mod2=10^9+9 < 2000000000) and pin_h1 * MOD is distinct for distinct pin_h1, and then adding pin_h2 (which is less than MOD) doesn't cause overlap.
+
+        So we can do:
+
+            unordered_set<long long> visited;
+            ...
+            long long key = pin_h1 * 2000000000LL + pin_h2;
+
+        Then we check: visited.find(key) == visited.end()
+
+        And insert: visited.insert(key)
+
+        This is O(1) per operation.
+
+        We do:
+
+            long long MOD = 2000000000;   // 2e9
+
+        Then:
+
+            long long key = pin_h1 * MOD + pin_h2;
+
+        But note: pin_h1 and pin_h2 are at most 2e9? Then key = (2e9)* (2e9) + (2e9) = 4e18, which is < 2^63-1 (about 9e18). So it fits.
+
+        We'll use unordered_set<long long> for visited.
+
+ 36. Final code with unordered_set and key = pin_h1 * MOD + pin_h2.
+
+        long long MOD = 2000000000LL;
+        unordered_set<long long> visited;
+
+        Then:
+
+            long long key = pin_h1 * MOD + pin_h2;
+            if (visited.find(key) == visited.end()) {
+                visited.insert(key);
+                ...
+            }
+
+ 37. We'll code accordingly.
+
+ 38. Let me run the example 1: 
+        Step1: pin_h1=69172, pin_h2=? we don't care, then key = 69172 * 2000000000 + pin_h2.
+
+        Then we store.
+
+ 39. Code:
+
+        #include <iostream>
+        #include <vector>
+        #include <deque>
+        #include <unordered_set>
+        #include <string>
+
+        using namespace std;
+
+        long long mod_pow(long long base, long long exp, long long mod) {
+            base %= mod;
+            long long res = 1;
+            while (exp > 0) {
+                if (exp & 1) {
+                    res = (res * base) % mod;
+                }
+                base = (base * base) % mod;
+                exp >>= 1;
+            }
+            return res;
+        }
+
+        int main() {
+            long long n, m, k;
+            cin >> n >> m >> k;
+            vector<long long> digits;
+            for (int i=0; i<m; i++) {
+                long long x;
+                cin >> x;
+                digits.push_back(x);
+            }
+
+            if (n == 1) {
+                for (int i=0; i<k; i++) {
+                    cout << digits[i];
+                }
+                cout << endl;
+                return 0;
+            }
+
+            long long base1 = 131, base2 = 137;
+            long long mod1 = 1000000007, mod2 = 1000000009;
+            long long MOD = 2000000000;   // for combining the two hashes
+
+            long long exponent = n-2;
+            long long base_power1 = 1;
+            long long base_power2 = 1;
+
+            if (exponent > 0) {
+                base_power1 = mod_pow(base1, exponent, mod1);
+                base_power2 = mod_pow(base2, exponent, mod2);
+            }
+
+            deque<long long> current_state;
+            for (int i=0; i<n-1; i++) {
+                current_state.push_back(digits[0]);
+            }
+
+            long long H1 = 0, H2 = 0;
+            for (auto d : current_state) {
+                H1 = (H1 * base1 + d) % mod1;
+                if (H1 < 0) H1 += mod1;
+                H2 = (H2 * base2 + d) % mod2;
+                if (H2 < 0) H2 += mod2;
+            }
+
+            vector<char> s_list;
+            for (auto d : current_state) {
+                s_list.push_back('0' + d);
+            }
+
+            unordered_set<long long> visited;
+            long long count = 0;
+            long long total_len = n-1;
+
+            while (count < k && total_len < 100000) {
+                bool found = false;
+                for (int i=0; i<m; i++) {
+                    long long d = digits[i];
+                    long long pin_h1 = (H1 * base1 + d) % mod1;
+                    if (pin_h1 < 0) pin_h1 += mod1;
+                    long long pin_h2 = (H2 * base2 + d) % mod2;
+                    if (pin_h2 < 0) pin_h2 += mod2;
+
+                    long long key = pin_h1 * MOD + pin_h2;
+                    if (visited.find(key) == visited.end()) {
+                        visited.insert(key);
+                        count++;
+                        s_list.push_back('0' + d);
+                        total_len++;
+                        long long front_digit = current_state.front();
+                        current_state.pop_front();
+                        current_state.push_back(d);
+
+                        H1 = (H1 - front_digit * base_power1) % mod1;
+                        H1 = (H1 * base1 + d) % mod1;
+                        if (H1 < 0) H1 += mod1;
+
+                        H2 = (H2 - front_digit * base_power2) % mod2;
+                        H2 = (H2 * base2 + d) % mod2;
+                        if (H2 < 0) H2 += mod2;
+
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    long long d = digits[m-1];
+                    s_list.push_back('0' + d);
+                    total_len++;
+                    long long front_digit = current_state.front();
+                    current_state.pop_front();
+                    current_state.push_back(d);
+
+                    H1 = (H1 - front_digit * base_power1) % mod1;
+                    H1 = (H1 * base1 + d) % mod1;
+                    if (H1 < 0) H1 += mod1;
+
+                    H2 = (H2 - front_digit * base_power2) % mod2;
+                    H2 = (H2 * base2 + d) % mod2;
+                    if (H2 < 0) H2 += mod2;
+                }
+            }
+
+            string res = "";
+            for (char c : s_list) {
+                res += c;
+            }
+            cout << res << endl;
+            return 0;
+        }
+
+ 40. We test with the examples.
+
+ 41. Note: the subtraction step: we do modulo mod1 and mod2? Then we adjust to nonnegative? 
+
+        We do:
+
+            H1 = (H1 - front_digit * base_power1) % mod1;
+            // This might be negative? Then we adjust by adding mod1? But we do modulo, then we multiply and add, then we adjust at the end.
+
+        But we do:
+
+            H1 = (H1 * base1 + d) % mod1;
+            if (H1 < 0) H1 += mod1;
+
+        This is safe.
+
+ 42. Submit the code.

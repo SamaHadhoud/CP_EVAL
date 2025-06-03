@@ -1,0 +1,218 @@
+### Problem Analysis
+The problem involves constructing a connected road network across N cities in Numbata using K workers. Each city proposes a bidirectional road to another city with specific material requirements. Workers can only construct roads if they are familiar with one of the allowed materials for that road. The goal is to assign workers to construct roads such that the resulting graph is connected, or determine if it's impossible.
+
+#### Key Insights:
+1. **Graph Structure**: The initial graph formed by all proposed roads is connected and has exactly N edges (since there are N cities and each proposes one road). This implies the graph is a **pseudotree**—a connected graph with exactly one cycle. Removing one edge from the cycle converts the graph into a tree (spanning tree).
+2. **Connectivity Requirement**: The constructed roads must form a connected graph spanning all cities. This requires at least N-1 edges (a spanning tree). If K < N-1, it's impossible.
+3. **Edge Classification**: The edges can be divided into:
+   - **Non-cycle edges (bridges)**: These must be included in any connected subgraph, as their removal disconnects the graph.
+   - **Cycle edges**: At least L-1 of these must be included (where L is the cycle length) to maintain connectivity.
+4. **Material Matching**: Each road (edge) has a set of allowed materials. Workers have specific materials they can work with. Assigning a worker to a road requires the worker's material to be in the road's material set.
+
+### Approach
+1. **Graph Analysis**:
+   - **Identify Non-cycle and Cycle Edges**: Use a BFS-based leaf removal to identify bridges (non-cycle edges) and cycle edges. The remaining graph after removing all leaves is the cycle.
+2. **Precompute Worker Availability**:
+   - For each edge, determine which workers can build it based on material compatibility. This involves mapping materials to workers and then checking each edge's material list.
+3. **Bipartite Matching**:
+   - **Match Non-cycle Edges First**: Ensure all non-cycle edges are assigned workers. If not, output `-1`.
+   - **Match Cycle Edges**: Use remaining workers to match at least L-1 cycle edges. If this fails, output `-1`.
+4. **Solution Construction**:
+   - **Option 1 (Entire Graph)**: If K ≥ N and all cycle edges are matched, build all roads.
+   - **Option 2 (Spanning Tree)**: Otherwise, skip one cycle edge (either unmatched or arbitrarily chosen if all are matched) to form a spanning tree with N-1 edges.
+5. **Output**: For each worker, output the assigned road (if any) in the input order, or `0 0` if idle.
+
+### Solution Code
+```python
+import sys
+from collections import deque
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    it = iter(data)
+    n = int(next(it)); k = int(next(it))
+    
+    A = [0] * (n+1)
+    M_list = [0] * (n+1)
+    B_list = [None] * (n+1)
+    for i in range(1, n+1):
+        A_i = int(next(it)); M_i = int(next(it))
+        A[i] = A_i
+        M_list[i] = M_i
+        B_i = []
+        for j in range(M_i):
+            B_i.append(int(next(it)))
+        B_list[i] = B_i
+        
+    workers = []
+    for i in range(k):
+        c = int(next(it))
+        workers.append(c)
+    
+    graph = [[] for _ in range(n+1)]
+    for i in range(1, n+1):
+        u = i
+        v = A[i]
+        graph[u].append(v)
+        graph[v].append(u)
+    
+    deg = [0] * (n+1)
+    for i in range(1, n+1):
+        deg[i] = len(graph[i])
+    
+    q = deque()
+    for i in range(1, n+1):
+        if deg[i] == 1:
+            q.append(i)
+    
+    non_cycle_edges_set = set()
+    while q:
+        u = q.popleft()
+        for v in graph[u]:
+            if deg[v] == 0:
+                continue
+            key = (min(u, v), max(u, v))
+            if key in non_cycle_edges_set:
+                continue
+            non_cycle_edges_set.add(key)
+            deg[u] -= 1
+            deg[v] -= 1
+            if deg[v] == 1:
+                q.append(v)
+    
+    cycle_edges_set = set()
+    original_rep = {}
+    materials_dict = {}
+    for i in range(1, n+1):
+        u = i
+        v = A[i]
+        key = (min(u, v), max(u, v))
+        original_rep[key] = (u, v)
+        materials_dict[key] = B_list[i]
+        if key not in non_cycle_edges_set:
+            cycle_edges_set.add(key)
+    
+    non_cycle_edges_list = list(non_cycle_edges_set)
+    cycle_edges_list = list(cycle_edges_set)
+    L = len(cycle_edges_list)
+    
+    material_to_workers = {}
+    for worker_idx, material in enumerate(workers):
+        if material not in material_to_workers:
+            material_to_workers[material] = []
+        material_to_workers[material].append(worker_idx)
+    
+    worker_list_by_key = {}
+    all_edges = non_cycle_edges_list + cycle_edges_list
+    for key in all_edges:
+        materials = materials_dict[key]
+        worker_list = []
+        for m in materials:
+            if m in material_to_workers:
+                for w in material_to_workers[m]:
+                    worker_list.append(w)
+        worker_list_by_key[key] = worker_list
+        
+    if k < n - 1:
+        print(-1)
+        return
+        
+    match_non = [-1] * len(non_cycle_edges_list)
+    match_worker = [-1] * k
+    
+    def dfs_non(i, seen):
+        key = non_cycle_edges_list[i]
+        worker_list = worker_list_by_key[key]
+        for worker_id in worker_list:
+            if not seen[worker_id]:
+                seen[worker_id] = True
+                if match_worker[worker_id] == -1 or dfs_non(match_worker[worker_id], seen):
+                    match_worker[worker_id] = i
+                    match_non[i] = worker_id
+                    return True
+        return False
+    
+    for idx in range(len(non_cycle_edges_list)):
+        seen = [False] * k
+        if not dfs_non(idx, seen):
+            print(-1)
+            return
+            
+    match_cycle = [-1] * len(cycle_edges_list)
+    match_worker_cycle = [-1] * k
+    
+    def dfs_cycle(i, seen):
+        key = cycle_edges_list[i]
+        worker_list = worker_list_by_key[key]
+        for worker_id in worker_list:
+            if match_worker[worker_id] != -1:
+                continue
+            if not seen[worker_id]:
+                seen[worker_id] = True
+                if match_worker_cycle[worker_id] == -1 or dfs_cycle(match_worker_cycle[worker_id], seen):
+                    match_worker_cycle[worker_id] = i
+                    match_cycle[i] = worker_id
+                    return True
+        return False
+
+    M_cycle = 0
+    for idx in range(len(cycle_edges_list)):
+        seen = [False] * k
+        if dfs_cycle(idx, seen):
+            M_cycle += 1
+            
+    if k >= n and M_cycle == L:
+        skip_edge_index = None
+    elif M_cycle >= L - 1:
+        if M_cycle == L:
+            skip_edge_index = 0
+            worker_id = match_cycle[0]
+            if worker_id != -1:
+                match_cycle[0] = -1
+                if worker_id != -1:
+                    match_worker_cycle[worker_id] = -1
+        else:
+            for idx in range(L):
+                if match_cycle[idx] == -1:
+                    skip_edge_index = idx
+                    break
+    else:
+        print(-1)
+        return
+        
+    res = ['0 0'] * k
+    for i, key in enumerate(non_cycle_edges_list):
+        worker_id = match_non[i]
+        if worker_id != -1:
+            u, v = original_rep[key]
+            res[worker_id] = f"{u} {v}"
+            
+    for i, key in enumerate(cycle_edges_list):
+        if skip_edge_index is not None and i == skip_edge_index:
+            continue
+        worker_id = match_cycle[i]
+        if worker_id != -1:
+            u, v = original_rep[key]
+            res[worker_id] = f"{u} {v}"
+            
+    for i in range(k):
+        print(res[i])
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation
+1. **Input Parsing**: Reads the number of cities (N) and workers (K), followed by each city's proposed road and material list, and the workers' materials.
+2. **Graph Construction**: Builds an adjacency list from the proposed roads.
+3. **Edge Classification**: Uses BFS to remove leaves (nodes with degree 1) iteratively, classifying edges as non-cycle (bridges) or cycle edges.
+4. **Worker-Edge Matching**:
+   - **Non-cycle Edges**: Uses bipartite matching to assign workers to all non-cycle edges. If not possible, outputs `-1`.
+   - **Cycle Edges**: Assigns remaining workers to at least L-1 cycle edges (where L is the cycle length). If not possible, outputs `-1`.
+5. **Solution Selection**:
+   - **Entire Graph**: If possible (K ≥ N and all cycle edges matched), builds all roads.
+   - **Spanning Tree**: Otherwise, skips one cycle edge to form a spanning tree, adjusting assignments accordingly.
+6. **Output**: For each worker, prints the assigned road (in input order) or `0 0` if idle, ensuring the output graph is connected.

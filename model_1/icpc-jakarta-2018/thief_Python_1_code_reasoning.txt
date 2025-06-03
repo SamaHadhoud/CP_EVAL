@@ -1,0 +1,1129 @@
+ We are given: N (PIN length), M (number of available digits), K (minimum distinct PINs we need to cover)
+ Then, M distinct digits (each from 0 to 9)
+
+ Important: The problem requires the shortest string that contains at least K distinct PINs (substrings of length N) as tested by the sliding window.
+
+ Approach:
+ 1. If N==1: then each digit is a PIN. We need at least K distinct. Since there are M digits, we output the first K distinct digits (which we have as the available digits). Note: if K > M, we cannot have more than M distinct, but the problem states K <= min(M^N, 100000) so K<=M when N=1.
+
+ 2. For N>=2:
+    We model the problem as a state machine. The state is the last (N-1) digits of the current string.
+
+    We start with an initial state: we choose the first available digit repeated (N-1) times.
+
+    We maintain:
+        - The current state (as a deque or we can simulate with rolling hash for efficiency) of the last (N-1) digits.
+        - A rolling hash for the current state (to avoid storing entire string for state) and for the PIN (which is the state plus the next digit, forming a string of length N).
+
+    However, note: the PIN is the substring of length N. When we add a digit 'd', the new PIN is (state + d). Then the state becomes (state[1:] + d).
+
+    We want to traverse edges (each edge is a PIN) and we need at least K distinct edges (PINs). We are allowed to traverse the same edge multiple times, but we only count distinct ones.
+
+    We'll use double hashing (two moduli) to represent the PINs to avoid collisions.
+
+    Steps:
+        Let base1, base2 = 131 (or a prime base) and mod1 = 10**9+7, mod2 = 10**9+9.
+
+        Precompute base_power1 = base1^(N-2) mod mod1, and base_power2 = base2^(N-2) mod mod2? Actually, we are going to maintain a rolling hash for the state of length (N-1). When we remove the first digit and add a new digit, we do:
+
+          state_hash1 = (state_hash1 - (front_digit * base1^(N-2)) % mod1   [then multiplied by base1 and add new digit?]
+
+        Actually, we have:
+          state_hash1 = (d0 * base1^(N-2) + d1 * base1^(N-3) + ... + d_{n-2}) mod mod1
+
+        Then to remove the first digit (d0) and add a new digit (d_new) at the end:
+
+          state_hash1 = (state_hash1 - d0 * (base1^(N-2))) * base1 + d_new   mod mod1
+
+        But note: our state is of length (N-1). When we add a digit d, the PIN is the entire state (N-1 digits) plus d. We can compute the PIN hash from the state and d without having the entire string? Yes:
+
+          PIN_hash1 = (state_hash1 * base1 + d) % mod1
+
+        Then the new state (which is the last N-1 digits of the PIN, i.e., state[1:] + d) has a hash that we can compute by:
+
+          new_state_hash1 = (state_hash1 - front_digit * base_power1) * base1 + d   mod mod1
+
+        But note: base_power1 = base1^(N-2) mod mod1? Actually, the state is stored as if we have:
+
+          state = [d0, d1, ..., d_{n-2}]
+          state_hash1 = d0 * (base1^(n-2)) + d1 * (base1^(n-3)) + ... + d_{n-2}
+
+        When we remove d0, we subtract d0 * (base1^(n-2)), then multiply by base1 (shifting left) and then add the new digit.
+
+        However, we have to precompute base_power1 = base1^(n-2) mod mod1? Actually, we can precompute that.
+
+    Algorithm:
+
+        initial_state = [digits[0]] * (n-1)   # the initial state of length n-1
+        current_state = deque(initial_state)
+        s = list of strings: [str(d) for each in initial_state]
+
+        Compute the initial state_hash1 and state_hash2 (for both mods).
+
+        visited_pins = set()   # will store tuples (hash1, hash2) for the PINs (of length n) that we have visited.
+
+        count = 0   # distinct PINs so far
+        total_length = n-1   # current length of the string
+
+        We need to generate the string until we have at least K distinct PINs, and we break when we have reached K.
+
+        While count < K and total_length < 100000 (as per problem: the answer contains no longer than 100000 digits, so we break at 100000):
+
+          Try each digit in the available digits (in the given order? any order? but we are told to output any) to see if we can get a new PIN.
+
+          For each digit d in digits:
+            Compute the PIN hash: 
+                pin_hash1 = (state_hash1 * base1 + d) % mod1
+                pin_hash2 = (state_hash2 * base2 + d) % mod2
+
+            If (pin_hash1, pin_hash2) not in visited_pins:
+                Mark this PIN as visited, count++.
+                Append the digit d to s.
+                Update the state: pop the front and push d at the end.
+
+                How to update the state_hash?
+                  front_digit = current_state.popleft()
+                  current_state.append(d)
+                  Then update state_hash1: 
+                    state_hash1 = (state_hash1 - front_digit * base_power1) % mod1   [but note: base_power1 = base1^(n-2) mod mod1? Actually, the state has length n-1 and the front_digit is multiplied by base1^(n-2). However, we have to do modulo arithmetic carefully: subtract then multiply by base1 and add d?]
+
+                Actually, we can update the state_hash1 for the new state (which is the state without the first digit and then adding d at the end) as:
+
+                  state_hash1 = ( (state_hash1 - front_digit * base_power1) * base1 + d ) % mod1
+
+                Similarly for state_hash2.
+
+                total_length += 1
+
+                break out of the for-loop (so we use the first digit that gives a new PIN)
+
+          If we didn't find any digit that gives a new PIN (i.e., we tried all and they are already visited) and count < K, then we have to choose one digit arbitrarily to extend the string (so that we can move to a different state that might have unvisited edges). We choose the last digit in the available digits? (as per sample, it doesn't matter which one, but we have to choose one). Then:
+
+            d = digits[-1]   # or any, but we choose the last to be consistent with the sample? Actually, the problem says "any"
+            Append d to s.
+            Update the state: pop the front, push d at the end.
+            Update the state_hash similarly.
+
+            total_length += 1
+
+            Note: we do not mark any new PIN because we are not visiting a new PIN? Actually, we know that for every digit the PIN was already visited.
+
+        Then we break when count >= K or total_length reaches 100000.
+
+        Finally, output the entire string s.
+
+    However, note: the problem says the answer contains no longer than 100000 digits. So we break at 100000.
+
+ 3. Special note: We precompute base_power1 = pow(base1, n-2, mod1) and base_power2 similarly.
+
+ 4. Why base1^(n-2)? Because the state is of length (n-1). The first digit in the state is multiplied by base1^(n-2). For example, if state = [a, b, c] (n-1=3), then:
+        state_hash = a * (base1^2) + b * (base1^1) + c
+        Then to remove a: subtract a * (base1^2), then multiply by base1: (b * base1^1 + c) * base1 = b * base1^2 + c * base1, then add d: becomes b * base1^2 + c * base1 + d.
+
+ 5. We must be cautious: when subtracting, we do modulo and then make non-negative.
+
+ Implementation:
+
+        base_power1 = pow(base1, n-2, mod1)   # if n>=2, then n-2>=0. If n==2, then base_power1 = base1^0 = 1.
+
+        But note: when n==2, state has length 1. Then the state_hash is just that single digit. Then when we remove the front, we subtract that digit * base1^0 (which is the digit). Then multiply by base1 and add d.
+
+        Example: state = [a] (n-1=1). Then state_hash = a.
+        Then we remove a: subtract a * base_power1 (which is a * 1) -> becomes 0.
+        Then multiply by base1: 0, then add d: becomes d. So the new state_hash = d. Correct.
+
+ 6. We use two mods to avoid collisions.
+
+ 7. We also note: the initial state is of length n-1. Then we start by trying to add one digit to form the first PIN.
+
+ 8. The first PIN we form is the initial_state (which is n-1 digits) plus the first digit we add. Then we update the state to the last n-1 digits (which is the initial_state without the first digit? actually the initial_state is [d0, d1, ..., d_{n-2}], then we add d -> the PIN is [d0, d1, ..., d_{n-2}, d]. The next state is [d1, ..., d_{n-2}, d].
+
+ 9. We have to update the state_hash accordingly.
+
+ 10. We store the state as a deque so that we can pop from the left and append to the right.
+
+ 11. Important: We start the string with the initial state (n-1 digits). Then we add one digit at a time.
+
+ 12. The total distinct PINs we count is the set of (pin_hash1, pin_hash2) we have encountered.
+
+ 13. We break when we have at least K distinct PINs.
+
+ 14. The problem constraints: K <= min(M^N, 100000). So we don't need to generate more than 100000 distinct PINs. And the total length of the string is at most 100000.
+
+ 15. However, note: the problem says "the answer contains no longer than 100000 digits", so we break at 100000.
+
+ 16. We must also break the while loop when total_length reaches 100000 even if we haven't reached K? Actually the problem states: "the answer contains no longer than 100000 digits", meaning the input constraints ensure that we can get at least K distinct PINs without exceeding 100000 digits. But the problem says: "You may assume that the values of N, M, and K are chosen such that the answer contains no longer than 100000 digits." So we can safely break when we have reached 100000? Actually, we are also breaking when count>=K. And the problem says the answer is no longer than 100000, so we will break by count>=K before reaching 100000? But if we get stuck and have to append duplicates, we might hit 100000? The problem says the answer is no longer than 100000, so we are guaranteed that we can get K distinct PINs without exceeding 100000. However, we have to break at 100000 to avoid infinite loop and also to satisfy the constraint.
+
+ Let's code accordingly.
+
+ 17. Edge: n=1: we output the first k distinct digits. But note: the available digits are distinct. So we take the first k digits from the available digits? But k might be larger than the number of digits? The problem says K <= min(M^N, 100000). For n=1, M^N = M. So k<=M. Therefore, we output the first k digits from the given digits.
+
+ 18. Example: Sample Input #1: "3 2 5" and digits [4,7]. Then the output is "7477447". 
+        Our initial state: [4,4] (because n-1=2, and we take the first digit 4).
+        Then we try digits: 
+          first digit to try: 4 -> PIN = 444 -> new? -> mark it -> count=1 -> then state becomes [4,4] (but actually: remove the front (4) and add 4 -> state=[4,4] -> then we update the state_hash: 
+            state_hash_initial = 4*base1 + 4
+            base_power = base1^(1) because n-2=1.
+            Then remove first 4: ( (4*base1+4) - 4*base1 ) = 4 -> then *base1 -> 4*base1, then +4 -> 4*base1+4 -> same as initial? 
+
+        Actually, we have to compute the state_hash for the new state: which is [4,4] -> then we add 4 -> state becomes [4,4] again? Then we try 7: 
+          PIN = 447 -> new? then state becomes [4,7]. Then we try 4: PIN=474 -> new? then state becomes [7,4]. Then we try 7: PIN=747 -> new? state becomes [4,7]. Then we try 7: PIN=477 -> new? state becomes [7,7]. Then we try 4: PIN=774 -> new? state becomes [7,4]. Then we have 5 distinct PINs: 444,447,474,747,477,774? But the sample output has 5 distinct: 447,477,744,747,774. 
+
+        How do we get 744? Actually, we didn't start with 7. We started with 4.
+
+        Let me simulate:
+
+          initial state: "44"
+          then we add 7: string becomes "447" -> the PINs so far: 
+            "44" + 7 -> "447" (first PIN: 447)
+            then state becomes [4,7] -> then we add 4: string "4474" -> next PIN: [4,7,4] -> 474 -> then state becomes [7,4]
+          then we add 7: string "44747" -> PIN: [7,4,7] -> 747 -> state becomes [4,7]
+          then we add 4: string "447474" -> PIN: [4,7,4] -> 474 (duplicate) -> so we don't count? Then we try 7: 
+            PIN: 747 (duplicate) -> then we have to choose the last digit? which is 7 -> so we append 7: string "4474747" -> then PIN: [7,4,7] -> duplicate? 
+            Then state becomes [4,7] -> then we add 4 -> duplicate? then we add 7 -> duplicate? then we are stuck? 
+
+        How do we get 744? 
+
+        Alternatively, the sample output is "7477447". How does that work?
+
+          Start: state is the first two: "74" -> but how do we get the initial state? The initial state is the first digit repeated: so if we use 7? Actually, the problem says we start with the first available digit. The available digits are [4,7] -> so first digit is 4. So we must start with 4.
+
+        The sample output: "7477447" has 7 digits. How do we get the PINs?
+
+          PINs (with n=3) in the sample output:
+
+            positions 0:2 -> "747" -> distinct: 747
+            positions 1:3 -> "477" -> distinct: 477
+            positions 2:4 -> "774" -> distinct: 774
+            positions 3:5 -> "744" -> distinct: 744
+            positions 4:6 -> "447" -> distinct: 447
+
+        But wait, the sample explanation says: 447,477,744,747,774 -> that's 5.
+
+        How do we form the initial state? The initial state is the first n-1=2 digits: "74". Then we add the next digit: '7', so the string becomes "747", and we get the first PIN: "747". Then we slide: the next state is the last n-1=2 digits: "47". Then we add the next digit: '7', so the string becomes "7477", and the next PIN is "477". Then state becomes "77". Then we add '4': string "74774", PIN "774". Then state becomes "74". Then we add '4': string "747744", PIN "744". Then state becomes "44". Then we add '7': string "7477447", PIN "447".
+
+        So we have the PINs: 747, 477, 774, 744, 447 -> 5 distinct.
+
+        How do we generate that?
+
+          Our initial state: [4,4] -> but the sample output starts with "74". 
+
+        How can we get "74" as the initial state? 
+
+        The problem: we can choose any initial state? Actually, the problem does not specify. We are told to output any string. We can start with any state? But we want to minimize the length.
+
+        Alternatively, we can start with an initial state that is the last n-1 digits of the string we are going to build? But the problem says: the initial state is built by the first n-1 digits. How about we choose the initial state as the first digit? But the first digit is arbitrary? Actually, we are told: the initial state is built by the first n-1 digits. We can choose the initial state arbitrarily? Yes, because the problem doesn't specify. We want to minimize the length.
+
+        How about we set the initial state to the first available digit? But the sample output starts with 7, which is the second available digit.
+
+        We can optimize by choosing the initial state arbitrarily? Actually, the problem says: we can output any string. So we can choose any initial state. However, note: the problem states that we start with a string of n-1 digits. We can choose any n-1 digits from the available digits? 
+
+        How about: we set the initial state to the last digit? Or we set the initial state to the digits that we think will lead to the shortest string? 
+
+        But the problem does not require the absolute shortest? It requires the shortest, but we can output any if there are multiple. However, we are required to output the shortest string. 
+
+        Actually, the problem says: "Output in a line the shortest string which contains at least K different PINs as its substring. If there is more than one such string, you can output any of them."
+
+        So we can choose any initial state. How about we set the initial state to the first available digit repeated? But that might not be optimal. 
+
+        However, note: the problem constraints and the known solution (de Bruijn sequence) often start with zeros? But we don't know.
+
+        Alternatively, we can start with an arbitrary state? and then traverse. The known algorithm for the shortest string that contains all PINs is the Eulerian path in the de Bruijn graph. But we don't need all, we need at least K.
+
+        Since the problem constraints say the answer is no longer than 100000, we can start with the first available digit repeated. But the sample output starts with 7. 
+
+        How can we generate the sample output? 
+
+          We are starting with the first available digit (which is 4) repeated n-1 times -> "44". Then we need to generate the PINs. The sample output is "7477447", which starts with "74". 
+
+        How can we get "74" as the first two? 
+
+          We must start with "44". Then we have to add a digit. The first digit we add is 7? Then we get "447", then the state becomes [4,7]. Then we add 4: "4474", state becomes [7,4]. Then we add 7: "44747", state becomes [4,7]. Then we add 7: "447477", state becomes [7,7]. Then we add 4: "4474774", state becomes [7,4]. Then we add 4: "44747744", state becomes [4,4]. Then we add 7: "447477447", then we have the PINs: 
+            [0:3] -> 447
+            [1:4] -> 474
+            [2:5] -> 747
+            [3:6] -> 477
+            [4:7] -> 774
+            [5:8] -> 744
+            [6:9] -> 447 (again)
+
+          We have distinct: 447, 474, 747, 477, 774, 744 -> 6 distinct. But we only need 5.
+
+          And the string is longer than the sample.
+
+        How about we change the initial state? 
+
+          The problem allows any initial state. We can choose the initial state as [7,4]? Then the string starts with "74". Then we add 7: "747" -> PIN 747 -> count=1, state becomes [4,7]. Then we add 7: "7477" -> PIN 477 -> count=2, state becomes [7,7]. Then we add 4: "74774" -> PIN 774 -> count=3, state becomes [7,4]. Then we add 4: "747744" -> PIN 744 -> count=4, state becomes [4,4]. Then we add 7: "7477447" -> PIN 447 -> count=5.
+
+          That matches the sample output.
+
+        Therefore, we can set the initial state arbitrarily. How? We can choose the initial state to be the first available digit? But then we get a longer string. 
+
+        How about we set the initial state to the last available digit? Then we might get a shorter string? 
+
+        Actually, the problem does not specify the initial state. We are free to choose any n-1 digits from the available digits. 
+
+        However, the problem states: we want the shortest string. How do we choose the initial state optimally? 
+
+        We don't know. We can choose any. The problem says we can output any. So we choose:
+
+          initial_state = [digits[0]] * (n-1)   # as in the editorial
+
+        But the sample input: digits = [4,7] -> digits[0]=4 -> initial_state = "44". Then we generated a string that was longer than 7? 
+
+        Alternatively, we can choose the initial state as the last digit repeated? 
+
+          initial_state = [digits[-1]] * (n-1)   -> "77" for the sample? Then:
+
+          Start: "77", then we add 4: "774" -> PIN 774 -> count=1, state becomes [7,4]. Then we add 4: "7744" -> PIN 744 -> count=2, state becomes [4,4]. Then we add 7: "77447" -> PIN 447 -> count=3. Then we need two more. Then we add 4: "774474" -> PIN 474 -> count=4. Then we add 7: "7744747" -> PIN 747 -> count=5. Then the string is "7744747" (7 digits) -> same length as the sample.
+
+        So both initial states can lead to a string of length 7.
+
+        Therefore, we can choose any initial state. We'll choose the last available digit for the initial state? Or the first? 
+
+        The editorial says: "Create a string of length N-1 using the first available digit." -> so we use the first.
+
+        But why the sample output starts with 7? Because the sample output uses a different initial state? 
+
+        Actually, the sample output "7477447" has the first two digits as "74", which is not all the same. 
+
+        How do we get that? 
+
+        We are free to choose the initial state arbitrarily? The problem does not fix the initial state. We can set the initial state to any n-1 digits? 
+
+        How about we set the initial state to the last n-1 digits of the shortest string we are going to build? But we don't know the future.
+
+        Alternatively, we can set the initial state to the first digit of the available digits for the first n-2 positions and the last digit for the last position? 
+
+        Actually, we want to start with a state that has the potential to cover many new PINs. 
+
+        Since the problem does not specify, and we are allowed to output any shortest string, we can choose the initial state arbitrarily. 
+
+        However, the known solution in the editorial uses the first available digit for the entire initial state. But that leads to a longer string in the sample? 
+
+        Let me run the algorithm with the sample input and initial state "44" (first available digit repeated) and see if we can get a string of length 7.
+
+          state = [4,4] -> state_hash = (4*base1 + 4) mod mod1.
+
+          Then we try digits in order: [4,7]. 
+            For d=4: PIN = 444 -> hash = ( (4*base1+4)*base1+4 ) mod mod1 -> if not visited -> mark visited, count=1, then update state: remove first 4 -> state becomes [4,4] -> state_hash becomes: 
+                  new_state_hash = ( ( (4*base1+4) - 4 * base_power1 ) * base1 + 4 ) mod mod1 
+                  base_power1 = base1^(n-2) = base1^1 (since n=3) = base1.
+                  So: ( (4*base1+4) - 4 * base1 ) = 4 -> then * base1 -> 4*base1, then +4 -> 4*base1+4 -> same as initial state_hash? 
+            So we stay at the same state. Then we mark PIN 444 as visited. Then we try d=7: 
+                  PIN = 447 -> new? then mark visited (count=2), then update state: remove first 4 -> becomes 4 (from the state [4,4]) and then add 7 -> state becomes [4,7]. 
+                  state_hash update: 
+                    current state_hash = 4*base1+4
+                    base_power1 = base1
+                    Then: state_hash = ( (4*base1+4 - 4*base1) * base1 + 7 ) mod mod1 = (4 * base1 + 7) mod mod1.
+
+            Then the string is now "4447" (but wait: initial state "44", then we added two digits? Actually, we did two steps: first we added 4 -> string becomes "444", then we added 7 -> string becomes "4447". But we started with "44", so the string is "44" (initial) then we added one digit at a time. So:
+
+                Step0: string = "44" -> state = [4,4]
+                Step1: we add 4 -> string="444", then state becomes [4,4] (by removing the first 4 and adding 4 -> same state) -> then we update state_hash to the same? -> but we have to store the state as deque: 
+                    state = deque([4,4]) -> then we pop the left -> becomes [4], then we append 4 -> becomes [4,4] -> same.
+
+                Step2: we add 7 -> string="4447", then we remove the first 4 (from the state [4,4]) -> becomes [4] then append 7 -> state becomes [4,7]. 
+
+            Then we have two distinct PINs: 444 and 447.
+
+          Now, we are at state [4,7]. Then we try digits:
+            d=4: PIN = 474 -> new? -> count=3, state becomes [7,4] -> update: 
+                current state_hash = 4*base1+7
+                base_power1 = base1
+                new_state_hash = ( (4*base1+7 - 4*base1) * base1 + 4) = (7 * base1 + 4) mod mod1.
+
+            d=7: PIN = 477 -> new? -> count=4, state becomes [7,7] -> then state_hash = ( (4*base1+7 - 4*base1) * base1 + 7) = (7*base1+7) mod mod1.
+
+          Then we are at state [7,7]: 
+            d=4: PIN=774 -> new? -> count=5 -> we break.
+
+          Then the string is "4447" (from step0 to step2) then we added 4 and then 7 and then 4? 
+                Step0: "44" (length=2)
+                Step1: add 4 -> "444" (length=3)
+                Step2: add 7 -> "4447" (length=4)
+                Step3: add 4 -> "44474" (length=5)
+                Step4: add 7 -> "444747" (length=6)
+                Step5: add 4 -> "4447474" (length=7) -> but we broke at step5? Actually, we broke when we added the last digit (4) at step5? Then the PINs we have: 444,447,474,477,774 -> that's 5.
+
+          The string is "4447474" (7 digits) -> but the sample output is "7477447". 
+
+          But both have 7 digits. And both contain 5 distinct PINs? 
+
+          For "4447474", the PINs are:
+            [0:3] -> 444
+            [1:4] -> 447
+            [2:5] -> 474
+            [3:6] -> 747 -> wait, no: 
+              positions: 
+                0:3 -> 444
+                1:4 -> 444 -> no: the next window: from index1 to index3: 447? 
+                Actually: 
+                  index0: '4', index1: '4', index2: '4' -> 444 -> then index1: '4', index2: '4', index3: '7' -> 447 -> then index2: '4', index3: '7', index4: '4' -> 474 -> then index3: '7', index4: '4', index5: '7' -> 747 -> then index4: '4', index5: '7', index6: '4' -> 474 (duplicate) -> so we have 444,447,474,747 -> only 4 distinct? 
+
+          We missed 774? 
+
+          Actually, the last PIN we added was 774? How? 
+          The last state was [7,7] -> then we added 4: the PIN is 774 -> which we marked as distinct? Then we break. 
+
+          How do we get 774? 
+            The state [7,7] and we add 4: the PIN is 774? 
+            Then the substring: we need to take the last three? 
+            The entire string: "4447474" -> the last three: "474", but 774? 
+
+          Actually, the PINs are:
+
+            positions: 
+              0:3 -> 444
+              1:4 -> 444 -> no: the next is 447? 
+                indices: 0:0,1,2 -> 444
+                indices: 1:1,2,3 -> 447
+                indices: 2:2,3,4 -> 474
+                indices: 3:3,4,5 -> 747
+                indices: 4:4,5,6 -> 474
+
+          We never generated 774? 
+
+          How did we generate 774? 
+
+          We were at state [7,7] (which means the last two digits of the current string are "77"). Then we added 4 -> so the last three digits become "774". But wait, the last two digits of the string at the state [7,7] are the two sevens. Then we add 4 -> the string becomes ...77 then 4 -> so the last three are the last two sevens and the new four? 
+
+          How do we get the last two sevens? 
+
+          The string after step4: "444747" -> the last two digits: 
+            step0: "44" -> state [4,4]
+            step1: add 4 -> "444" -> state [4,4] -> then the last two are 44? 
+            step2: add 7 -> "4447" -> state [4,7] -> last two: 47
+            step3: add 4 -> "44474" -> state [7,4] -> last two: 74
+            step4: add 7 -> "444747" -> state [4,7] -> last two: 47? 
+
+          How did we get state [7,7]? 
+
+          In step4: we were at state [7,4] (from step3). Then we added 7: 
+            PIN = 747 (which we marked as new) -> then we update the state: remove the front (which is 7) and add 7 -> so state becomes [4,7] -> then we add 7 -> state becomes [7,7]? 
+
+          Actually, the state update: 
+            state at step3: [7,4] -> we add 7: 
+              PIN = 747 -> then we remove the front (7) and add 7 -> the state becomes [4,7] -> wait, that's not [7,7]. 
+
+          Correction: the state update: 
+            state = deque([7,4]) 
+            then we add 7: the PIN is 747 -> then we remove the front (7) -> state becomes [4] -> then we append 7 -> state becomes [4,7] -> so state is [4,7]. 
+
+          Then at step5: we are at state [4,7]. Then we add 4: 
+            PIN = 474 -> duplicate? (because we already had 474) -> then we try 7: 
+            PIN = 477 -> new? -> then we mark it and update state: remove 4 -> becomes [7] then add 7 -> [7,7] -> then we break? 
+
+          Then we have to add one more step to get 774? 
+
+          Actually, we broke at step5 because we reached k=5? but we only had 5 distinct PINs? 
+
+          How many distinct PINs we had so far? 
+            444, 447, 474, 747, 477 -> that's 5. Then we broke. 
+
+          Then the string is "4447477" (7 digits). 
+
+          Now, the PINs: 
+            0:3 -> 444
+            1:4 -> 447
+            2:5 -> 474
+            3:6 -> 747
+            4:7 -> 477 -> and we broke at the step that added the last 7 -> so we have 5 distinct. 
+
+          And the string is "4447477" (7 digits) -> same length as sample.
+
+        Therefore, we can output "4447477" and it is valid.
+
+        So the algorithm works.
+
+        But the sample output is "7477447". Why? 
+
+        Because the problem says: "if there is more than one such string, you can output any of them".
+
+        Therefore, we can output either.
+
+        We'll stick to the algorithm: 
+          initial state: [first_digit]*(n-1)
+          Then traverse until we have K distinct PINs.
+
+ 19. Implementation details: 
+
+        We use two mods: mod1, mod2 (10**9+7, 10**9+9) and base1, base2 = 131.
+
+        Precomputation: 
+          base_power1 = pow(base1, n-2, mod1)   # if n>=2, then n-2>=0. If n==2, then base_power1 = 1.
+          base_power2 = pow(base2, n-2, mod2)
+
+        We maintain:
+          current_state: deque of the last n-1 digits (as integers)
+          state_hash1, state_hash2: the rolling hash for the current state (string of n-1 digits)
+
+        How to update the state_hash when removing the front and adding a new digit at the end?
+
+          state_hash1 = ( (state_hash1 - (front_digit * base_power1) % mod1 ) * base1 + new_digit
+          then mod mod1.
+
+          But note: the subtraction might be negative. We do:
+            state_hash1 = (state_hash1 - front_digit * base_power1) % mod1
+            Then: state_hash1 = (state_hash1 * base1 + new_digit) % mod1
+
+        Similarly for state_hash2.
+
+        The PIN hash for a candidate digit d is computed as:
+          pin_hash1 = (state_hash1 * base1 + d) % mod1
+          pin_hash2 = (state_hash2 * base2 + d) % mod2
+
+        We use a set visited_pins to store tuples (pin_hash1, pin_hash2).
+
+        We start by initializing the state and the state_hash.
+
+        Then we extend the string until we have K distinct PINs or total_length>=100000.
+
+        Steps:
+
+          while count < K and total_length < 100000:
+            found = False
+            for d in digits:   # try each digit in the given order
+                pin_hash1 = (state_hash1 * base1 + d) % mod1
+                pin_hash2 = (state_hash2 * base2 + d) % mod2
+                if (pin_hash1, pin_hash2) not in visited_pins:
+                    visited_pins.add((pin_hash1, pin_hash2))
+                    count += 1
+                    s_list.append(str(d))
+
+                    front_digit = current_state.popleft()
+                    current_state.append(d)
+
+                    # Update state_hash: remove front_digit and add d at the end.
+                    state_hash1 = (state_hash1 - (front_digit * base_power1)) % mod1
+                    state_hash1 = (state_hash1 * base1 + d) % mod1
+
+                    state_hash2 = (state_hash2 - (front_digit * base_power2)) % mod2
+                    state_hash2 = (state_hash2 * base2 + d) % mod2
+
+                    total_length += 1   # because we appended one digit
+                    found = True
+                    break
+
+            if not found:
+                # choose the last digit in the list of digits (arbitrary)
+                d = digits[-1]
+                s_list.append(str(d))
+
+                front_digit = current_state.popleft()
+                current_state.append(d)
+
+                state_hash1 = (state_hash1 - (front_digit * base_power1)) % mod1
+                state_hash1 = (state_hash1 * base1 + d) % mod1
+
+                state_hash2 = (state_hash2 - (front_digit * base_power2)) % mod2
+                state_hash2 = (state_hash2 * base2 + d) % mod2
+
+                total_length += 1
+
+          Then output the entire string: ''.join(s_list)
+
+ 20. Important: The initial state is built and stored in s_list as strings.
+
+ 21. We must be cautious with negative mod: we can do:
+
+        state_hash1 = (state_hash1 - (front_digit * base_power1)) % mod1
+        if state_hash1 < 0: state_hash1 += mod1   -> but modulo operation in Python with negative: we can do:
+
+        Alternatively, we can avoid by:
+
+          state_hash1 = (state_hash1 - (front_digit * base_power1)) % mod1
+          if state_hash1 < 0: state_hash1 += mod1
+
+        But the problem says the digits are small and the modulus is big, and the state_hash1 is in [0, mod1-1]. Actually, the subtraction might go negative. So we do:
+
+          state_hash1 = (state_hash1 - (front_digit * base_power1)) % mod1
+          if state_hash1 < 0: state_hash1 += mod1
+
+        Alternatively, we can use:
+
+          state_hash1 = (state_hash1 - (front_digit * base_power1)) % mod1
+          state_hash1 = (state_hash1 * base1 + d) % mod1
+
+        But the negative might break? Actually, modulo arithmetic: (a % mod1) is in [0, mod1-1]. But if we subtract and get negative, then we do % mod1, it becomes a positive? 
+
+        However, in Python, if we do:
+
+          x = -5 % mod1   -> that will be mod1-5, which is positive.
+
+        So we don't need to adjust.
+
+        Similarly for mod2.
+
+ 22. Let's test with n=3, base1=131, base_power1 = 131 (because n-2=1) -> base1^1 = 131.
+
+        state = [4,4]: 
+          state_hash1 = (4*131 + 4) % mod1 = (524+4)=528.
+
+        Then we remove 4: 
+          state_hash1 = (528 - 4*131) % mod1 = (528 - 524) = 4.
+          Then multiply by 131: 4*131 = 524, then add 4: 528 -> same as initial? 
+
+        But then we are adding 4 again -> same state. Correct.
+
+        Then when we add 7:
+          state_hash1 = (528 - 4*131) = 4 -> then *131 -> 524, then +7 -> 531.
+
+        Then the state_hash for the state [4,7] is 531.
+
+ 23. We'll code accordingly.
+
+ 24. For the sample input #2: "2 5 9" with digits [1,2,3,4,5] -> we output "1234554321" (10 digits). 
+
+        How do we generate that?
+
+        n=2 -> state length n-1=1. We start with the first digit: [1] -> state_hash = 1.
+
+        Then we try to add digits:
+
+          d=1: PIN = 11 -> new? -> count=1, state becomes [1] -> state_hash = ( (1 - 1 * base_power1) % mod1) * base1 + 1 -> base_power1 = base1^(n-2)=base1^0=1 -> so: (1-1*1)=0 -> then 0*base1+1 = 1 -> same state_hash? 
+          d=2: PIN=12 -> new? -> count=2, state becomes [2] -> state_hash = ( (1 - 1*1) * base1 + 2 ) = 0+2 = 2.
+          d=3: PIN=23 -> new? -> count=3, state becomes [3] -> state_hash=3.
+          d=4: PIN=34 -> new? -> count=4, state becomes [4] -> state_hash=4.
+          d=5: PIN=45 -> new? -> count=5, state becomes [5] -> state_hash=5.
+
+        Then at state [5]: 
+          d=1: PIN=51 -> new? -> no? 
+          d=2: ... no? 
+          d=3: ... no? 
+          d=4: ... no? 
+          d=5: PIN=55 -> new? -> count=6, state becomes [5] -> same state.
+
+        Then we are stuck? We only have 6 distinct PINs? But we need 9.
+
+        Then we do the stuck step: we choose the last digit (5) -> then we append 5: string becomes "123455", state becomes [5] (same state). Then we try again? 
+
+          d=1: 51 -> new? -> count=7, state becomes [1]? 
+            How: 
+              current state [5] -> we append 5: then the state becomes [5] (because we remove the front (5) and add 5 -> same). Then we append 1: 
+                PIN = 51 -> new? -> count=7, state becomes [1] -> state_hash=1.
+
+        Then we are at state [1]: 
+          d=1: 11 -> visited? 
+          d=2: 12 -> visited? 
+          d=3: 13 -> new? -> count=8, state becomes [3] -> state_hash=3.
+
+        Then at state [3]: 
+          d=1: 31 -> new? -> count=9 -> break.
+
+        Then the string: initial state "1", then we added: 2,3,4,5,5,1,3,1 -> so the string is "123455131" -> but that's 9 digits? 
+
+        But the sample output is "1234554321" (10 digits). 
+
+        How do we get the sample output? 
+
+        The sample output: 
+          The PINs: 12,23,34,45,54,43,32,21,55 -> 9 distinct.
+
+        How do we generate 54? 
+
+          We need to have the state [5] and then add 4 -> PIN 54 -> new? -> so we mark it. 
+
+        So we should not have skipped 54? 
+
+        In our algorithm, when we were at state [5] (after "12345"), we tried d=5 first and then we marked 55 and then we got stuck? Then we appended 5 (to get "123455") and then we tried d=1? 
+
+        But we didn't try d=4 at the state [5]? 
+
+        We try the digits in the given order: [1,2,3,4,5]. So at state [5] (after "12345"):
+
+          We try d=1: PIN=51 -> new? -> then we would have taken that? 
+
+        But wait, the problem says the available digits: [1,2,3,4,5] -> so we try in that order: 1,2,3,4,5.
+
+        Then when at state [5] (after "12345"), we try d=1: 51 -> new? -> then we take that? Then we get:
+
+          state [5] -> add 1: PIN=51 -> count=6, state becomes [1] -> then we try d=1: 11 -> visited? no? because we only have 11 from the initial state? 
+
+          Actually, we started with state [1] and then added 1? -> then we had PIN=11 -> so it is visited.
+
+          Then we try d=2: 12 -> visited? -> yes, because we had 12 already? 
+          Then we try d=3: 13 -> new? -> count=7, state becomes [3] -> then we try d=1: 31 -> new? count=8 -> then we try d=2: 32 -> new? count=9 -> break.
+
+          Then the string: "1" (initial) + "2" (to form 12) + "3" (to form 23) + "4" (to form 34) + "5" (to form 45) + "1" (to form 51) -> then we are at state [1]? then we add 3: to form 13? -> then state becomes [3] -> then we add 1: to form 31? -> then we break? 
+
+          The string: "12345131" -> 8 digits? 
+
+        But the sample output is 10 digits. 
+
+        How do we get 54,43,32,21? 
+
+        We need to go backwards: from 5 to 4, then 3, then 2, then 1.
+
+        After "12345", we are at state [5]. Then we try d=4: 54 -> new? -> then we take it? then state becomes [4]. Then we try d=3: 43 -> new? -> state becomes [3]. Then d=2: 32 -> new? -> state becomes [2]. Then d=1: 21 -> new? -> state becomes [1]. Then we have 9 distinct? 
+
+        Then the string: "12345" + "4321" -> "123454321" -> 9 digits? 
+
+        Then we have distinct PINs: 
+          12, 23, 34, 45, 54, 43, 32, 21 -> 8 distinct? 
+
+        We are missing one? 
+
+        Actually, we need 9. Also, we have 55? 
+
+        The PINs:
+
+          [0:2] -> 12
+          [1:3] -> 23
+          [2:4] -> 34
+          [3:5] -> 45
+          [4:6] -> 54
+          [5:7] -> 43
+          [6:8] -> 32
+          [7:9] -> 21
+
+        That's 8 distinct. 
+
+        We also need 55? 
+
+        Actually, the problem says: the sample output "1234554321" has the PINs: 12,21,23,32,34,43,45,54,55 -> 9 distinct.
+
+        How do we get 55? 
+
+          After "12345", we are at state [5]. Then we add 5: PIN=55 -> new? -> count=6, state becomes [5]. Then we try d=4: PIN=54 -> new? -> count=7, state becomes [4]. Then d=3: 43 -> count=8, state becomes [3]. Then d=2: 32 -> count=9, state becomes [2]. Then we break? 
+
+        Then the string: "12345" + "5432" -> "123455432" -> 9 digits. 
+
+        But the sample output is "1234554321" (10 digits). Why 10? 
+
+        The last PIN 21? 
+
+        Actually, we broke at 9 distinct? Then we don't need the last digit? 
+
+        But the problem: we have at least K=9 distinct PINs. So we can break at 9 distinct. 
+
+        Then why the sample output has 10 digits? 
+
+        Because the last PIN 21 is included? 
+
+        Actually, the sample output has:
+
+          PINs: 
+            [0:2] -> 12
+            [1:3] -> 23
+            [2:4] -> 34
+            [3:5] -> 45
+            [4:6] -> 55   -> because we added 5 after 45: then the state becomes [5] -> then we add 5: then the window [4:6] is "55" -> but wait, n=2: so the windows are consecutive two digits.
+
+          The string "1234554321" has the windows:
+
+            "12" -> 12
+            "23" -> 23
+            "34" -> 34
+            "45" -> 45
+            "55" -> 55
+            "54" -> 54
+            "44" -> but wait: the next is "54" -> then "43" -> then "32" -> then "21"
+
+          Actually: 
+            index0:1, index1:2 -> 12
+            index1:2, index2:3 -> 23
+            index2:3, index3:4 -> 34
+            index3:4, index4:5 -> 45
+            index4:5, index5:5 -> 55
+            index5:5, index6:4 -> 54
+            index6:4, index7:3 -> 43? -> but the digit at index6 is 5? and index7 is 4? -> wait the string is "1234554321"
+
+          Actually:
+
+            indices: 
+              0: '1'
+              1: '2'
+              2: '3'
+              3: '4'
+              4: '5'
+              5: '5'
+              6: '4'
+              7: '3'
+              8: '2'
+              9: '1'
+
+          Then the windows:
+
+            [0:2] -> "12"
+            [1:3] -> "23"
+            [2:4] -> "34"
+            [3:5] -> "45"
+            [4:6] -> "55"
+            [5:7] -> "54"
+            [6:8] -> "43"
+            [7:9] -> "32"
+            [8:10] -> "21"   -> but the string only has 10 characters, so the last window is [8:10] -> "21"
+
+          So we have 9 distinct? 
+
+        How many distinct? 
+          12,23,34,45,55,54,43,32,21 -> 9 distinct.
+
+        Therefore, the string "1234554321" is 10 digits and contains 9 distinct PINs.
+
+        How do we generate that? 
+
+          n=2, initial state = [1] (the first digit repeated n-1=1 time) -> string starts with "1".
+
+          Then we try:
+            d=2: PIN=12 -> new -> count=1, state becomes [2] -> string "12"
+          Then at state [2]:
+            d=3: 23 -> new -> count=2, state becomes [3] -> string "123"
+          Then at state [3]:
+            d=4: 34 -> new -> count=3, state becomes [4] -> string "1234"
+          Then at state [4]:
+            d=5: 45 -> new -> count=4, state becomes [5] -> string "12345"
+          Then at state [5]:
+            We try d=1: 51 -> new? -> then we take it? -> then state becomes [1] -> then we are at state [1] -> then we try d=2: 12 -> visited? -> then we try d=3:13 -> new -> count=5, state becomes [3] -> ... 
+
+          But the sample output does not do that.
+
+          Alternatively, at state [5] (after "12345"):
+
+            We try d=5: 55 -> new -> count=5, state becomes [5] -> string "123455"
+            Then at state [5]:
+              We try d=4: 54 -> new -> count=6, state becomes [4] -> string "1234554"
+            Then at state [4]:
+              We try d=3: 43 -> new -> count=7, state becomes [3] -> string "12345543"
+            Then at state [3]:
+              We try d=2: 32 -> new -> count=8, state becomes [2] -> string "123455432"
+            Then at state [2]:
+              We try d=1: 21 -> new -> count=9 -> break -> then we output "1234554321" -> we appended '1' at the end -> so the string is "1234554321" (10 digits).
+
+          This matches the sample output.
+
+        Why didn't we try d=1 at the state [5] first? Because the digits are given as [1,2,3,4,5] -> so we try 1 first? 
+
+        But in the above, we tried d=5 first? 
+
+        Actually, the algorithm: for d in digits: we try in the given order.
+
+        The input digits: [1,2,3,4,5] -> so at state [5] (after "12345"):
+
+          We try d=1: 51 -> new? -> then we would take it? 
+
+        But 51 is not in the set? -> so we take d=1? 
+
+        Then we get a different string.
+
+        How do we get the sample output? We must try d=5 at state [5] only when we have exhausted 1,2,3,4? 
+
+        Actually, the sample output requires that we try 5 first? 
+
+        But our algorithm tries the digits in the given order: [1,2,3,4,5]. So at state [5], we try d=1 first -> and if 51 is new, we take it.
+
+        How can 51 be new? 
+
+        The distinct PINs we have so far: 12,23,34,45 -> we don't have 51. 
+
+        So we take 1 -> then the string becomes "123451", and the state becomes [1] -> then we try d=1: 11 -> new? -> then we take 1 -> then state becomes [1] -> then we have to continue until we get 9 distinct.
+
+        The sample output is 10 digits and we can have a string of 10 digits: "123451..." but that might be different.
+
+        The problem: we can output any shortest string. The sample output is one of the shortest? 
+
+        The minimal length? 
+
+          We have to cover K distinct PINs. The string must have at least (n-1) + (number of steps) digits. The steps: we need at least K distinct PINs, and we get one distinct PIN per step (when we add a digit that forms a new PIN). But sometimes we add a digit that does not form a new PIN (stuck step) and then we might form a new PIN later. 
+
+          The minimal length is at least (n-1) + (K) [because each distinct PIN requires one new digit? not exactly: the first PIN is formed by the initial state plus the first digit -> so we get the first distinct PIN at the first digit we add]. Then the next distinct PIN requires one more digit? 
+
+          Actually, we start with a string of length (n-1) and then we add one digit to get the first PIN. Then each subsequent distinct PIN requires one digit? But sometimes we don't get a distinct PIN per digit (if we are stuck we add a digit without a distinct PIN). 
+
+          So the minimal length is (n-1) + (number of distinct PINs) + (number of stuck steps). 
+
+          And we don't know the minimal number of stuck steps. 
+
+        But the problem says: output the shortest string. Our algorithm is greedy: we take the first digit that gives a new PIN. If none, we take the last digit arbitrarily. 
+
+        This is known to be efficient for Eulerian paths? 
+
+        Since the problem constraints are high (K up to 100000) and the string length at most 100000, we output the string we build.
+
+        And the problem says: "You may assume that the values of N, M, and K are chosen such that the answer contains no longer than 100000 digits."
+
+        So we break when we have reached K distinct PINs or total_length>=100000.
+
+        Therefore, we output the code as described.
+
+ 25. Let's run sample input #3: "6 3 2" with digits [9,3,5] -> output "9353593" (7 digits).
+
+        n=6 -> state length=5. We start with [9,9,9,9,9]? 
+
+        Then we try digits:
+
+          d=9: PIN=999999 -> new? -> count=1, state becomes [9,9,9,9,9] -> same state.
+          d=3: PIN=999993 -> new? -> count=2 -> break.
+
+        Then the string: "99999" (initial) + "3" -> "999993" -> 6 digits? 
+
+        But the sample output is "9353593" (7 digits). 
+
+        Why? 
+
+        The problem: the PINs are substrings of length 6. 
+
+        The sample output: 
+          PINs: 
+            [0:6] -> 935359 -> distinct? 
+            [1:7] -> 353593 -> distinct? 
+
+          So two distinct PINs. 
+
+        How do we generate "9353593"? 
+
+          Our algorithm: 
+            initial state: [9] repeated 5 times -> "99999"
+
+            Then we try d=3: then the PIN is "999993" -> new -> then we break? 
+
+          Then the string is "999993" (6 digits) -> which is shorter than 7. 
+
+        Why the sample output is 7? 
+
+        The problem: the problem says: the answer contains no longer than 100000 digits. And the sample output is 7. 
+
+        But our output is 6, which is shorter? 
+
+        Why is the sample output 7? 
+
+        The problem statement: "the string S which contains at least K different PINs". 
+
+        Our string "999993" has two distinct PINs? 
+
+          The windows: 
+            [0:6] -> "999993" -> one distinct PIN.
+            But wait: the problem says: when you enter the string, the system tests:
+
+              Initially: the string is "99999" (5 digits) -> then we enter the next digit '3' -> then the system tests the first PIN: [0:6] -> "999993". 
+
+          Then the system removes the first digit and shifts: then we have "99993" (5 digits) -> then we haven't entered any new digit? 
+
+          But the problem says: "when you enter an N digits PIN, it is evaluated automatically and promptly. Whenever your entered PIN is wrong, it removes the oldest (first) digit and shifts all the remaining to the left, thus, you only need to enter one more (last) digit to make it N length again."
+
+          So the entire string we input is "999993", and the system tests:
+
+            [0:6] -> "999993" -> one PIN.
+
+          Then we are done? We have one distinct PIN? 
+
+        But we broke at count=1? 
+
+        Actually, the first PIN we get is when we add the first digit: that forms a string of length 6 -> then we get one distinct PIN. Then we break because we have 2? 
+
+        We broke at count=2? 
+
+        Actually, we started with state "99999", then we added 3: that forms the first PIN "999993" -> count=1. Then we update the state: remove the first 9 -> state becomes "99993". Then we are at state "99993", and we break? 
+
+        But we only have one distinct PIN? 
+
+        We need at least 2.
+
+        Then we continue: 
+
+          Now state = [9,9,9,9,3] -> state_hash = ... 
+          Then we try digits: 
+            d=9: PIN = 999939 -> new? -> count=2 -> then we break.
+
+          Then we add 9: the string becomes "9999939" (7 digits). 
+
+        Then the PINs: 
+          [0:6] -> "999993"
+          [1:7] -> "999939"
+
+        Then we have two distinct PINs.
+
+        So the output is "9999939" (7 digits) -> but the sample output is "9353593" (7 digits). 
+
+        Why the sample output is "9353593"? 
+
+        The problem: we can output any. 
+
+        Therefore, both are acceptable.
+
+        But the sample output "9353593" might be generated by:
+
+          initial state: we choose the first digit? 9 -> then repeated 5 times? no. 
+
+          The problem: we can choose any initial state. The sample output starts with "93535", which is the initial state? 
+
+          Actually, the initial state is the first n-1=5 digits: "93535". Then we add '9': the string becomes "935359" -> then the PIN is "935359" -> distinct? count=1. Then we update the state: remove the first '9' -> state becomes "35359". Then we add '3': the string becomes "9353593", and the next PIN is "353593" -> distinct? count=2 -> break.
+
+        So the initial state was "93535", which is not the first digit repeated. 
+
+        How can we generate that? 
+
+        We can choose the initial state arbitrarily. We can set the initial state to [9,3,5,3,5]? 
+
+        How? 
+
+          We are given the digits: [9,3,5]. We can form the initial state by taking the available digits in any order? 
+
+        The problem: we are free to choose the initial state arbitrarily? 
+
+        The editorial says: "Create a string of length N-1 using the first available digit." -> but that might not be optimal? 
+
+        How about we set the initial state to the first (n-1) digits from a list that we think might cover more? 
+
+        Alternatively, we can set the initial state to the available digits in a cyclic manner? 
+
+        Actually, the problem says: the initial state is the first n-1 digits of the string. And we are building the string. So we can set the initial state to any n-1 digits? 
+
+        We'll change the initialization: 
+
+          We can set the initial state to the first available digit? -> digits[0] repeated n-1 times? 
+
+        But the sample input #3: digits[0]=9 -> so initial state = [9]*5 -> "99999". 
+
+        How about we set the initial state to the first min(n-1, len(available_digits)) digits? But n-1=5 and we have 3 digits. 
+
+        We can set the initial state to: [9,3,5,9,3]? 
+
+        But how? 
+
+        The problem: we are free to choose any initial state? 
+
+        We'll do: 
+
+          initial_state = []
+          for i in range(n-1):
+              initial_state.append( digits[i % len(digits)] )   # but the digits are [9,3,5] -> then i=0:9, i=1:3, i=2:5, i=3:9, i=4:3 -> so [9,3,5,9,3]
+
+        Then the string starts with "93593", then we add a digit. 
+
+        Then we try to add a digit:
+
+          d=9: PIN = "935939" -> new? -> count=1, state becomes [3,5,9,3,9] 
+          d=3: PIN = "935933" -> new? -> count=2 -> break.
+
+        Then the string is "9359393" (7 digits: the initial state "93593" plus '9' and then '3')? 
+
+        But we only added two digits? 
+
+        Actually, we started with the initial state (5 digits) and then we add one digit (the first that gives a new PIN) -> then we break at count=2? 
+
+        Then the string is "935939" (6 digits) -> and we have two distinct PINs? 
+
+          [0:6] -> "935939" -> one PIN
+          [1:7] -> but we only have 6 digits? 
+
+        How do we get two PINs? 
+
+          The system: 
+            After entering the initial state (5 digits) and then entering the next digit (9) -> we have 6 digits -> the system tests the PIN [0:6] -> "935939" -> count=1.
+            Then the system removes the first digit -> the string becomes "35939" (5 digits) -> then we enter the next digit (3) -> then the system tests the next PIN: [0:6] of the new string? 
+
+          Actually, the entire string we built is "9359393" (7 digits) -> because we started with "93593" (5) then we added '9' -> then we are at 6, and then we added '3' -> then 7.
+
+          The PINs: 
+            [0:6] -> "935939" -> distinct? 
+            [1:7] -> "359393" -> distinct? 
+
+          But we only have two distinct PINs? 
+
+        However, the sample output "9353593" has two distinct PINs: "935359" and "353593". 
+
+        So we can output either. 
+
+        But the problem: the initial state is part of the string we output. We output the entire string.
+
+        Therefore, we can choose the initial state arbitrarily. 
+
+        We'll choose: 
+          initial_state = [digits[0]] * (n-1)   # as the editorial
+
+        Then for sample #3: we get "99999" -> then we add 3: string "999993" -> then we are at state "99993" -> then we add 9: string "9999939" -> we break.
+
+        Then we output "9999939", which is 7 digits. 
+
+        The PINs: 
+          [0:6] -> "999993"
+          [1:7] -> "999939"
+
+        That satisfies.
+
+        So we stick to the editorial: initial state = [first_digit] * (n-1)
+
+        Then the code is as below.
+
+ 26. Let's code accordingly.
+
+  Note: We must be cautious for the case n=1.
+
+  We'll run the provided examples.
+
+  We'll run the sample #1: n=3, m=2, k=5, digits=[4,7]
+
+      initial_state = [4,4] -> string starts as "44"
+
+      Step1: 
+        state = [4,4], state_hash1 = (4*131+4) % mod1 = 528
+        try d=4: PIN_hash1 = (528*131+4) % mod1 -> we don't care the exact, but we check if it's visited -> not visited -> count=1, then update state: 
+            front_digit = 4
+            state_hash1 = ( (528 - 4 * base_power1) % mod1 -> base_power1 = base1^(n-2)=131 -> 528-4*131 = 528-524=4 -> then (4*131+4)=524+4=528 -> same state.
+            Then the string becomes "444", state becomes [4,4] (same)
+        Then we mark (hash for "444") as visited.
+
+      Step2:
+        state = [4,4], state_hash=528
+        try d=7: PIN_hash = (528*131+7) % mod1 -> new -> count=2, then update state: 
+            front_digit=4 -> state_hash1 = (528 - 4*131) = 4 -> then *131+7 = 4*131+7 = 524+7=531 -> state becomes [4,7]
+            string becomes "4447"
+
+      Step3:
+        state = [4,7], state_hash=531
+        try d=4: PIN_hash = (531*131+4) % mod1 -> new? -> count=3, update state: 
+            front_digit=4 -> state_hash1 = (531 - 4 * base_power1) % mod1 -> base_power1=131 -> 531-4*131 = 531-524=7 -> then *131+4 = 7*131+4 = 917+4=921 -> state becomes [7,4]
+            string becomes "44474"
+
+      Step4:
+        state = [7,4], state_hash=921
+        try d=7: PIN_hash = (921*131+7) % mod1 -> new? -> count=4, update state: 
+            front_digit=7 -> state_hash1 = (921 - 7*131) % mod1 = 921-917=4 -> then *131+7 = 4*131+7=524+7=531 -> state becomes [4,7] (which we had before)
+            string becomes "444747"
+
+      Step5:
+        state = [4,7], state_hash=531
+        try d=4: PIN_hash = (531*131+4) % mod1 -> we have seen? (because we had that in step3: 474) -> visited? 
+        try d=7: PIN_hash = (531*131+7) % mod1 -> new? -> count=5 -> break.
+            then we update state: 
+                front_digit=4 -> state_hash1 = (531-4*131)=531-524=7 -> then *131+7=7*131+7=917+7=924 -> state becomes [7,7]
+            string becomes "4447477"
+
+      Then we output "4447477" (7 digits).
+
+      The PINs: 
+        444, 447, 474, 747, 477 -> 5 distinct.
+
+      This matches.
+
+  Therefore, we output the code.
+
+  Note: We are using double hashing to avoid collisions. The mods are large primes.
+
+  We assume the hashing is collision-free for the set of at most 100000 distinct PINs.
+
+  Let's code accordingly.
+
+  IMPORTANT: The problem says the answer is at most 100000 digits. We break when total_length (which is the length of the string) reaches 100000.
+
+  We start with n-1 digits, then we add up to 100000 - (n-1) digits? 
+
+  Since n-1 can be up to 100000, then we start with 100000 digits and then we break immediately? 
+
+  But k>=1, and we haven't even started adding digits? 
+
+  Actually, the problem says: "the answer contains no longer than 100000 digits", so we assume that the initial state (n-1) plus the digits we add will not exceed 100000.
+
+  But note: k<=100000, and we start at n-1 and we add at most k (if we get a distinct PIN per digit) plus some stuck steps. The total length = (n-1) + (number of digits added). 
+
+  Since k<=100000 and n<=100000, the total length might be n-1 + (k + stuck steps) which could be 200000? 
+
+  But the problem says: "the answer contains no longer than 100000 digits". So we are guaranteed that the minimal string we are to output has at most 100000 digits.
+
+  Therefore, we break when total_length (the entire string) reaches 100000.
+
+  We hope that we break by count>=k first.
+
+  Code accordingly.

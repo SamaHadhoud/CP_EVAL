@@ -1,0 +1,239 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <set>
+#include <map>
+#include <algorithm>
+#include <string>
+using namespace std;
+
+typedef pair<int, int> Key;
+
+bool dfs_non(int i, vector<bool>& visited, vector<Key>& non_cycle_edges_list, 
+             map<Key, vector<int>>& worker_list_by_key, 
+             vector<int>& match_worker, vector<int>& match_non) {
+    Key key = non_cycle_edges_list[i];
+    vector<int>& lst = worker_list_by_key[key];
+    for (int idx = 0; idx < lst.size(); idx++) {
+        int worker_id = lst[idx];
+        if (visited[worker_id]) 
+            continue;
+        visited[worker_id] = true;
+        int j = match_worker[worker_id];
+        if (j == -1 || dfs_non(j, visited, non_cycle_edges_list, worker_list_by_key, match_worker, match_non)) {
+            match_worker[worker_id] = i;
+            match_non[i] = worker_id;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool dfs_cycle(int i, vector<bool>& visited, vector<Key>& cycle_edges_list, 
+               map<Key, vector<int>>& worker_list_by_key, 
+               vector<int>& match_worker, vector<int>& match_worker_cycle, vector<int>& match_cycle) {
+    Key key = cycle_edges_list[i];
+    vector<int>& lst = worker_list_by_key[key];
+    for (int idx = 0; idx < lst.size(); idx++) {
+        int worker_id = lst[idx];
+        if (visited[worker_id]) 
+            continue;
+        visited[worker_id] = true;
+        if (match_worker[worker_id] != -1) {
+            continue;
+        }
+        int j = match_worker_cycle[worker_id];
+        if (j == -1 || dfs_cycle(j, visited, cycle_edges_list, worker_list_by_key, match_worker, match_worker_cycle, match_cycle)) {
+            match_worker_cycle[worker_id] = i;
+            match_cycle[i] = worker_id;
+            return true;
+        }
+    }
+    return false;
+}
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+
+    int n, k;
+    cin >> n >> k;
+
+    if (k < n-1) {
+        cout << -1 << endl;
+        return 0;
+    }
+
+    vector<int> A(n+1);
+    vector<vector<int>> B(n+1);
+    for (int i = 1; i <= n; i++) {
+        cin >> A[i];
+        int M_i;
+        cin >> M_i;
+        vector<int> b_list(M_i);
+        for (int j = 0; j < M_i; j++) {
+            cin >> b_list[j];
+        }
+        B[i] = b_list;
+    }
+
+    vector<int> worker_materials(k);
+    for (int i = 0; i < k; i++) {
+        cin >> worker_materials[i];
+    }
+
+    vector<vector<int>> graph(n+1);
+    for (int i = 1; i <= n; i++) {
+        int u = i;
+        int v = A[i];
+        graph[u].push_back(v);
+        graph[v].push_back(u);
+    }
+
+    vector<int> deg(n+1);
+    for (int i = 1; i <= n; i++) {
+        deg[i] = graph[i].size();
+    }
+
+    set<Key> non_cycle_edges_set;
+    queue<int> q;
+    for (int i = 1; i <= n; i++) {
+        if (deg[i] == 1) {
+            q.push(i);
+        }
+    }
+
+    while (!q.empty()) {
+        int u = q.front(); q.pop();
+        if (deg[u] == 0) continue;
+        deg[u] = 0;
+        for (int v : graph[u]) {
+            if (deg[v] == 0) continue;
+            Key key = make_pair(min(u, v), max(u, v));
+            non_cycle_edges_set.insert(key);
+            deg[v]--;
+            if (deg[v] == 1) {
+                q.push(v);
+            }
+        }
+    }
+
+    set<Key> all_edges_set;
+    map<Key, pair<int, int>> original_rep;
+    map<Key, vector<int>> materials_dict;
+    for (int i = 1; i <= n; i++) {
+        int u = i;
+        int v = A[i];
+        Key key = make_pair(min(u, v), max(u, v));
+        original_rep[key] = make_pair(u, v);
+        materials_dict[key] = B[i];
+        all_edges_set.insert(key);
+    }
+
+    set<Key> cycle_edges_set;
+    for (auto key : all_edges_set) {
+        if (non_cycle_edges_set.find(key) == non_cycle_edges_set.end()) {
+            cycle_edges_set.insert(key);
+        }
+    }
+
+    vector<Key> non_cycle_edges_list(non_cycle_edges_set.begin(), non_cycle_edges_set.end());
+    vector<Key> cycle_edges_list(cycle_edges_set.begin(), cycle_edges_set.end());
+    int L = cycle_edges_list.size();
+
+    map<int, vector<int>> mat_map;
+    for (int i = 0; i < k; i++) {
+        int c = worker_materials[i];
+        mat_map[c].push_back(i);
+    }
+
+    map<Key, vector<int>> worker_list_by_key;
+
+    for (Key key : non_cycle_edges_set) {
+        vector<int> worker_list_temp;
+        vector<int>& materials = materials_dict[key];
+        vector<bool> mark(k, false);
+        for (int m : materials) {
+            if (mat_map.find(m) != mat_map.end()) {
+                for (int w : mat_map[m]) {
+                    if (!mark[w]) {
+                        mark[w] = true;
+                        worker_list_temp.push_back(w);
+                    }
+                }
+            }
+        }
+        sort(worker_list_temp.begin(), worker_list_temp.end(), greater<int>());
+        worker_list_by_key[key] = worker_list_temp;
+    }
+
+    for (Key key : cycle_edges_set) {
+        vector<int> worker_list_temp;
+        vector<int>& materials = materials_dict[key];
+        vector<bool> mark(k, false);
+        for (int m : materials) {
+            if (mat_map.find(m) != mat_map.end()) {
+                for (int w : mat_map[m]) {
+                    if (!mark[w]) {
+                        mark[w] = true;
+                        worker_list_temp.push_back(w);
+                    }
+                }
+            }
+        }
+        sort(worker_list_temp.begin(), worker_list_temp.end(), greater<int>());
+        worker_list_by_key[key] = worker_list_temp;
+    }
+
+    vector<int> match_worker(k, -1);
+    vector<int> match_non(non_cycle_edges_list.size(), -1);
+
+    for (int i = 0; i < non_cycle_edges_list.size(); i++) {
+        vector<bool> visited(k, false);
+        if (!dfs_non(i, visited, non_cycle_edges_list, worker_list_by_key, match_worker, match_non)) {
+            cout << -1 << endl;
+            return 0;
+        }
+    }
+
+    vector<int> match_worker_cycle(k, -1);
+    vector<int> match_cycle(cycle_edges_list.size(), -1);
+    int M_cycle = 0;
+
+    for (int i = 0; i < cycle_edges_list.size(); i++) {
+        vector<bool> visited(k, false);
+        if (dfs_cycle(i, visited, cycle_edges_list, worker_list_by_key, match_worker, match_worker_cycle, match_cycle)) {
+            M_cycle++;
+        }
+    }
+
+    if (M_cycle < L - 1) {
+        cout << -1 << endl;
+        return 0;
+    }
+
+    vector<string> res(k, "0 0");
+    for (int i = 0; i < non_cycle_edges_list.size(); i++) {
+        if (match_non[i] != -1) {
+            int worker_id = match_non[i];
+            Key key = non_cycle_edges_list[i];
+            pair<int, int> road = original_rep[key];
+            res[worker_id] = to_string(road.first) + " " + to_string(road.second);
+        }
+    }
+
+    for (int i = 0; i < cycle_edges_list.size(); i++) {
+        if (match_cycle[i] != -1) {
+            int worker_id = match_cycle[i];
+            Key key = cycle_edges_list[i];
+            pair<int, int> road = original_rep[key];
+            res[worker_id] = to_string(road.first) + " " + to_string(road.second);
+        }
+    }
+
+    for (int i = 0; i < k; i++) {
+        cout << res[i] << endl;
+    }
+
+    return 0;
+}

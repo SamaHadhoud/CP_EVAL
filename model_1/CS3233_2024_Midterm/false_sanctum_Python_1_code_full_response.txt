@@ -1,0 +1,133 @@
+To solve this problem, we need to efficiently handle two types of operations on a string: updating a character at a specific position and querying the "density" of a substring. The density of a substring is defined as the sum of the squares of the lengths of its maximal contiguous blocks of identical characters. Given the constraints (up to 200,000 characters and queries), a naive approach would be too slow, so we use a segment tree to process both operations in logarithmic time per operation.
+
+### Approach
+1. **Segment Tree Structure**: Each node in the segment tree stores the following information about its segment:
+   - `size`: The length of the segment.
+   - `lc` and `rc`: The leftmost and rightmost characters in the segment.
+   - `lrun` and `rrun`: The lengths of the runs of identical characters starting from the left and ending at the right of the segment.
+   - `dens`: The sum of the squares of the lengths of all runs in the segment.
+
+2. **Merging Segments**: When merging two adjacent segments (left and right), we handle the case where the last character of the left segment matches the first character of the right segment. In such cases, the runs at the boundary are merged, adjusting the density by subtracting the squares of the original runs and adding the square of the merged run. The `lrun` and `rrun` values are updated based on whether the entire left or right segment is part of the merged run.
+
+3. **Operations**:
+   - **Update**: To update a character, we modify the corresponding leaf node and propagate the changes up the tree by merging segments.
+   - **Query**: To query the density of a substring, we decompose the range into segments covered by the tree, merge these segments while handling boundary runs, and return the computed density.
+
+4. **Complexity Analysis**:
+   - **Time Complexity**: Both update and query operations take \(O(\log N)\) time per operation. With \(Q\) queries, the total time is \(O(Q \log N)\).
+   - **Space Complexity**: The segment tree uses \(O(N)\) space.
+
+### Solution Code
+```python
+import sys
+sys.setrecursionlimit(300000)
+
+class Node:
+    __slots__ = ('size', 'lc', 'rc', 'lrun', 'rrun', 'dens')
+    def __init__(self, size, lc, rc, lrun, rrun, dens):
+        self.size = size
+        self.lc = lc
+        self.rc = rc
+        self.lrun = lrun
+        self.rrun = rrun
+        self.dens = dens
+
+def merge(L, R):
+    if L.size == 0:
+        return R
+    if R.size == 0:
+        return L
+    size = L.size + R.size
+    lc = L.lc
+    rc = R.rc
+    lrun = L.lrun
+    if L.lrun == L.size and L.rc == R.lc:
+        lrun = L.lrun + R.lrun
+    rrun = R.rrun
+    if R.rrun == R.size and L.rc == R.lc:
+        rrun = R.rrun + L.rrun
+    dens = L.dens + R.dens
+    if L.rc == R.lc:
+        dens = dens - (L.rrun * L.rrun) - (R.lrun * R.lrun) + ((L.rrun + R.lrun) * (L.rrun + R.lrun))
+    return Node(size, lc, rc, lrun, rrun, dens)
+
+def build_tree(node, l, r, tree, s):
+    if l == r:
+        tree[node] = Node(1, s[l], s[l], 1, 1, 1)
+        return
+    mid = (l + r) // 2
+    left_child = 2 * node + 1
+    right_child = 2 * node + 2
+    build_tree(left_child, l, mid, tree, s)
+    build_tree(right_child, mid+1, r, tree, s)
+    tree[node] = merge(tree[left_child], tree[right_child])
+
+def update_tree(node, l, r, idx, c, tree):
+    if l == r:
+        tree[node] = Node(1, c, c, 1, 1, 1)
+        return
+    mid = (l + r) // 2
+    left_child = 2 * node + 1
+    right_child = 2 * node + 2
+    if idx <= mid:
+        update_tree(left_child, l, mid, idx, c, tree)
+    else:
+        update_tree(right_child, mid+1, r, idx, c, tree)
+    tree[node] = merge(tree[left_child], tree[right_child])
+
+def query_tree(node, l, r, ql, qr, tree):
+    if ql <= l and r <= qr:
+        return tree[node]
+    mid = (l + r) // 2
+    left_node = None
+    right_node = None
+    if ql <= mid:
+        left_node = query_tree(2*node+1, l, mid, ql, min(qr, mid), tree)
+    if qr > mid:
+        right_node = query_tree(2*node+2, mid+1, r, max(ql, mid+1), qr, tree)
+    if left_node is not None and right_node is not None:
+        return merge(left_node, right_node)
+    elif left_node is not None:
+        return left_node
+    elif right_node is not None:
+        return right_node
+    else:
+        return Node(0, None, None, 0, 0, 0)
+
+def main():
+    data = sys.stdin.read().splitlines()
+    if not data: 
+        return
+    n, q = map(int, data[0].split())
+    s = data[1].strip()
+    tree = [None] * (4 * n)
+    build_tree(0, 0, n-1, tree, s)
+    out_lines = []
+    index = 2
+    for i in range(q):
+        parts = data[index].split()
+        index += 1
+        if parts[0] == '1':
+            pos = int(parts[1]) - 1
+            c = parts[2]
+            update_tree(0, 0, n-1, pos, c, tree)
+        else:
+            l = int(parts[1]) - 1
+            r = int(parts[2]) - 1
+            node = query_tree(0, 0, n-1, l, r, tree)
+            out_lines.append(str(node.dens))
+    sys.stdout.write("\n".join(out_lines))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Node Class**: Represents a segment in the segment tree, storing necessary information for merging segments and computing density.
+2. **Merge Function**: Combines two adjacent segments by handling boundary runs and updating the density accordingly.
+3. **Build Tree**: Constructs the segment tree from the initial string, initializing leaf nodes and merging them recursively.
+4. **Update Tree**: Modifies a character in the string by updating the corresponding leaf node and propagating changes up the tree.
+5. **Query Tree**: Computes the density of a substring by decomposing the range into segments, merging them, and returning the result.
+6. **Main Function**: Reads input, initializes the segment tree, processes queries (updates or density queries), and outputs results efficiently.
+
+This approach efficiently handles both operations in logarithmic time per query, making it suitable for large input sizes.

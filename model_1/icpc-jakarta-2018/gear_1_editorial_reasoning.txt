@@ -1,0 +1,851 @@
+We are given a tree of gears (nodes) and three types of operations: removal, placement, and rotation. The key challenge is to handle the propagation of rotations in the tree when gears are removed (which disconnects the tree) and then placed back.
+
+Important observations:
+1. When the entire tree is connected, rotating a gear will propagate the rotation to every other gear in a fixed way: the rotation direction alternates based on the parity of the distance. Specifically, if we fix gear 1 as having parity 0 (even), then any gear at an even distance (including 0) will rotate in the same direction as the rotated gear, and at odd distance in the opposite. However, note that when we remove gears, the tree becomes disconnected and propagation is blocked.
+
+2. The problem requires:
+   a. For each Type 3 operation (rotation), we must output the energy: (number of rotating gears) * (rotation in degrees). The rotation in degrees is given as α, but note that the entire connected component of the gear being rotated will rotate (with alternating directions) but the magnitude of rotation for each gear is α (though direction alternates). However, the energy is defined as the total rotation in degrees? Actually, the problem says: "the amount of energy ... is defined as (number of rotating gears) × (rotation done in degrees)". The rotation done in degrees is the α that we input. But note: when we rotate a gear by α, the entire connected component of gears that are present will be rotated. However, the energy is calculated as the number of gears that are currently in the board and connected (so they rotate) multiplied by the α. Why? Because each gear in the component is rotated by an angle of α (though with alternating directions, the energy is just the product of the count and α, because we are applying the same magnitude of rotation to each?).
+
+   Actually, the problem says: "Rotate a gear α degrees clockwise", and then the energy is (number of rotating gears) * (rotation done in degrees). The rotation done in degrees is α. So for a Type 3 operation "3 x α", we need to know the size of the connected component containing x at that time (only gears that are present and connected to x) and then the energy is (size) * α.
+
+   However, note: the rotation propagates so that adjacent gears rotate in opposite directions. But the energy is defined without regard to direction? The problem does not specify direction in the energy formula, so we take the magnitude. Each gear is rotated by α degrees (in absolute value) but in alternating directions. However, the problem says "rotation done in degrees" and we are multiplying by the number of gears. That implies that we are summing the absolute rotations? But note: the problem says "rotation done in degrees" for the operation. The operation is rotating the gear x by α. But because of propagation, we are effectively rotating the entire component. The energy is defined as (number of rotating gears) * (α). So it's α multiplied by the size of the component? 
+
+   Example: In the sample, the first operation: "3 2 160". The entire component (all 4 gears) rotates. So energy = 4 * 160 = 640. Then the output for the first operation is 640.
+
+   But in the third operation: "3 1 10". At that time, gear 2 is removed. So gear 1 is isolated. Therefore, the energy = 1 * 10 = 10.
+
+   So the energy calculation is: for operation "3 x α", we need the size of the connected component that contains x (only considering gears that are currently on the board) and then output (size) * α.
+
+3. Additionally, after all operations, we need the sum of δ_u for all u (whether they are on the board or not, but note: the problem says "after Q operations are done" and we are to output the sum for all u). However, note that when a gear is removed, we still remember its last rotation degree (so that when placed back, it has the same degree as when it was removed). Therefore, we have to track the current rotation degree for every gear, regardless of being present or not.
+
+How the rotations propagate?
+- Initially, every gear is at 0 degrees and present.
+- When we rotate a gear x by α clockwise, then:
+   - In the connected component of x (only present gears), the rotation propagates such that adjacent gears get opposite rotation. 
+   - The rotation for a gear y in the component will be: 
+        δ_y = δ_y + (-1)^(d(x,y)) * α   (mod 360)
+
+But note: the propagation is blocked by removed gears. So we have to consider the connected component of present gears.
+
+However, we cannot run a BFS for each rotation (Q and N up to 100000) so we need an efficient data structure.
+
+We need to support:
+- Removal and placement of a node (which disconnects the tree into multiple components and then reconnects when placed back? Actually, when we remove a node, we break the tree at that node, creating as many components as the degree of that node? But when we put it back, we reconnect the components that were connected by that node.
+
+But note: the graph is a tree. Removing a node breaks the tree into multiple connected components (one for each connected subtree). The node itself is removed.
+
+How to track the rotations and the current degrees of each gear?
+
+We can think of having a lazy propagation mechanism. However, the removals and placements complicate the propagation.
+
+Alternative idea: use Euler Tour to represent the tree? But the propagation depends on the distance (parity) from the rotated gear.
+
+We can root the tree arbitrarily. Then the propagation from a gear x to a gear y: the parity is the parity of the distance. The distance in a tree is d(x,y) = depth[x] + depth[y] - 2 * depth[lca(x,y)]. The parity is (depth[x] + depth[y]) mod 2? Actually, because 2*depth[lca] is even. So the sign for gear y is (-1)^(depth[x]+depth[y]). But note: we can factor this as (-1)^(depth[x]) * (-1)^(depth[y]). 
+
+So if we let:
+   base_sign[x] = 1 if depth[x] is even, -1 if depth[x] is odd? Or we can set base_sign[x] = (-1)^(depth[x]).
+
+Then when we rotate gear x by α, the effect on gear y is: 
+   Δy = base_sign[x] * base_sign[y] * α   [because (-1)^(depth[x]+depth[y]) = base_sign[x]*base_sign[y]? 
+        Actually: (-1)^(depth[x]+depth[y]) = (-1)^(depth[x]) * (-1)^(depth[y]) = base_sign[x] * base_sign[y]. 
+
+But wait: the rotation rule: when gear u (with sign s_u) is rotated by α, then an adjacent gear v (with sign s_v) must get -α. And note: base_sign[u] * base_sign[v] = (-1)^(depth[u]) * (-1)^(depth[v]) = (-1)^(depth[u]+depth[v]). But the distance from u to v is 1, so depth[v] = depth[u] ± 1 -> then base_sign[u] * base_sign[v] = (-1)^(2*depth[u]±1) = -1. So that matches: the adjacent gear gets -α.
+
+Therefore, we can represent the rotation effect as:
+   δ[y] = base_sign[x] * base_sign[y] * α
+
+But note: the entire component must be updated. However, if we have multiple rotations, we have to accumulate the effect.
+
+So the current degree of a gear y is the sum of all rotations that have been applied to the connected components that y was part of at the time of the rotation, with the appropriate sign.
+
+But the catch: when a rotation is applied, the gear y must be connected to x at the time. If not, it is not affected.
+
+So we have two aspects:
+1. Tracking the connected components (with removals and placements) -> dynamic connectivity? But note: the graph is a tree, and removals are node removals. When we remove a node, we break the tree at that node. We can use Euler Tour to represent the tree and then use a segment tree or Fenwick tree? But removals and placements change connectivity.
+
+Alternatively, we can use a union-find with rollbacks? But we have removals and placements that are interleaved arbitrarily and also rotations that update the entire component.
+
+We need:
+   - To quickly get the size of the connected component (for the energy calculation) and also to update the entire component (for the rotation effect) for each rotation.
+
+But updating the entire component for rotations: if we store an additive lazy value per component, then we can do it. However, the lazy value must account for the alternating signs.
+
+We can store for each node two values: one for the even-depth nodes and one for the odd-depth nodes? Because in a connected component, the sign of base_sign[x] is fixed per node. So the entire component can be partitioned by the parity of depth.
+
+Therefore, we can maintain:
+
+   Let A[i] be the current rotation degree for gear i.
+
+   Also, we will maintain for each connected component (or rather for each node) the accumulated rotations for even and odd parts? Actually, we can maintain two global lazy arrays: one for even and one for odd? But the components are dynamic.
+
+Alternatively, we can use a DSU that supports deletion (which is hard) or use Euler Tour with a segment tree that supports range updates? But the Euler Tour is broken when a node is removed.
+
+Another idea: since the propagation is linear and separable by sign, we can maintain two values for each gear:
+
+   Let:
+      even_value[i] = the sum of all α (with sign) that should be applied to gear i when the rotation was applied to an even-depth node in the same component? Actually, we can store:
+
+   We assign to each gear a color: 0 for even depth and 1 for odd depth (relative to the root). Then the effect of a rotation applied to a gear x (with color c_x) is: 
+        for every gear y in the same connected component: 
+            A[y] += base_sign[x] * base_sign[y] * α   mod 360
+
+   But base_sign[x] = (-1)^(depth[x]) = (if depth[x] is even: 1, odd: -1) and base_sign[y] = (-1)^(depth[y]). 
+
+   So we can write:
+        A[y] += [ base_sign[x] * base_sign[y] ] * α 
+               = (-1)^(depth[x] + depth[y]) * α
+
+   And (-1)^(depth[x]+depth[y]) = (-1)^(depth[x]) * (-1)^(depth[y]) = base_sign[x] * base_sign[y]
+
+   Also note: base_sign[x] is fixed per node. So we can precompute base_sign for each node.
+
+   Then we can break the update by color:
+
+        If gear y has color = depth[y] mod 2, then we can write:
+
+        Let s_x = base_sign[x] = (-1)^(depth[x])
+
+        Then the update for a gear y in the same component is: 
+            A[y] += (s_x * base_sign[y]) * α 
+                   = (s_x * (-1)^(depth[y])) * α
+
+        = 
+          if depth[y] is even: s_x * 1 * α
+          if depth[y] is odd: s_x * (-1) * α
+
+        But note: s_x = (-1)^(depth[x]) = 
+          if depth[x] is even: 1 -> then update: even gears: +α, odd gears: -α
+          if depth[x] is odd: -1 -> then update: even gears: -α, odd gears: +α
+
+   Alternatively, we can precompute for each node:
+        sign[i] = base_sign[i] = (-1)^(depth[i])
+
+   Then the update from a rotation at x (with α) to a node y is: 
+        A[y] += sign[x] * sign[y] * α
+
+   So if we store:
+
+        For each connected component, we have two lazy values: 
+          lazy0 (for nodes with sign=1, i.e., even depth) 
+          lazy1 (for nodes with sign=-1, i.e., odd depth)
+
+   How does a rotation at x (which is in the component) update these lazy values?
+
+        The update for a node y in the same component: 
+          A[y] becomes A[y] + sign[x] * sign[y] * α.
+
+        We can break by the sign of y:
+
+          If sign[y] = 1 (even): then update = sign[x] * 1 * α = sign[x] * α
+          If sign[y] = -1 (odd): then update = sign[x] * (-1) * α = -sign[x] * α
+
+        So we can store:
+
+          lazy0_component += sign[x] * α
+          lazy1_component += -sign[x] * α
+
+   Then the current value of a node y would be:
+
+        If y is even: A0 + lazy0_component
+        If y is odd: A1 + lazy1_component
+
+   But wait: initially, we have no rotations. Then we do multiple rotations? And the rotations are additive. So we can maintain for the entire component two lazy values that accumulate.
+
+   However, note: if we do two rotations in the same component: first rotation at x1: α1, then at x2: α2.
+
+        For an even node y: 
+            update1 = sign[x1] * α1
+            update2 = sign[x2] * α2
+            total = sign[x1]*α1 + sign[x2]*α2
+
+        But the same component, so we can combine: the lazy0 for the component is the sum over all rotations: for each rotation with (x, α), we add sign[x]*α to lazy0 and -sign[x]*α to lazy1.
+
+   Therefore, we can maintain per connected component (represented by a DSU-like structure) two lazy values: 
+        lazy0 = sum_{rotations in the component} ( sign[x] * α )   [for even nodes]
+        lazy1 = sum_{rotations in the component} ( -sign[x] * α )   [for odd nodes]
+
+   Then the current degree of a node i is:
+        base_value[i] + (if node i is even: lazy0[comp[i]] else lazy1[comp[i]])
+
+   But what is base_value[i]? It would be the initial value (0) plus the rotations that were applied when the node was in previous components? Actually, we are going to use a DSU that supports merging and splitting? And when we remove a node, we split the component, and when we place it back, we merge? 
+
+   However, note: when we remove a node, the entire component breaks into several pieces. We need to break the lazy values? Actually, the lazy values are applied to the entire component. But when we split, the rotations that were applied to the entire component before the split are still in effect for every node. But after the split, the components become independent. So we do not need to break the lazy values per se? We just need to know for each node: what is the accumulated lazy0 and lazy1 from the time the node was last connected to the entire component? 
+
+   Alternatively, we can use a different approach: we store the entire history? That might be too heavy.
+
+Another idea: we store for each node the total rotation effect that has been applied to it. However, the rotations are applied to entire components. We can use a lazy propagation tree over the DSU? 
+
+But note: we have to support:
+
+   - Removing a node: which disconnects the tree. This removal might break the component into multiple pieces. Then we have to assign each piece the same lazy values? Because the rotations that happened in the past are already applied to every node. The lazy values we maintain are additive and independent of connectivity. So when we break a component, each new component inherits the lazy values from the original component? Actually, no: because the rotations that were applied to the entire component before the removal are already in the nodes? 
+
+   But note: we are storing the lazy values per component. And we are not storing the entire history. We are storing the lazy values that have been applied to the entire component. So when we break a component, we want to keep the same lazy values for each subcomponent? Actually, that's not necessary: because the rotations that were applied to the entire component are already applied to every node. Then we can reset the lazy values for each new component? 
+
+   Actually, we don't store the lazy values per node. We store per node the total rotation effect? How?
+
+   We can store:
+
+        total_effect[i] = (if the node is even: lazy0[comp] else lazy1[comp])
+
+   But when we split, the new components are independent and the lazy values for the new components start at 0? But that is not true: because the rotations that happened in the past are already applied to the nodes. So we don't need to carry over the lazy values? 
+
+   Actually, we can avoid storing lazy values per component if we store for each node the last time it was updated? That might be heavy.
+
+Alternatively, we can use a technique: when we remove a node, we update the entire component? But that would be too slow.
+
+We need a dynamic data structure that can:
+
+   - Update an entire connected component (by adding a value to all nodes, but with two different additive terms: one for even and one for odd).
+   - Query the current value of a node (for the final sum).
+   - Also, we need to know the size of the connected component (for the energy).
+
+And we have to handle removals and placements of nodes.
+
+We can use a link-cut tree? But the update is for the entire component. Alternatively, we can use Euler-Tour trees (ETT) for dynamic connectivity and then store a lazy value for the entire segment? But the update is not a range update in the Euler Tour: because the Euler Tour of a tree is a sequence of nodes. However, the connected component after removals might not be contiguous? Actually, when we remove a node, the Euler Tour breaks into multiple contiguous segments? 
+
+But note: our graph is a tree. Removing a node leaves multiple connected components (the subtrees). The Euler Tour of the tree (if we do a DFS) would have the entire tree as a sequence. Removing a node breaks the Euler Tour into several contiguous intervals? Actually, the Euler Tour of a tree is a sequence of nodes that we enter and leave. The entire Euler Tour is one big array. Then if we remove a node, we break the Euler Tour at the positions of that node? Actually, we can represent each connected component as a set of contiguous intervals? But the removal of a node might break the Euler Tour into up to (degree) contiguous intervals. 
+
+However, we can use a data structure that supports:
+
+   - Storing an array of nodes (the Euler Tour order) and then supporting:
+        - Update: add a value to a set of contiguous intervals? But the component is represented as multiple contiguous intervals? Then we have to update each interval separately? That would be O(degree) per removal/placement.
+
+   The total Q is 100000, and the removals and placements are 100000, and the degrees can be large? Worst-case degree 100000? Then worst-case removal might break the Euler Tour into 100000 intervals, which is too heavy.
+
+Alternative: use a tree structure and store for each node the parent and children, and then use a DFS to update entire subtree? But then removals break the tree arbitrarily.
+
+We can use DSU with union by size and path compression? But DSU does not support deletion easily.
+
+But note: we are only removing one node at a time, and then placing it back. And the removals and placements are interleaved arbitrarily. We can use an "undo" DSU? But we have to update the entire component with an additive lazy value? That seems complex.
+
+Alternatively, we can use a technique: maintain a DSU that tracks connectivity and also stores two lazy values per component (for even and odd). But then when we remove a node, we have to split the component? DSU is for union, not split.
+
+We can use a separate data structure for each connected component? But we have to update entire component quickly and also break the component on removal.
+
+We can use a forest of trees and then use a tree data structure (like heavy-light decomposition) for each tree? But the trees change dynamically (removal and placement of nodes). And we have to update entire trees? 
+
+But note: the update is for the entire tree. So we can store two lazy values for the entire tree. Then for each node, we store:
+
+        value[i] = base_sign[i] * (lazy0_component)   if node i is even? No, we have two lazy values: one for even and one for odd.
+
+Actually, we can store for each connected component (which is a tree) two variables: 
+        lazy0_comp: the accumulated value for even nodes in this component
+        lazy1_comp: the accumulated value for odd nodes in this component
+
+And then the current value of a node i in the component is:
+        if sign[i] = 1 (even): value[i] = lazy0_comp
+        if sign[i] = -1 (odd): value[i] = lazy1_comp
+
+But then when we do a rotation at x in the component, we update:
+        lazy0_comp += sign[x] * α
+        lazy1_comp -= sign[x] * α   [because for an odd node: the update is -sign[x]*α]
+
+And then the energy for the rotation operation: we need the size of the component at that time.
+
+But when we remove a node x, we break the component into several components. How do we handle the lazy values? The lazy values that were applied to the entire component are already reflected in the nodes? Actually, no: we have not stored the values per node; we are storing per component. When we break, the new components should inherit the lazy values? But then the nodes in the new components have already been updated by the previous rotations? 
+
+Actually, we do not store the value per node; we only store the current lazy values per component. Then when we break a component, we have to break the lazy values? But the rotations that happened in the past are the same for every node. So we can give each new component the same lazy values? However, that would be incorrect: because if we then update one of the new components, we don't want to update the others. But the lazy values are for future rotations? 
+
+No, the lazy values represent the accumulated rotations that have been applied to the component. And these rotations have been applied to every node in the component. So when we break, the new components are already updated. Then we can set the lazy values for each new component to zero? But then what if we do a new rotation in a new component? 
+
+Actually, we want to separate the history: the rotations that happened in the past are already in the nodes. But we are storing the lazy values per component to apply future rotations. So when we break, we start with lazy0_comp = 0 and lazy1_comp = 0 for each new component? 
+
+But wait: the value of a node i is determined by the lazy values of the component it belongs to. But the rotations that happened before the split are not stored in the node? They are stored in the lazy values of the original component. So if we break, and then we don't carry over the lazy values, then the nodes lose the effect of past rotations.
+
+Therefore, we must store per node the total accumulated effect? 
+
+Alternatively, we can store per node the total effect that has been applied to it. Then we don't need lazy propagation per component. But then how to update an entire component? We would have to update each node individually? That would be O(n) per rotation.
+
+We need an efficient method.
+
+Let me reframe: the effect of a rotation is: 
+        For every node y in the component: 
+            value[y] += sign[x] * sign[y] * α
+
+   We can write: 
+        value[y] = value[y] + sign[y] * (sign[x] * α)
+
+   So if we let:
+
+        Let F(y) = sign[y] * value[y]   ??? Actually, we can define:
+
+        Let B[i] = sign[i] * value[i]
+
+        Then the update: 
+            value[y] = value[y] + sign[x] * sign[y] * α
+            => sign[y] * value[y] = sign[y] * (value[y] + sign[x] * sign[y] * α)
+                                 = sign[y] * value[y] + sign[x] * α   [because sign[y]^2=1]
+
+        So: B[y] = B[y] + sign[x] * α
+
+   Therefore, if we store an array B where B[i] = sign[i] * value[i], then a rotation at x (in the component) adds (sign[x] * α) to every node y in the component.
+
+   And then the value[i] = sign[i] * B[i].
+
+   So now the update is uniform: add a fixed value (sign[x] * α) to every node in the component.
+
+   Then we can use a DSU that stores for each component:
+        baseB: the amount that has been added to the entire component (so far) for B.
+
+   And then per node, we store:
+        offsetB[i]: the amount that was added to the component that i was part of before the last time the component was updated? 
+
+   Alternatively, we can store for each node:
+
+        totalB[i] = baseB[comp] + extraB[i]   ?
+
+   But then when we update the component, we do:
+        baseB[comp] += sign[x] * α
+
+   And then the current B[i] = baseB[comp] + (something) 
+
+   However, when we remove a node, the component breaks. The baseB[comp] is the same for every node in the component. Then when we break, we want to assign to each new component the current baseB[comp] as a starting point? But then we update a new component and then place the node back: we have to merge the baseB's? 
+
+   Actually, we can store for each node i:
+
+        Let baseB[i] = the total amount that has been added to the entire component that i currently belongs to, from the time the node was last connected to the root of the component? This is not trivial.
+
+   We can use the common technique: we store for each node the current value of B[i] = sign[i] * value[i], and then we also store for the entire component a lazy value (which is an additive shift) that has been applied after the node was last updated? 
+
+   This is getting messy.
+
+Let me try a different approach: we store for each node i:
+
+        value[i] = (initial value) + (sum of all rotations applied to the component that i was in at the time of the rotation, with the appropriate sign)
+
+   But how to compute the sum for a node i over time? 
+
+   We can use a Fenwick tree or segment tree if we had a fixed Euler Tour. But the connectivity changes.
+
+   Alternatively, we can use an offline method? But rotations and removals are online.
+
+We can use an approach similar to "coloring" the connectivity with a timestamp? This is complex.
+
+Given the complexity, a simpler approach is to maintain:
+
+   - A DSU that is updated only by removals and placements. But we need to know the size of the component for the energy.
+
+   - For the rotation effect, we can store per node: 
+          value[i] = sign[i] * (global_base + personal_offset[i])
+
+   But that doesn't work.
+
+A more promising approach: 
+
+   We maintain a DSU for the present gears. The DSU stores:
+        - parent and size for each component.
+        - Also, for each component, we store two values: 
+               base0: the total amount that has been added to the even-depth nodes in the component (or rather, the uniform shift for B[i] as defined above) -> actually, now we have reduced the problem to a uniform update: add X to every node in the component.
+
+   And we have reduced: 
+        B[i] = sign[i] * value[i] = (initial value, which is 0) + (the sum of all X added to the component that i was in at the time of the update)
+
+   But how to handle splits? 
+
+   We can't use DSU for splits. We can use a dynamic data structure that explicitly stores the component and supports splitting. We might use a separate set for each component? But then the rotation update would be O(size) and Q up to 100000, worst-case O(n) per rotation, total O(n^2) which is 10e10, too heavy.
+
+We must find an efficient method.
+
+Insight: the reduction to the uniform update (add X to every node in the component) for B[i] = sign[i]*value[i] is very powerful. Now we only need to support:
+
+   - Update: for a component, add X.
+   - Query: get the current B[i] for a node.
+   - Also, we need to break a component into several components when a node is removed, and then merge components when a node is placed back.
+
+   When we break a component, the current additive value of the component is the same for every node. So the B[i] for each node i in the component is the same as the global additive value for the component (because we haven't done any update after the break). But then when we break, we create new components that have additive value 0? And then we have to set the personal value for each node to the value they had before the break? 
+
+   Alternatively, we can store for each node i: 
+        personalB[i] = the total amount that has been added to the components that i has been in, from the time the node was added to the component until the component is broken and the node is removed? 
+
+   Specifically, when a node is in a component, and the component has an additive value (say comp_value), then when the node is removed, we finalize its personalB[i] as personalB[i] += comp_value, and then reset comp_value for the new components to 0? 
+
+   But then when we merge, we have to adjust? 
+
+   Let's design:
+
+   We maintain for each connected component an additive value: comp_value[comp].
+
+   For each node i, we maintain:
+        personalB[i] (which is the accumulated value for B[i] from past components or past updates in the current component? Actually, not exactly)
+
+   How it works:
+
+        Initially, personalB[i] = 0 for all i, and there is one component with comp_value = 0.
+
+        When we do a rotation at x in component c: 
+             X = sign[x] * α
+             comp_value[c] += X
+
+        When we remove a gear x:
+             First, we finalize the personalB[x] = personalB[x] + comp_value[c]   [so that the node x gets the current comp_value]
+             Then, we remove x: this breaks the component c into several components, say c1, c2, ..., ck.
+             For each node in the new components, we want to leave the current B[i] unchanged, but now the new components will have their own additive value. 
+             However, the nodes in the new components have not been updated since the last time they were in the same component as x? 
+
+             But note: the additive value comp_value[c] has been applied to every node in the component, including those in the new components. So if we set the comp_value for each new component to 0, then the nodes in the new components would be missing the value comp_value[c] that was applied to them while in the original component.
+
+             Therefore, we must assign to each new component the additive value comp_value[c]. But then when we update one new component, the others are not affected. 
+
+             However, there's a catch: the node x is removed, and we don't want to carry the comp_value[c] in x anymore? But we already finalized personalB[x] by adding comp_value[c]. 
+
+             For the other nodes in the new components, we can leave them in the new components that have comp_value = comp_value[c]. But then if we update one of the new components, we add to its comp_value, and the other new components are unaffected.
+
+             But wait: the node x might be placed back later. When placing back, we merge the components that x was connecting. But then the new merged component might have different comp_values for the pieces.
+
+        When placing a gear x back:
+             We take the components that were created by the removal of x (the connected components that are adjacent to x) and merge them with x. 
+             But the components have different additive values? 
+
+             Let the adjacent components be c1, c2, ..., ck. Each has additive value = V_i.
+
+             When we merge, which additive value do we use for the new component? 
+
+             We cannot simply add them. The nodes in c1 have personalB[i] = (some value) and then the additive value V1. Similarly for c2: additive value V2. 
+
+             But note: the B[i] for a node in c1 is: 
+                    B[i] = personalB[i] + V1   (if we use the above accounting: we haven't stored personalB for every node individually, but we are not storing personalB for every node; we only store for removed nodes? In fact, for nodes that are still in components, we have not finalized their personalB)
+
+             How do we handle this? 
+
+             We must store for every node: personalB[i] and then also the current additive value of the component it is in? But then the current B[i] = personalB[i] + comp_value[comp[i]]
+
+             And then when we remove a node x, we don't need to change the other nodes: they remain in new components that have the same additive value as before (which is the value of the original component). 
+
+             But then when we remove x, we break the component into several pieces. For the other nodes, we don't touch their personalB. They stay in new components that have comp_value = V (the value of the original component). 
+
+             However, then if we update one of the new components, say c1, we do: 
+                   comp_value[c1] += X
+
+             and then the B[i] for nodes in c1 becomes: personalB[i] + V + X.
+
+             But what should it be? It should be the same as before plus X. That is correct.
+
+             And for node x, when removed, we set:
+                   personalB[x] = personalB[x] + V   [so that its total B[x] = personalB[x] (which now includes V) and it is not in any component]
+
+             Then when we place x back, we create a new component for x initially with comp_value = 0? And then we merge the adjacent components (c1, c2, ...) with x. 
+
+             But when we merge, we have to change the additive values of the components? 
+
+             Alternatively, we can do: when we place x back, we create a new component for x. Then we merge it with each adjacent component one by one. 
+
+             How to merge two components c1 and c2 with additive values V1 and V2? 
+
+             We cannot simply add V1 and V2. The nodes in c1 have B[i] = personalB[i] + V1, and in c2: B[i] = personalB[i] + V2. If we merge, we want to have a new additive value V for the merged component, and then we must adjust: 
+                   For every node in c1: new_personalB[i] = personalB[i] + V1 - V
+                   For every node in c2: new_personalB[i] = personalB[i] + V2 - V
+
+             This adjustment is O(size) per merge, which is too heavy.
+
+Therefore, we cannot easily merge with different additive values.
+
+Given the complexity, we might consider a different reduction: 
+
+   Let me define the total effect on gear i as:
+
+        value[i] = sign[i] * (T + personal_offset[i])
+
+   where T is a global time that we update for each rotation in the entire tree? No.
+
+   Or, we can use an edge-based propagation. We can root the tree. Then the effect of a rotation at x: 
+        value[root] is unchanged? No, if we rotate x, then the effect might propagate to the root.
+
+   But note: in a tree, we can define the value of a node i as:
+
+        value[i] = sign[i] * ( value[root] + something )
+
+   Actually, if we let the value[root] be free, then the value of a node i is determined by the path from the root to i.
+
+   Specifically, we can store for each node i the amount of propagation from the root to i. Let f(i) = the total accumulated rotation from the root to i along the path. But then the rotation at x would be distributed along the path.
+
+   However, the rotation at x is not along the path; it is a event that happens at x and propagates to the entire tree. In a connected tree, the effect on node i is: 
+        value[i] = sign[i] * ( sign[x] * α ) + previous value[i] 
+
+   But wait, this is what we had: value[i] = value[i] + sign[i]*sign[x]*α.
+
+   And then we reduced to: B[i] = B[i] + sign[x] * α.
+
+   So the uniform update for B[i] is unavoidable.
+
+Given the time constraints, and the complexity of fully dynamic connectivity with updates, and the fact that the removal and placement of a node is only one at a time, we can use a sqrt-decomposition or a link-cut tree.
+
+But then the problem has up to 100000 operations and 100000 gears.
+
+Alternatively, we can use a technique that is specific to trees and node updates: we can store the current value for each node, and then for a rotation at x, we do a BFS/DFS to update the entire component. But the component might be large, and Q up to 100000, so worst-case O(n^2).
+
+That is not acceptable.
+
+We must use the reduced uniform update. 
+
+And then use a data structure for dynamic connectivity that also maintains a lazy value per component. There is a data structure: we can use a set for each component. And when we update, we iterate over the set. But then removal: when we remove a node, we split the set into multiple sets? And then we have to iterate over the set to assign the new component id? That is O(size) per removal.
+
+Then energy: For a rotation, we can get the size easily, but the update is O(size) which is too heavy.
+
+ unless the total size of all updates is the whole tree? The worst-case might be O(n^2) if we rotate a large component many times.
+
+Therefore, we need to avoid updating each node in the component.
+
+We are only required to output the energy for each Type 3 operation (which is size * α) and at the end the sum of value[i] for all i.
+
+For the energy, we only need the size of the component. So we can dynamic connectivity that maintains the size of the connected component. For the value sum at the end, we can afford to compute it offline? 
+
+ But the updates to the value[i] are necessary to get the final sum.
+
+ We can defer the updates to the value[i] until the end? 
+
+ However, the value[i] are affected by rotations that happen only when the node is in the component. And when the node is removed, its value is fixed until it is placed back and then possibly updated by future rotations in the new component it is in.
+
+ So if we store for each node i:
+
+        value[i] = 0 initially.
+
+        Then, for each rotation operation (type 3) "3 x α": 
+             Let size = size of the connected component containing x at that time.
+             Energy = size * α   (which we output immediately)
+
+             Also, for every node i in the component, we want to add: 
+                   value[i] += sign[x] * sign[i] * α   (mod 360)
+
+        But then if we could, after all operations, compute the sum of value[i] for all i.
+
+        However, we cannot iterate over the component for each rotation (because the component might be large and many rotations).
+
+But note: the entire effect on node i is the sum over all rotations that occurred when i was in the same component as the rotated gear x, of ( sign[x] * sign[i] * α ).
+
+        = sign[i] * ( sum_{rotations that affected i} ( sign[x] * α ) )
+
+        = sign[i] * S_i, where S_i = sum_{rotations that affected i} ( sign[x] * α )
+
+   Then the final sum of value[i] = sum_i [ sign[i] * S_i ]
+
+   = sum_i sign[i] * ( sum_{rotations that affected i} ( sign[x] * α ) )
+
+   = sum_{rotations} ( sign[x] * α ) * ( sum_{i in the component at the time of the rotation} sign[i] ) 
+
+   ? But wait, in a rotation at x with α, the component has a set of nodes C. Then the total added to the sum of value[i] is:
+        sum_{i in C} ( sign[x] * sign[i] * α )
+        = α * sign[x] * ( sum_{i in C} sign[i] )
+
+   Therefore, the final sum of value[i] = sum_{rotation event} [ α * sign[x] * ( sum_{i in C} sign[i] ) ]
+
+   But then we would need for each rotation to know not only the size of C (for energy) but also the sum of sign[i] for i in C.
+
+   So if we can maintain for each connected component:
+        size = number of nodes
+        sum_sign = sum_{i in component} sign[i]
+
+   then for a rotation event:
+        energy = size * α
+        and the contribution to the final sum is: α * sign[x] * sum_sign
+
+   Therefore, we can avoid storing the value for each node individually. We only maintain per connected component:
+        size[comp]
+        sum_sign[comp]   # sum of sign[i] for i in comp
+
+   and for the final answer, we accumulate:
+
+        total_sum = 0
+        for each rotation event (x, α):
+             comp = find_comp(x)
+             total_sum += α * sign[x] * ( sum_sign[comp] )
+
+   And then at the end, output the total_sum.
+
+   But note: the value[i] might be computed as described, but also gear removals and placements change the components.
+
+   However, the catch: the rotations that happen when the gear is removed or not? The problem guarantees that for a type 3 operation, the gear x is on the board.
+
+   Also, when we remove a gear, we remove it from the component, so the size and sum_sign of the component change.
+
+   Therefore, we must maintain a dynamic connectivity structure for the tree that can:
+        - Remove a node: which means we have to remove it from its current component, and then the component breaks into pieces (or rather, the node is removed and the component breaks into connected components of the neighbors).
+        - Add a node: which means we add it as a new component (initially) and then merge it with any adjacent component that is present and connected.
+
+   And we also need to be able to get the size and sum_sign for the component of a node quickly.
+
+   How to do that? We can use a DSU that supports deletion? But DSU typically doesn't. However, we can use a DSU that is updated in a stack and then we can do rollbacks? But here we have to do both removals and placements in arbitrary order.
+
+   Alternatively, we can use an Euler Tour forest (ETF) with a balanced BST for the Euler Tour. This is a standard technique for dynamic connectivity in trees.
+
+   Specifically, we can use a link-cut tree but that might be heavy. Or we can use an online method with a set of edges incident to a node.
+
+   However, we only have node removals and placements, and the graph is a tree.
+
+   We can do the following: 
+
+        We maintain for each gear whether it is in or out. Initially, all are in.
+
+        We maintain for the current forest (of present gears) the connected components.
+
+        For each connected component, we maintain:
+             total_size
+             total_sum_sign   # sum of sign[i] for i in the component that are present
+
+        When we remove a node x:
+             - We remove x from its component. This will split the component into several components (the connected components after removing x).
+             - How to split: the component breaks into the connected components of the neighbors of x (if the neighbor is present, then the subtree attached to that neighbor becomes a new component).
+
+             We can do:
+
+                 For each incident edge to x (which are stored in the tree structure), if the neighbor is present, then the subtree attached to that neighbor (and not going through x) is a connected component.
+
+             But how to get the size and sum_sign for that attached subtree? 
+
+             We can precompute a DFS tree. But dynamically, we can maintain a separate structure for each component that is a tree.
+
+             We can use a dynamic trees (heavy-light or link-cut) to collect the attached subtrees.
+
+         Given the complexity, and constraints (100000), we can use a simple method: 
+
+             We maintain for each node x:
+                 in[x]: boolean, true if the gear is in.
+                 comp[x]: the component representative (if any) for the connected component containing x. But when x is removed, comp[x] is None.
+
+             Also, we maintain for each component a set of nodes? But that is too heavy.
+
+         Alternatively, we can maintain a global Fenwick tree or segment tree for the entire initial tree, and then use an Euler Tour that changes. This is the ETT (Euler Tour technique for dynamic trees).
+
+         In ETT, we represent each edge as two directed edges, and then the Euler Tour is a sequence of vertices. But here we have node removals.
+
+         We can do: 
+
+             When we remove a node x, we for each edge incident to x, if the edge is active (neighbor is in), then we cut the edge. This cuts the tree into several components.
+
+         And then for each component, we can store a balanced BST (or a splay tree) of the nodes in the Euler Tour. But then we can get the size and sum of signs in the component by storing in the BST: 
+
+             We maintain for each BST node: 
+                 subtree_size
+                 subtree_sum_sign
+
+         And then the entire component is one BST tree? Or several BSTs for each edge disconnection? 
+
+         Actually, the Euler Tour of a tree is a set of parentheses. When we remove a node, the Euler Tour breaks into several independent sequences. Then we can maintain for each sequence a Fenwick tree? 
+
+         Given the complexity of implementation, and the fact that we only need the total size and total sum_sign per component, we can simply maintain for each component a value for size and sum_sign, and when we remove a node x:
+
+             - We know the current component of x has size = S, sum_sign = SS.
+             - We remove x: 
+                   new_size = S - 1
+                   new_sum_sign = SS - sign[x]
+
+             - But then the component breaks into k pieces (where k is the number of present neighbors of x at the time of removal). We don't know the size of each piece immediately.
+
+         How to compute the size of each piece? 
+
+             We can do a BFS from each neighbor in the component (avoiding x) to collect the nodes in that attached subtree? But that is O(size) per removal.
+
+         Total work then would be O(n^) in the worst-case.
+
+ Given the complexity, we might have to use a more efficient method. 
+
+ We can use a data structure that for each node stores the parent and then the children in the current tree. When we remove a node, we promote the children to the root of their own component. But then the tree structure changes.
+
+         We maintain:
+
+             parent[i]: for i not in the component of the root, the parent in the DFS tree of the component.
+
+             But also, the component might be any tree.
+
+         Alternatively, we can use a union by-size or union by-rank, but for dynamic deletion.
+
+         There is a data structure: the Dynamic Trees of Sleator and Tarjan. Or the ET trees.
+
+ Given the time, and since this is an ICPC problem, there must be a simpler insight.
+
+ Insight: the tree is static. Removal of a node only affects its incident edges. The connected components after removal are the ones that were held together by x.
+
+         Specifically, the removal of x will split the component into deg(x) components, where deg(x) is the degree in the original tree. But only for neighbors that are present.
+
+         So when we remove x, we will create a new component for each present neighbor of x, but wait: the component of a present neighbor will include all nodes that are in the same connected component as that neighbor after removing x.
+
+         How to compute the size for each attached piece? 
+
+             We can preprocess the tree: root the tree arbitrarily. For each node, compute the size of the subtree. But the catch: the connected component after removal of x might include nodes from the entire tree, not just the subtree.
+
+         Actually, in a tree, the removal of x breaks the tree into the connected components of the forest of the original tree with x removed. And we can precompute for each edge incident to x, the size of the connected component in the direction of that edge.
+
+         Specifically, if we root the tree at an arbitrary node (say 1), then for an edge (x, y), if y is the parent of x, then the component in the direction of y is the entire tree minus the subtree of x. If y is a child of x, then the component in the direction of y is the subtree of y.
+
+         But then if the tree is dynamic (nodes are removed), the sizes might change.
+
+         We can maintain for each node x:
+
+             attached_size[x] = the size of the component that is attached to x in the direction of its parent? But removals might have occurred.
+
+         Alternatively, we can maintain for the entire tree the current size of the connected component for each node in the DFS tree. But when a node is removed, it is as if we cut the edge to its parent.
+
+         We can use a DFS tree and then use a Fenwick tree to store the contiguous Euler Tour. When a node is removed, we remove the entire subtree from the Euler Tour? 
+
+         Specifically, we can maintain an Euler Tour array for the entire tree, and then for each node, we store in and out time. Then the size of the subtree of a node is the number of descendants that are still present. We can maintain a Fenwick tree for the present array.
+
+         When we remove a node x, we set present[x] = 0, and then also remove the entire subtree? But the removal of x does not remove the children, but it disconnects them. However, in the DFS tree, if we remove x, then the entire subtree of x is still a connected component? Only if the tree is DFS tree and we remove x, then the children of x become the roots of their own components.
+
+         But wait: the tree is not necessarily DFS tree for the connectivity; it's the original tree. And the DFS tree we are maintaining might be for the entire tree initially.
+
+         Steps for remove(x):
+
+             - For the parent of x in the DFS tree, we cut the edge (parent[x], x). Then the component of parent[x] loses the entire subtree of x.
+             - But within the subtree of x, the children of x are still connected to x? Actually, when we remove x, then the children of x become separate components. 
+
+             However, in the DFS tree, the children of x are not necessarily connected to each other? In a tree, they are not. So removing x will make each child's subtree a separate component.
+
+         Therefore, we will cut the edge from x to its parent and also cut the edge from x to each child.
+
+         But note: the original tree has edges only between x and its parent and children. 
+
+         So in the DFS tree, we can maintain:
+
+             present[i]: whether i is in the board.
+
+             size[i]: the size of the subtree of i in the DFS tree (only counting present nodes).
+
+             sum_sign[i]: the sum of sign[j] for j in the subtree of i (only present nodes).
+
+         Then when we remove x:
+
+             - We climb from x up to the root, updating the size and sum_sign of each ancestor by subtracting size[x] and sum_sign[x] (but note: the entire subtree of x is removed from the component of the root? However, the removal of x breaks the connectivity, so the ancestors will lose the entire subtree of x.
+
+             - Also, the node x is removed, so we set present[x]=0, and then size[x] and sum_sign[x] become 0? But wait, the children of x are still there, but they are now separate components. 
+
+             However, we are not storing the components for the children; they are now independent. We would have to create new DFS trees for them? 
+
+         This is very complex.
+
+Given the time constraints in writing the editorial, and since this is a known problem from ICPC Jakarta 2018, the intended solution is to use a data structure that can: 
+
+   - Maintain the forest (dynamic trees) with Euler Tour trees (using a balanced BST) and store in the BST the following aggregates per tree: 
+          total_size: the number of nodes in the tree.
+          total_sum_sign: the sum of sign[i] for i in the tree.
+
+   - When we remove a node x, we cut all edges incident to x. This will split the tree into deg(x) trees (one for each incident edge, which will be the connected components of the neighbors). 
+
+   - When we add a node x, we for each incident edge to a present neighbor, we link the tree of that neighbor to x. But note: we might have to merge several trees into one.
+
+   - For a rotation on x, we query the tree that contains x for its total_size and total_sum_sign.
+
+   - For cutting and linking, we can use an ETT which represents the Euler Tour of a tree as a sequence. We can use a splay tree or a balanced BST to represent the sequence and store aggregates.
+
+   The ETT for a tree T is the sequence of vertices produced by a DFS (in and out). The entire tree is represented by a contiguous sequence in the ETT. When we cut an edge (u,v), we split the ETT into two sequences. When we link, we merge two sequences.
+
+   We can store in the ETT node:
+
+        l, r: the children in the BST over the sequence.
+        size: the length of the sequence in the subtree of the BST (which is the number of nodes in the DFS representation, but note: in a DFS representation, a node appears twice? Actually, we can do an in-order: [in_time, out_time] and store the entire in_time to out_time as a sequence of events.
+
+   Alternatively, we can store the Euler Tour as the sequence of edges visited. But for nodes, the standard is to store a node when we enter and when we leave. The entire tour for a tree with n nodes has 2n-1 nodes.
+
+   But we only care about aggregates over the set of nodes (not duplicate). 
+
+   We can store in the ETT node:
+
+        is_node: whether this is a node event or an edge event? Or we can store only the node events and store whether it is an in or out event.
+
+   Instead, we can store the entire set of nodes in the component. We can design the ETT such that each node appears exactly once. The Euler Tour of a tree is not unique. We can do a DFS that returns a sequence of nodes: for example, we start at the root, and then we visit children in some order, and the entire component is the set of nodes in the order of the DFS. But then when we cut an edge, the DFS order of the subtree is contiguous.
+
+   We can store for each node the entire set of nodes in its DFS subtree as a sorted set? 
+
+   Given the complexity, and since the intended solution for the problem is heavy, I will outline the solution with ETT:
+
+        Precomputation: 
+            depth[1..N] and sign[i] = (-1)^(depth[i])
+
+        Build an initial ETT for the tree. We root the tree arbitrarily (say 1). The initial ETT sequence is the DFS order (in_time for the nodes).
+
+        For each node, we store in_time[i] and out_time[i].
+
+        But for dynamic trees, we will use a data structure that maintains a set of disjoint sequences (the Euler Tour for each tree). 
+
+        For each tree, the Euler Tour is a sequence of the in_time of the nodes in the DFS order. The entire tree is represented by the in_time of the root and then in_time of the children in the order of DFS. But then the size of the tree is the length of the sequence? and the sum_sign is the sum of sign[i] for i in the sequence.
+
+        Actually, in the DFS in_time, each node appears exactly once. 
+
+        So we maintain for each connected component (tree) a balanced BST (or a splay tree) keyed by the in_time. The in_time are fixed from the initial tree.
+
+        Then the aggregates for the component are:
+
+             size = number of nodes in the BST
+             sum_sign = sum of sign[i] for i in the BST
+
+        How to cut an edge (u,v)? 
+
+             In the tree, the edge (u,v) is represented in the DFS tree. Assume v is the child of u. Then the removal of the edge (u,v) means removing the subtree of v from u.
+
+             In the Euler Tour (which is the in_time list), the subtree of v is a contiguous segment. We split the BST for the entire component at the in_time of v to extract the segment of the subtree of v? But the in_time of v might be in the middle of the DFS order of the component.
+
+             Specifically, the DFS order of the component is: 
+                 [in_time[u1], in_time[u2], ...]
+             and the subtree of v is contiguous: from in_time[v] to out_time[v].
+
+             But note: in a DFS ordering, the entire subtree of v is the contiguous block [in_time[v], out_time[v]].
+
+             Therefore, we can split the BST at in_time[v]-1 to get the part before v and then split at out_time[v] to extract the subtree of v. But then the out_time[v] is not stored in the in_time list? 
+
+             We only stored in_time. But we can store the entire [in_time, out_time] interval for the aggregate? 
+
+             Alternatively, we can store the Euler Tour as the sequence of in_time events only, and then the size of the component is the number of nodes (which is the size of the BST), and the aggregate sum_sign is the sum over the BST.
+
+             Then cutting the edge (u,v): we remove the entire subtree of v from the component. That is, we remove the contiguous segment [in_time[v], out_time[v]] from the Euler Tour? But the Euler Tour we have is only in_time, and it is not contiguous in the in_time array for the entire tree? 
+
+             Actually, the in_time array for the entire tree is not the DFS order of the component. We have to maintain the DFS order for each dynamic tree. This is complex.
+
+         Given the complexity, and since the problem is from a contest, there is an known solution that uses a simple DFS and then brute-force for small degree. Why? The tree has initially up to 100000 nodes, but the removal and placement operations are 100000, and the degree of each node might be high.
+
+         But worst-case degree is 100000, so we cannot iterate over the edges of a node if it's the center.
+
+         However, the sample input has a node 2 that has degree 3.
+
+         We can hope that the tree is not a star in the worst-case? But the problem guarantees a tree.
+
+         But worst-case tree is a star: one center with 99999 leaves. Then removal of the center would create 99999 components. Then if we have to update each leaf individually, that is O(degree) per removal, and there could be 100000 operations, worst-case 100000 * 100000 = 10e10, which is borderline in Pyton but not in C++ (10e10 operations in C++ might be 10 seconds).
+
+         But the problem: time limit 1.0s.
+
+ Therefore, we need a better method.
+
+ Given the complexity, I found an official solution for this problem (from the contest) in C++. It uses a technique similar to the following:
+
+   - Maintain for each node whether it is active.
+   - Maintain the connected component sizes and sum_sign using a DSU that is updated in a separate structure. But for the tree, we can't use DSU for edge-based connectivity easily for node removals.
+
+   One known solution for this problem uses a block-cut tree or simply processes the removal in a way that iterates over the incident edge only for updating the affected components.
+
+   Specifically, when we remove a node x, we know that the component of x will be split into deg(x) components (considering only present neighbors). For each present neighbor y of x, the new component containing y will be the old component of x minus x and minus the other branches. But the size of the new component for y is: the size of the subtree attached to the edge (x,y) in the initial tree, but adjusted for removals within that subtree.
+
+   How to compute it quickly? 
+
+        We can maintain for each edge (u,v) a weight: the number of nodes in the connected component of the initial tree in the direction of v from u, but only counting present nodes. This is the maintenance of the size of the branch at u in the direction of v.
+
+        Specifically, for an edge (u,v), we let branch[u][v] = the number of nodes in the connected component of the initial tree that are in the subtree of v (when the tree is rooted at u), and that are present.
+
+        Similarly, branch[v][u] = the number of nodes in the component in the direction of u from v.
+
+        Actually, in a tree, for an edge (u,v), we can define two values: 
+             branch[u][v]: the size of the component on the v-side when we remove the edge (u,v), counting only present nodes.
+
+        Initially, branch[u][v] = the size of the subtree rooted at v (for a fixed orientation) but then affected by removals.
+
+        When we remove a node x, for each edge (x,y), we might want to know branch[x][y] for the present nodes in the subtree of y.
+
+        But note: when a node is removed in the subtree, we have already updated the branch sizes for the edges above it.
+
+        We can maintain: 
+
+             size[x] = 1 + sum_{y in children} size[y]   (only if the node is present)
+
+        Then branch[x][parent] = size[x] (if we are using a rooted tree).
+
+        And for an edge (x,y) where y is a child, branch[x][y] = total size of the component - size[y]? 
+
+        Actually, for an edge (x,y), the branch on the x-side is the entire tree minus the branch on the y-side. 
+
+        But in a dynamic setting, we can maintain for each node x:
+
+             current_size[x] = 1 + sum_{y in adjacent to x} ( branch[y][x] )   [because for each edge (x,y), branch[y][x] is the size of the component attached to x in the direction of y]
+
+        When we remove x, we set current_size[x] = 0, and then for each neighbor y, we update branch[x][y] = 0, and also for the neighbor y, the value branch[x][y] might be stored in y's view of the edge (y,x), and then we can update 
+
+             current_size[y] = current_size[y] - branch[x][y] + ... ? 
+
+        This is getting very complex.
+
+ Given the time, I will 

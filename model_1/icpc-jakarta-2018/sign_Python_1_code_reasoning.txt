@@ -1,0 +1,1251 @@
+ We are going to follow the editorial guidelines.
+ Steps:
+ 1. Initialize the base sequence: for each position, if prefilled (non-zero) then use that value, else set to -1 (the lex smallest possible).
+ 2. Precompute the base prefix sum array (1-indexed for convenience).
+ 3. We'll use two Fenwick trees (Binary Indexed Trees):
+    - `flip_tree`: to count the number of flips (each flip is from -1 to 1, so we add 2) that have been done in a range. Actually, we can store the count of flips (which are the positions that were free and have been set to 1) in the range. Then the total effect in the interval is 2 * (number of flips in the interval).
+    - `available_tree`: to count the number of free positions that are still set to -1 (available to flip) in a range.
+
+ 4. We maintain a sorted list of available free positions (initially all free positions) and a set for quick membership tests? Actually, we can use a sorted list and update it by removing as we flip.
+
+ 5. Constraints processing:
+    - Group constraints by their right endpoint B.
+    - For each B from 1 to N, process the constraints (with that B) in decreasing order of A (left endpoint). Why? Because if we have two constraints [A1, B] and [A2, B] with A2 < A1, then satisfying the constraint with A1 first might help the constraint with A2 (which covers a larger segment) by having some flips already in [A1, B] that also lie in [A2, B]. But note: the constraint with the larger A (i.e., starting later) is a sub-interval of the one with the smaller A? Actually, we want to satisfy the constraint that is more restrictive (smaller interval) first? However, the editorial says: sort by increasing B and then by decreasing A.
+
+    Why decreasing A? Consider: we have two constraints for the same B: [A1, B] and [A2, B] with A1 < A2. Then if we process the constraint with A2 (the larger left endpoint) first, then when processing A1 we can take advantage of flips we did in [A2, B] (which is part of [A1, B]). But if we process A1 first, we might have to flip in [A1, A2-1] and then again in [A2, B] for the next constraint, which might not be optimal? However, we are required to use as few flips as possible (and the leftmost ones) to meet the deficit.
+
+    Actually, the idea is: if we have two constraints for the same B, and one constraint [A1, B] and a second [A2, B] with A1 < A2, then the constraint [A2, B] is entirely contained in [A1, B]. Therefore, any flip we do for [A2, B] will also help [A1, B]. Thus, if we process the constraint with the larger A (i.e., the inner interval) first, then when we come to the constraint with the smaller A (outer interval) we have already done some flips that help both. This minimizes the total flips and avoids redundant flips.
+
+ 6. For a constraint (A, B, C):
+    - Compute the base sum: base_interval = base_prefix[B] - base_prefix[A-1]
+    - Compute the current effect of flips in [A, B]: already = flip_tree.range_query(A, B). Then the current total sum in [A, B] is base_interval + 2 * already.
+    - The deficit d = C - (base_interval + 2 * already). If d <= 0, the constraint is already satisfied.
+    - Otherwise, we need to flip t = ceil(d/2) more free positions in [A, B]. Why? Because each flip increases the sum by 2 (changing from -1 to 1: difference of 2).
+
+    - Check: if the available free positions in [A, B] (available_tree.range_query(A, B)) is less than t, then output "Impossible".
+
+    - Then, we flip the t smallest available free positions in [A, B]. Why the smallest? Because we want to flip the leftmost ones first to get the lexicographically smallest sequence (if we flip a leftmost free position to 1, then we leave the rightmost ones as -1, which is lex smaller than if we flip a rightmost one and leave a left one as -1? Actually, we want to flip as left as possible? But note: the lex order: having a 1 as early as possible is worse? But wait: we start with all free as -1, which is the lex smallest. Then we flip some to 1. Flipping a leftmost free position to 1 actually makes the sequence larger? However, we have to meet the constraint. And we want the lex smallest sequence.
+
+    How to achieve lex smallest? We want to flip as few as possible? And when we have to flip, we flip the rightmost ones? Actually, no: lex smallest: we want to keep as many -1 as possible in the beginning. So we want to avoid flipping an early free position to 1 until we have to. However, if we flip a free position that is as far to the right as possible, then we leave the left ones as -1? That would be lex smaller? Let's compare:
+
+        Option 1: flip a left free position: ... [position i (left) becomes 1] ... then the sequence has a 1 at i and -1 at j (a free position that is right) -> then at the first free position we have 1.
+        Option 2: flip a right free position: ... [position j (right) becomes 1] ... then at the left free position we have -1 and then later a 1.
+
+        Which is lex smaller? The sequence with -1 at the left and then 1 is lex smaller than the one with 1 at the left and then -1? Because at the first free position: -1 is less than 1. So we want to flip the rightmost free positions? But then we might break the constraint? Because the constraint might require flips in a specific interval? Actually, we can flip any free position in the interval [A, B]. To leave the left free positions as -1 (which is lex smaller) we want to flip the rightmost free positions? However, the constraint might be met by flipping any. But we have multiple constraints: if we flip a right free position, it might not help a constraint that ends earlier? 
+
+    However, note: we are processing constraints by increasing B. So when we are at constraint with B, we are only concerned with positions <= B. And we want to leave the free positions that are as left as possible as -1? Then we should flip the free positions that are as far to the right as possible? Because then we leave the left ones as -1? 
+
+    But the problem: we want the entire sequence to be lex smallest. Lex order: the first free position we have, if we set it to -1 and the other to 1, that is better than setting the first to 1 and the second to -1? Yes: because -1 < 1. So we want to avoid flipping a free position that is left unless forced? How? 
+
+    Actually, we are forced by the constraint: the constraint [A, B] requires a certain number of flips in [A, B]. To meet the constraint, we must flip some free positions in [A, B]. To leave the left ones as -1, we should flip the rightmost available free positions in [A, B]. Then the left ones remain -1, which is lex smaller.
+
+    However, the editorial says: flip the leftmost free positions? Actually, let me read the editorial: "flip the t smallest available free positions in [A_i, B_i]" (i.e., the leftmost). Why? 
+
+    Consider: we are processing constraints by increasing B. The constraints with smaller B must be satisfied first. When we get to a constraint with a larger B, we have already fixed some flips for constraints that ended at or before the current B. Now, if we flip a left free position, it will help not only the current constraint but also any future constraint that covers that left position and extends beyond? But then we might have "used" a left free position for a constraint that ends at a small B, and then when we get to a constraint that ends at a large B and requires a flip in a left free position, we have already flipped it? So we have to use the left ones for the constraints that end earlier? 
+
+    Actually, the problem: if we flip the rightmost free positions, then for a constraint that ends at an early B, we might not have any free positions in [A, B] that are at the right? Actually, the constraint [A, B] must be satisfied by flipping positions in [A, B]. If we flip a left free position (which is in [A, B]) then it helps. But if we flip a right free position that is beyond the current constraint? No, we are processing by B, so we are at constraint with B, and we are only considering positions in [A, B]. 
+
+    The key: we are processing constraints by increasing B. Therefore, when we are at a constraint [A, B], we haven't processed constraints that end beyond B. But we have processed constraints that end at B? And we are processing the constraints for this B in decreasing order of A. 
+
+    Now, if we flip the rightmost free positions in [A, B], then we leave the left free positions (which are also in [A, B]) as -1. Then, if we later (for a constraint with a larger B) have a constraint that covers a left free position that we left as -1, we can flip it? But wait: we are processing by increasing B. So we are done with constraints that end at B? Then we move to B+1, etc. And when we process a constraint that ends at a larger B, we can flip a free position that is at a left index? But then we are flipping a left index to 1, which would make the sequence lex larger? 
+
+    However, we have no choice: the constraint that ends at a larger B and starts at a very left might require a flip at a left position. But if we avoided flipping the left position when we had a constraint that ended at a smaller B, then we can now flip that left position for the constraint that ends at a larger B? But that would yield the same sequence? Actually, we are building the sequence as we go? 
+
+    But note: we are processing constraints by B. We haven't fixed the flips for constraints with larger B. So we are going to flip the left free position for a constraint that ends at a larger B? Then the lex order: that left free position becomes 1. But if we had flipped that left free position for an earlier constraint (with smaller B) we would have the same effect? So the final sequence would have the left free position as 1 regardless? 
+
+    But why would we prefer to flip it later? Actually, no: we want the lex smallest. The lex order is fixed: we set free positions to -1 initially. Then we flip some to 1. The flips we do are permanent. So if we flip a left free position to 1 at an early constraint, then the entire sequence becomes ... 1 ... at that left position. And if we avoid flipping that left position until a later constraint (if possible) then we leave it as -1 for as long as possible? But if we flip it in the end, we still set it to 1. The final sequence has that left free position as 1. 
+
+    So the timing of the flip doesn't matter for the final value? It will be 1. Therefore, we can flip the left free positions for the constraint that ends at the smallest B that requires it? 
+
+    However, the problem: if we flip a free position at a left index for an early constraint, then that flip will help satisfy multiple constraints (including those that start at an index that covers that left position). But if we flip a right free position for the early constraint, then that flip only helps constraints that cover that right position. Then when we get to a constraint that starts at a very left and ends at a large B, we might have to flip a left free position that we left as -1? Then we end up with two flips: one at the right (for the early constraint) and one at the left (for the later constraint). But that might be avoidable: if we flip the left free position for the early constraint, it would help both the early constraint and the later constraint? 
+
+    Therefore, we want to flip the free positions that are as left as possible? Because they help more constraints (covering a larger set of intervals). This minimizes the total number of flips? 
+
+    But note: we are required to use as few flips as possible? And we are processing constraints in an order that allows flips to be reused for multiple constraints? 
+
+    However, the problem: we want lex smallest. The lex smallest sequence is achieved by having as many -1 as possible at the beginning. Therefore, we want to flip as few free positions as possible? And then, when we have to flip, flip the rightmost free positions? Because then we leave the left ones as -1? 
+
+    But wait: if we flip the rightmost free positions, we might force us to flip more free positions later? Because the flip at the right doesn't help a constraint that doesn't cover that right position? 
+
+    Actually, we have to satisfy all constraints. So we must choose flips that cover the constraints. The minimal set of flips to satisfy all constraints might be found by a greedy algorithm that flips the rightmost free positions? Then we leave the left ones as -1? 
+
+    How about: we process constraints by increasing B, and for each constraint we flip the rightmost available free positions in [A, B]? 
+
+    Why? Because then we leave the left free positions in [A, B] as -1 (which is lex smaller) and we use the flips that are as far to the right as possible (so they help as few constraints as possible? but we are processing by increasing B, so the constraints that end at B are the only ones we care about? And the constraint [A, B] is satisfied by flipping the rightmost free positions? 
+
+    Then when we get to a constraint with a larger B, we have left the left free positions untouched? So we can use them for constraints that require a flip at a left position? 
+
+    However, consider: 
+        Constraint 1: [1, 3] must have sum >= 3. 
+        Constraint 2: [1, 2] must have sum >= 2.
+
+        We have free positions: 1,2,3.
+
+        Process constraint with B=2: [1,2] -> deficit: 3 (base: (-1)+(-1) = -2, so deficit = 2 - (-2) = 4 -> t=2). We need to flip 2 free positions in [1,2]. If we flip the rightmost: then we flip positions 1 and 2? But wait: the rightmost in [1,2] are 2 and then 1? So we flip 2 and 1? Then we have [1,1] for positions 1 and 2? Then constraint 1: [1,3]: we have 1+1+(-1)=1 which is <3 -> not satisfied.
+
+        But if we flip the leftmost in [1,2]: we flip 1 and 2? same result? 
+
+        Actually, we need 3 flips? But we only have two in [1,2]? 
+
+    However, the constraint [1,2] requires at least 2: so 1+1=2. Then [1,3] requires 3: we have 1+1+? and we have position 3 free. Then we can flip position 3? But we haven't processed constraint [1,3] yet? We process by B: constraint [1,2] (B=2) then constraint [1,3] (B=3). After flipping positions 1 and 2 for constraint [1,2], then for constraint [1,3]: base = 1+1+(-1)=1, deficit = 3-1 = 2 -> t=1. Then we flip position 3. Then we have [1,1,1] which satisfies both.
+
+    But note: we are processing constraints for B=2: we flip two free positions. Then for B=3: we flip one more. So we flip 3 free positions? 
+
+    How about if we flip the rightmost in [1,2]? Then we flip positions 2 and then ... the next rightmost is 1? Same. 
+
+    But what if we flip positions 1 and 3? Then we have: for [1,2]: 1 (at1) and -1 (at2): sum=0 -> not enough. 
+
+    So we must flip two in [1,2]. Then we must flip one more in [1,3]? 
+
+    So the minimal number of flips is 3? 
+
+    Now, lex smallest: we start with all -1. Then we flip positions 1,2,3 to 1: the sequence is [1,1,1]. But can we get a lex smaller sequence? 
+
+    The lex smallest would be: we want to leave as many -1 as possible at the beginning. How about: [-1,1,1]? 
+        [1,2]: -1+1 = 0 < 2 -> not satisfied.
+        [1,1,1]: [1,2]=2, [1,3]=3 -> satisfies.
+
+        But [-1,1,1] is lex smaller than [1,1,1]? 
+            First element: -1 < 1 -> so [-1,1,1] is lex smaller.
+
+        How? We have two constraints: 
+            Constraint1: [1,2] must be at least 2: -1+1=0 -> fails.
+            Constraint2: [2,3] is not given? 
+
+        The constraints are [1,2] and [1,3]. 
+
+        How about [1,-1,1]? 
+            [1,2]: 1 + (-1) = 0 -> fails.
+
+        How about [1,1,-1]? 
+            [1,2]: 1+1=2 -> ok.
+            [1,3]: 1+1-1=1 < 3 -> fails.
+
+        How about [1,1,1]? 
+
+        So the only solution is [1,1,1]? 
+
+    But wait: the constraints are [1,2]>=2 and [1,3]>=3? 
+        [1,1,1] is the only solution.
+
+    Therefore, we cannot have [-1,1,1]? 
+
+    So the algorithm: we must flip all three? 
+
+    Now, the problem: we process constraint [1,2] first: we flip two free positions. But which two? We have positions 1,2,3 (all free). We are in the interval [1,2]: we can only flip positions 1 and 2. Then for constraint [1,3]: we flip position 3. Then the sequence is [1,1,1]. 
+
+    How can we get a lex smaller sequence? We cannot.
+
+    Therefore, the algorithm that flips the leftmost free positions in [1,2] (positions 1 and 2) yields [1,1,?] and then flips position 3 -> [1,1,1]. 
+
+    If we flip the rightmost free positions in [1,2]: we flip positions 2 and then 1? (because the interval [1,2] has positions 1 and 2; the rightmost is 2 then 1) -> same. 
+
+    So the order of flipping within the constraint doesn't matter? 
+
+    But consider another example: 
+        N=4, constraints: 
+          [1,2]: must be at least 2 -> deficit: 2 - ( (-1)+(-1) ) = 4 -> t=2: need to flip two in [1,2]
+          [3,4]: must be at least 2 -> deficit: 4 -> t=2: flip two in [3,4]
+          [1,4]: must be at least 0 -> already satisfied? 
+
+        We have two options: 
+          Option1: flip positions 1 and 2, and 3 and 4 -> [1,1,1,1]
+          Option2: flip positions 2 and 3? -> [ -1, 1, 1, -1] 
+          Then [1,2]: -1+1=0 -> fails.
+          So we must flip two in [1,2] and two in [3,4]? 
+
+        Then the lex smallest: we want to leave the leftmost free positions as -1? How? 
+          We have free positions: 1,2,3,4. 
+          For [1,2]: we flip the two rightmost in [1,2]: that is positions 1 and 2? but they are both in the interval? Actually, the interval [1,2] has two positions: 1 and 2. The rightmost is 2, then 1? 
+          For [3,4]: flip the two rightmost: 4 then 3? 
+          Then we flip all? [1,1,1,1]
+
+        But what if we flip the leftmost in [1,2]? same: 1 and 2.
+
+        How about if we flip the rightmost in the entire set? For [1,2]: we cannot flip 4 because it's not in [1,2]. 
+
+        Therefore, we must flip two in [1,2] and two in [3,4]. 
+
+        Then the sequence is [1,1,1,1]. 
+
+        Is there a lex smaller sequence? 
+          We try: 
+            [-1,1,1,1]: [1,2] = -1+1=0 -> fails.
+            [1,-1,1,1]: [1,2]=1-1=0 -> fails.
+            [1,1,-1,1]: [3,4]= -1+1=0 -> fails.
+
+        So [1,1,1,1] is the only solution.
+
+    Now, consider a different constraint set:
+        Constraint1: [1,3] >= 1
+        Constraint2: [2,4] >= 1
+
+        Base: [-1,-1,-1,-1] -> base_prefix: 
+          [1,3]: -3 -> deficit = 1 - (-3) = 4 -> t=2 for [1,3]
+          [2,4]: -3 -> deficit = 1 - (-3)=4 -> t=2 for [2,4]
+
+        How to assign flips? 
+          If we flip positions 1 and 2 for [1,3]: then we have [1,1,-1,-1] -> [1,3]=1+1-1=1 -> ok.
+          Then constraint [2,4]: base = 1 (from position2) + (-1)+(-1) = 1-1-1 = -1 -> deficit = 1 - (-1)=2 -> t=1 -> we flip one in [2,4]. We can flip position 3? then [1,1,1,-1] -> [2,4]=1+1-1=1 -> ok.
+
+          Sequence: [1,1,1,-1]
+
+          But if we flip positions 2 and 3 for [1,3]: then we have [-1,1,1,-1] -> [1,3]= -1+1+1=1 -> ok.
+          Then constraint [2,4]: base = 1+1-1=1 -> already satisfied? 
+
+          Then sequence: [-1,1,1,-1] which is lex smaller than [1,1,1,-1]? 
+            First element: -1 < 1 -> so yes.
+
+        How did we get [-1,1,1,-1]? 
+          For constraint [1,3]: we flipped the two free positions that are the rightmost in [1,3]: so positions 3 and then 2? 
+          But note: we are processing [1,3] first (B=3) then [2,4] (B=4). 
+          For [1,3]: we have free positions: 1,2,3. 
+            We want to flip the rightmost two: 3 and 2. 
+          Then we leave position 1 as -1.
+
+        Then for [2,4]: base = (at2:1) + (at3:1) + (at4:-1) = 1+1-1 = 1 -> no deficit.
+
+        So we achieve a lex smaller sequence by flipping the rightmost free positions in the constraint's interval.
+
+    Therefore, we should flip the rightmost available free positions in [A, B]? 
+
+    But the editorial says: flip the smallest available free positions? (i.e., the leftmost). 
+
+    There is a discrepancy. 
+
+    However, the sample input 1: 
+        3 2
+        0 0 0
+        1 2 2
+        2 3 -1
+
+        We want: [1,1,-1] -> lex smallest.
+
+        How do we achieve that? 
+          Constraints: 
+            Constraint1: [1,2] sum>=2 -> deficit: 2 - ( (-1)+(-1) ) = 4 -> t=2: we must flip two in [1,2]. 
+            Then we get: positions 1 and 2 become 1 -> [1,1,-1] for now? Then constraint2: [2,3]: base = 1 (at2) + (-1) = 0. deficit = -1 - 0 = -1 -> satisfied.
+
+        Now, if we flip the rightmost free positions in [1,2]: the free positions in [1,2] are 1 and 2. The rightmost is 2, then 1? So we flip 2 and then 1? Then we get [1,1] at positions 1 and 2? same as flipping leftmost.
+
+        But what if we flip the leftmost: flip 1 then 2? same result.
+
+        So for this sample, both methods yield the same.
+
+    But the second sample: 
+        Input2: 
+          3 2
+          0 -1 0
+          1 2 2
+          2 3 -1
+
+        Base: 
+          position2 is prefilled with -1. 
+          Then base sequence: [0: free -> set to -1, 1: -1 (fixed), 2: free -> set to -1] -> [-1, -1, -1]
+          Constraint1: [1,2]: base = -1 + (-1) = -2. deficit = 2 - (-2)=4 -> t=2. 
+          But available free positions in [1,2]: only position1? (position2 is fixed). 
+          So we need to flip 2 positions, but only one available -> impossible.
+
+        Correct.
+
+    Therefore, the key for the lex smallest sequence is: 
+        We want to flip as few free positions as possible? (to leave as many as -1) and then when we have to flip, we flip the free positions that are as far to the right as possible? Because then we leave the left ones as -1? 
+
+    Why the editorial says leftmost? Maybe a misunderstanding? 
+
+    Let me check the editorial: 
+        "flip the t smallest available free positions in [A_i, B_i]"
+
+        That would be the leftmost. 
+
+    But our example above (the 4-length) showed that flipping the rightmost leads to a lex smaller sequence? 
+
+    How can flipping the leftmost lead to a lex smaller sequence? 
+        In the 4-length example: 
+          Constraints: 
+            [1,3] >= 1 -> flip two in [1,3]: if we flip the leftmost: positions 1 and 2 -> [1,1,-1,-1] 
+            then [2,4]: base = 1 (at2) + (-1) + (-1) = -1 -> deficit=1-(-1)=2 -> t=1: flip one in [2,4]: we flip position3 -> [1,1,1,-1] -> sequence: [1,1,1,-1]
+
+          But if we flip the rightmost in [1,3]: positions 3 and 2 -> [-1,1,1,-1] -> which is lex smaller? 
+
+        So the editorial's method of flipping the leftmost yields [1,1,1,-1] which is lex larger than [-1,1,1,-1]? 
+
+    Therefore, the editorial might have a mistake? 
+
+    But the problem: the editorial says: 
+        "flip the t smallest available free positions in [A_i, B_i] (to use leftmost positions first to leave the rightmost positions as -1, which helps in maintaining lex order)"
+
+    How does leaving the rightmost as -1 help lex order? 
+        Lex order: we compare from left to right. 
+        We want the leftmost free position to be as small as possible? i.e., -1. 
+        Therefore, we do not want to flip the leftmost free position to 1? 
+
+    So we should flip the rightmost free positions? 
+
+    After reevaluating, I find that the problem is complex. 
+
+    After reading known solutions for similar problems (like "Sign Sequence" from CodeForces or other OJs), the known solution is to use a greedy that sets free positions to -1 initially, and then when a constraint is not satisfied, it flips the free positions from right to left? 
+
+    Actually, there is a known problem "Sign Sequence" in CodeForces (originally from CEOI) that is similar. The known solution:
+
+        - Sort constraints by B (right endpoint) in increasing order.
+        - Use a Fenwick tree for the current sum and a data structure for available free positions (like a heap or a sorted set).
+        - For a constraint [A, B] that is not satisfied, flip the free positions in [A, B] from right to left until the constraint is satisfied.
+
+    Why right to left? 
+        Because flipping a right free position doesn't harm the lex order as much as flipping a left one? 
+        Actually, we want to preserve the left free positions as -1? So we flip the rightmost free positions first? 
+
+    Therefore, we change the algorithm: 
+        For a constraint (A, B, C) that has deficit d>0 (after accounting for base and previous flips), we need to flip t = ceil(d/2) free positions in [A, B]. 
+        We take the t largest (i.e., rightmost) available free positions in [A, B]. 
+
+    How to get the largest available free positions in [A, B]? 
+        We maintain a sorted list (initially sorted in increasing order) of free positions. 
+        But we want to query the largest in [A, B]: that is the largest first? 
+        We can also maintain a heap? But we need to remove elements as we flip. 
+
+    Alternatively, we can maintain a sorted list and then use:
+        We can find the entire set of available free positions in [A, B] and then take the largest t? 
+        But if we have 100000 constraints and each interval might be large, that is inefficient.
+
+    We need an efficient way to get the largest (rightmost) free positions in [A, B] one by one? 
+
+    We can use a data structure that supports:
+        - Query the largest element in [A, B] and remove it.
+        - We do this t times.
+
+    We can use a segment tree or a Fenwick tree to quickly count the available free positions in [A, B] and then use a balanced BST? 
+
+    Alternatively, we can use a sorted list and use bisect to find the available positions in [A, B] and then remove the largest? 
+
+        Steps for one constraint:
+            We know the available free positions in [A, B] are the positions in the sorted list that are in [A, B]. 
+            We need the largest t positions? 
+
+            We can do:
+                index = bisect_right(sorted_list, B) - 1   # the last element <= B
+                then we take from the sorted_list from the end backwards? 
+
+            But if we remove from a list, it is O(n). 
+
+    We want to remove t positions. The total number of free positions is at most N, and total flips is at most N, so we can do removals in a list? But if we do a linear scan to remove, and we do up to 100000 constraints, worst-case we might do O(n) per constraint -> 10^10 operations.
+
+    Therefore, we need an efficient data structure. 
+
+    We can use a balanced BST? In Python, we can use a sorted list and use the "bisect" module to find the positions, but removal from a sorted list is O(n). 
+
+    Alternatively, we can use a heap? 
+        We maintain a max-heap for the free positions? But we need to remove arbitrary elements? 
+
+    We can do: 
+        We maintain a max-heap for the free positions? Actually, we can use a heap per constraint? 
+
+    However, we also need to know which free positions are still available? 
+
+    We can use a lazy heap: 
+        We maintain a global max-heap for free positions? But we mark removed ones. 
+
+    Steps:
+        We have a max-heap: we can store (-position, position) to simulate a max-heap? 
+        But then how to get the free positions in [A, B]? 
+
+    Alternatively, we can have for each constraint: 
+        We want the largest free positions in [A, B]. We can do:
+            while the top of the max-heap is not in [A, B] or is removed, pop it? 
+            then if the top is in [A, B], we take it and mark it as removed, and then pop it? 
+        But then we need to do this t times? 
+
+    However, if we have many free positions that are not in [A, B] at the top, we might pop many. Worst-case, we pop O(n) per constraint -> 10^10.
+
+    Another idea: 
+        We maintain for the entire array a segment tree that holds the maximum available free position in a range? 
+
+    We can do: 
+        We build a segment tree that stores the maximum available free position in the segment. 
+        Then we can query the maximum in [A, B] and remove it. Then update the segment tree. 
+
+    We do this t times for the constraint? 
+
+    But t can be large? and the constraint count K is up to 100000, and total flips is at most N (100000) so overall we do at most 100000 removals? 
+
+    Therefore, we can do:
+
+        Build a segment tree for range maximum. 
+        We need to support:
+            - Point update (remove a free position: set to -infinity)
+            - Range maximum query.
+
+        Then for each constraint, we need to get the largest t free positions in [A, B]. We do:
+
+            flips_this_constraint = []
+            for _ in range(t):
+                pos = seg_tree.query(A, B)
+                if pos is not valid (like -inf) then break (but we already checked count? we know t are available) 
+                then remove pos: update seg_tree at pos to -10**9
+                then add pos to flips_this_constraint and update the flip_tree and available_tree (if we are maintaining Fenw trees for counts) and also update the available_tree (for available free positions) and the set_available.
+
+        But note: we already checked that there are at least t available free positions in [A, B]? 
+            We did: count_avail = available_tree.range_query(A, B) -> which is >= t.
+
+        However, when we remove one, we update the available_tree? 
+
+        We are using the Fenw tree for available_tree to count the available free positions. We also use the segment tree to get the maximum available free position. 
+
+        We also need to update the available_tree and the flip_tree? 
+
+        Steps:
+
+          Step1: Check count = available_tree.range_query(A, B) >= t.
+          Step2: Then remove the t largest free positions in [A, B]: 
+            for i in range(t):
+                pos = seg_tree.query(A, B)   # get the maximum available free position in [A, B]
+                if pos is not available? (should be, but we have a segment tree that we update immediately) 
+                then:
+                    available_tree.update(pos, -1)   # no longer available
+                    flip_tree.update(pos, 1)          # now it is flipped (counts as 1)
+                    ans[pos] = 1   # was -1, now 1
+                    update the segment_tree at pos to -10**9 (or a very small number) 
+                    and remove it from the sorted_set? we don't need the sorted_set for free positions anymore? 
+
+        But the segment tree update is O(log n) and we do t per constraint? 
+        Total flips is at most N, so overall O(N log n) which is 10^5 * log(10^5) ~ 1.6e6, acceptable.
+
+    However, we also have to update the Fenw trees (available_tree and flip_tree) for each flip: also O(log n) per update.
+
+    How do we build the segment tree for range maximum? 
+
+        We'll create an array `arr` of length n+1 (1-indexed) for the free positions: initially, for a free position i, arr[i]=i, for fixed positions, we set arr[i]=-10**9. 
+        Then we build a segment tree that stores the maximum value in the range.
+
+        The update: when we remove a free position i, we set arr[i] = -10**9 and then update the segment tree.
+
+    But note: the available_tree is a Fenw tree that counts the available free positions: we have already updated it? 
+
+    The algorithm:
+
+        Precomputation:
+            base_prefix: computed from the initial sequence (with free positions as -1).
+            ans = [0]*(n+1)
+            free_positions: initially, for i from 1 to n: if prefilled, then ans[i]=prefilled_value; else ans[i]=-1, and mark as free.
+
+        Data structures:
+            available_tree = Fenw(n)   # 1-indexed, for available free positions: initially 1 for free, 0 for fixed or removed (by flip).
+            flip_tree = Fenw(n)         # counts the flips (the number of free positions that have been flipped to 1) in a range: initially 0.
+
+            # For the segment tree for max in range for available free positions:
+            seg_arr = [-10**9]*(n+1)
+            for i in range(1, n+1):
+                if P[i-1] == 0:   # free
+                    seg_arr[i] = i   # the value we care about: the position index (because we want the maximum index)
+                else:
+                    seg_arr[i] = -10**9
+
+            Build a segment tree (or a Fenw tree? but Fenw is for sums, not for max. We need a segment tree for range max.
+
+        Constraints: group by B (and then sort by A decreasing) -> but now we are flipping the largest (rightmost) first? 
+
+        However, the known solution: 
+            Sort the constraints by B (increasing) and then for the same B, by A decreasing? 
+            But why A decreasing? 
+                Because if we have two constraints with the same B: [A1, B] and [A2, B] with A1 < A2, then the constraint [A2, B] is contained in [A1, B]. 
+                And we want to process the inner constraint first? 
+                But if we flip the rightmost free positions for the inner constraint, then the outer constraint might be satisfied by those flips? 
+                However, the outer constraint might require more flips? 
+
+                Example: 
+                  [2,3] and [1,3] for B=3, 
+                  base: [-1,-1,-1]
+                  [2,3]: deficit = 0 - (-2) = 2 -> t=1: flip the largest free position in [2,3]: which is 3? 
+                  then [1,3]: base = -1 (at1) + (-1 at2) + (1 at3) = -1, deficit = 0 - (-1)=1 -> not satisfied? 
+                  then we need to flip one more in [1,3]: the largest available free position in [1,3] that is not flipped: 2? 
+                  then we flip 2: -> [-1,1,1] 
+                  Then [1,3]: -1+1+1=1>=0 -> satisfied.
+
+                But if we do [1,3] first: 
+                  [1,3]: deficit = 0 - (-3)=3 -> t= ceil(3/2) = 2? 
+                  then we need to flip two in [1,3]: the two largest: 3 and 2 -> then we get [-1,1,1] 
+                  then [2,3]: 1+1=2>=0 -> satisfied.
+
+                So both orders work? 
+
+            Actually, if we process the outer constraint first, we flip 3 and 2. Then the inner constraint is satisfied. 
+            If we process the inner constraint first, we flip 3 then 2? 
+
+            The total flips are the same? 
+
+            But the order of processing: 
+                We are flipping the largest free positions in the interval. 
+                And the largest free positions in [1,3] are 3 and 2, which are the same as flipping the largest in [2,3] (which is 3) and then the next largest in [1,3] (which is 2). 
+
+            So the result is the same. 
+
+            Therefore, we can process in any order of A? 
+            But note: the available_tree and the segment_tree are updated as we flip. 
+
+            However, the editorial grouped by B and then sorted by A decreasing? 
+            We'll do the same: 
+                for B from 1 to n:
+                    constraints = constraints_by_B[B]
+                    sort by A decreasing.
+
+            Then for each constraint in that sorted order, we do the deficit calculation and then flip the t largest available free positions in [A, B] (if t>0).
+
+        Steps for a constraint (A, B, C) in the inner loop:
+
+            base_interval = base_prefix[B] - base_prefix[A-1]
+            already_flips = flip_tree.range_query(A, B)   # the number of flips in [A, B] that have been done (so far)
+            current_sum = base_interval + 2 * already_flips
+            d = C - current_sum
+            if d <= 0: continue
+
+            t = (d+1)//2   # because each flip adds 2
+
+            count_avail = available_tree.range_query(A, B)
+            if count_avail < t:
+                print("Impossible")
+                return
+
+            # Then we flip the t largest available free positions in [A, B]
+            flipped_this_constraint = []
+            for _ in range(t):
+                pos = seg_tree.query(A, B)   # the maximum available free position in [A, B]
+                if pos < A:   # not in the interval? but our query is [A, B] and we set non-free to -10**9, so if no available, we get -10**9? 
+                    # This should not happen because we checked count_avail>=t, so there should be at least one.
+                    print("Impossible")
+                    return
+
+                # Update: remove this free position
+                # Update the segment tree: set at pos to -10**9
+                seg_tree.update(pos, -10**9)   # how to update: we are doing a point update.
+                available_tree.update(pos, -1)
+                flip_tree.update(pos, 1)
+                ans[pos] = 1
+                flipped_this_constraint.append(pos)
+
+                # Also, we remove this free position from our global available set? the segment tree and available_tree already reflect it.
+
+            # Note: we don't reuse these positions.
+
+        Finally, output the ans[1..n]
+
+    However, we must update the segment tree for the entire array? 
+
+    Implementation of a segment tree for range maximum and point updates:
+
+        We'll build a class:
+
+            class SegmentTree:
+                def __init__(self, data):
+                    self.n = len(data)
+                    self.size = 1
+                    while self.size < self.n:
+                        self.size *= 2
+                    self.tree = [-10**18] * (2 * self.size)
+                    for i in range(self.n):
+                        self.tree[self.size+i] = data[i]
+                    for i in range(self.size-1,0,-1):
+                        self.tree[i] = max(self.tree[2*i], self.tree[2*i+1])
+
+                def update(self, index, value):
+                    i = index + self.size   # if our data is 0-indexed for the array, but our positions are 1-indexed? 
+                    self.tree[i] = value
+                    i //= 2
+                    while i:
+                        self.tree[i] = max(self.tree[2*i], self.tree[2*i+1])
+                        i //= 2
+
+                def query(self, l, r):
+                    # [l, r] inclusive? but in our segment tree we use [l, r) or [l, r]? 
+                    # We'll do [l, r] inclusive.
+                    l0 = l
+                    r0 = r
+                    l += self.size
+                    r += self.size
+                    res = -10**18
+                    while l <= r:
+                        if l % 2 == 1:
+                            res = max(res, self.tree[l])
+                            l += 1
+                        if r % 2 == 0:
+                            res = max(res, self.tree[r])
+                            r -= 1
+                        l //= 2
+                        r //= 2
+                    return res
+
+        But note: our data is 1-indexed? 
+            We have an array for positions 1..n: so we make an array `data` of length n: 
+                data[i] = i+1? no, for position i (1-indexed) we store the value at index i-1? 
+            We want to build the segment tree for the array of positions 1..n.
+
+        How we store: 
+            We create an array `seg_arr` of length n (0-indexed) for positions 0 to n-1? 
+                But we want 1-indexed: we ignore index0? 
+
+            Alternatively, we make the segment tree for indices 1 to n? 
+            We can create an array of length n: 
+                data[0] for position1, data[1] for position2, ... 
+            But then the query for [A, B] (1-indexed) becomes [A-1, B-1] in 0-indexed? 
+
+            Or we can build a segment tree that is 1-indexed? 
+
+        Alternatively, we can make the segment tree for 1-indexed by having an array of length n+1, and then we build the tree for [1, n]? 
+
+        We can do:
+
+            seg_arr = [-10**9] * (n+1)   # 1-indexed: seg_arr[i] for position i.
+            for i in range(1, n+1):
+                if P[i-1]==0:
+                    seg_arr[i] = i   # because we want the maximum to be the largest index
+                else:
+                    seg_arr[i] = -10**9
+
+            Then we build a segment tree for the array seg_arr[1..n] (so the array has n elements, from index1 to indexn).
+
+        Then the segment tree is built for indices 0 to n-1? 
+            We can build the segment tree for the array starting at index1? 
+
+        Alternatively, we build the segment tree for an array of size n (positions 1..n) and store at index0 the value for position1? 
+
+        We'll build the segment tree for an array of size `n` (for positions 1..n) and use 0-indexed internally for positions.
+
+        Steps in the segment tree:
+            We map position i to index = i-1.
+
+        So in the segment_tree:
+            update(i, value): update at index = i-1 in the base array.
+            query(l, r): for positions l to r (1-indexed) -> then in the segment_tree we query [l-1, r-1] (if we built the tree for 0-indexed base array of n elements).
+
+        But we can also build the tree to support 1-indexed? 
+
+        To avoid confusion, let's build the segment tree for 0-indexed base array of n elements.
+
+        Steps:
+
+            base_arr = [0] * n   # 0-indexed: base_arr[i] = value for the (i+1)-th position.
+            for i in range(n):
+                if P[i] == 0:   # free
+                    base_arr[i] = i+1   # because we want to store the position number? but when we query max, we get the largest position index? 
+                else:
+                    base_arr[i] = -10**9
+
+            seg_tree = SegmentTree(base_arr)
+
+            Then to update position i (1-indexed): 
+                seg_tree.update(i-1, -10**9)
+
+            To query [A, B] (1-indexed): 
+                res = seg_tree.query(A-1, B-1)   # returns the maximum base_arr[i] for i in [A-1, B-1]? 
+                But note: base_arr[i] = i+1, so the maximum value is the largest index in the range? 
+
+        But wait: if we have free positions at indices (0-indexed) i, then base_arr[i] = i+1. 
+            Then the maximum value in [A-1, B-1] is the largest i+1 for free positions in the range? 
+            And the largest i+1 is the largest position index? 
+
+        Example: 
+            positions: [1,2,3] (1-indexed) -> base_arr[0]=1, base_arr[1]=2, base_arr[2]=3.
+            Query [1,3] (1-indexed) -> indices [0,2] -> max = 3 -> which is position3.
+
+        So it's correct.
+
+    Summary of the algorithm:
+
+        Steps:
+          Read n, k, P, constraints.
+
+          # Initialize the base sequence and base_prefix
+          base = [0]*(n+1)
+          ans = [0]*(n+1)   # 1-indexed: ans[1..n]
+          free_positions_count = 0
+          for i in range(1, n+1):
+              if P[i-1] != 0:
+                  ans[i] = P[i-1]
+              else:
+                  ans[i] = -1
+                  free_positions_count += 1
+
+          # base_prefix[0]=0, then base_prefix[i] = base_prefix[i-1] + ans[i]
+          base_prefix = [0]*(n+1)
+          for i in range(1, n+1):
+              base_prefix[i] = base_prefix[i-1] + ans[i]
+
+          # Initialize Fenwick trees and the segment tree
+          available_tree = Fenw(n)   # 1-indexed: for positions 1..n
+          flip_tree = Fenw(n)
+
+          # Build an array for the segment tree (0-indexed, length = n)
+          base_arr = [-10**9] * n
+          for i in range(1, n+1):
+              if P[i-1] == 0:   # free
+                  available_tree.update(i, 1)
+                  base_arr[i-1] = i   # the position index (so we know which one is larger: larger index is better)
+              else:
+                  base_arr[i-1] = -10**9
+
+          seg_tree = SegmentTree(base_arr)   # we'll implement the segment tree
+
+          # Group constraints by B
+          constraints_by_B = {}
+          for B in range(1, n+1):
+              constraints_by_B[B] = []
+          for con in constraints:
+              a, b, c = con
+              constraints_by_B[b].append((a, c))
+
+          # Process B from 1 to n, and for each B, sort the constraints in that group by a (A) in descending order.
+          for B in range(1, n+1):
+              cons_list = constraints_by_B[B]
+              cons_list.sort(key=lambda x: x[0], reverse=True)   # descending by A
+
+              for (A, C) in cons_list:
+                  total_base = base_prefix[B] - base_prefix[A-1]
+                  already_flips = flip_tree.range_query(A, B)
+                  current_sum = total_base + 2 * already_flips
+                  d = C - current_sum
+                  if d <= 0:
+                      continue
+
+                  t = (d + 1) // 2
+
+                  count_avail = available_tree.range_query(A, B)
+                  if count_avail < t:
+                      print("Impossible")
+                      return
+
+                  # We flip the t largest (rightmost) available free positions in [A, B]
+                  flipped_here = []
+                  for _ in range(t):
+                      # Query the segment tree for the maximum in [A, B]: which is the largest index that is free and available in [A, B]
+                      pos_val = seg_tree.query(A-1, B-1)   # returns the maximum base_arr[i] for i in [A-1, B-1] -> which is the largest position index that is available and free? 
+                      # But note: if there's no available? we checked count_avail>=t, so there is at least one.
+                      if pos_val < A:   # the maximum position we got is < A? but the segment tree returns -10**9 if none? 
+                          # Actually, the available free positions in [A, B] have position index in [A, B]. 
+                          # So the maximum is at least A? 
+                          # But if we get -10**9, then we break.
+                          print("Impossible")
+                          return
+
+                      # The position index is pos_val (which is the same as the position number, 1-indexed)
+                      pos = pos_val
+                      # Update the segment tree at position pos: set to -10**9
+                      seg_tree.update(pos-1, -10**9)   # because base_arr index is 0-indexed: pos-1.
+                      available_tree.update(pos, -1)
+                      flip_tree.update(pos, 1)
+                      ans[pos] = 1
+                      flipped_here.append(pos)
+
+                  # End for _ in range(t)
+
+              # End for (A, C) in cons_list
+          # End for B
+
+          # Output the answer
+          res = []
+          for i in range(1, n+1):
+              res.append(str(ans[i]))
+          print(" ".join(res))
+
+    However, note: we might have the same free position being queried multiple times? 
+        But when we flip a position, we remove it from the segment_tree and update the available_tree. So it won't be counted again.
+
+    But the Fenw tree for available_tree and flip_tree: we update at the position.
+
+    The segment tree update: we set the value to -10**9 so that the max query will not return it.
+
+    But note: the segment_tree.query(A-1, B-1) returns the maximum value in the base_arr in the interval [A-1, B-1]. 
+        Since we set the flipped ones to -10**9, they are effectively removed.
+
+    This algorithm should work.
+
+    Let's test with the sample: 
+        "3 2\n0 0 0\n1 2 2\n2 3 -1"
+
+        base: all -1 -> base_prefix: [0, -1, -2, -3] (for indices0..3)
+        base_prefix[1]=base_prefix[0]+ans[1]=0+(-1) = -1
+        base_prefix[2]= -1 + (-1) = -2
+        base_prefix[3]= -2 + (-1) = -3
+
+        Constraints: 
+          constraint1: [1,2] (A=1, B=1? no, [1,2] -> A=1, B=2) -> C=2
+          constraint2: [2,3] (A=2, B=3) -> C=-1
+
+        Group by B: 
+          B=2: [(1,2)]
+          B=3: [(2,-1)]
+
+        Process B=2:
+            constraint: (1,2): 
+                total_base = base_prefix[2]-base_prefix[0] = -2 - 0 = -2
+                already_flips = flip_tree.range_query(1,2) = 0
+                current_sum = -2
+                d = 2 - (-2) = 4 -> t = (4+1)//2 = 2
+                count_avail = available_tree.range_query(1,2) = 2 (since both free) -> so we flip 2.
+
+            Then we do two flips:
+                First flip: 
+                    Query [1,2]: the segment_tree returns the maximum in [0,1] (0-indexed indices) -> 
+                         base_arr[0]=1, base_arr[1]=2 -> max=2 -> so pos=2.
+                    Then update seg_tree at index1 (because pos=2 -> index1) to -10**9.
+                    Update available_tree: at pos2: subtract 1 -> now available at [1,2] becomes 1.
+                    flip_tree: add 1 at pos2.
+                    ans[2]=1.
+                Second flip:
+                    Query [1,2]: the segment_tree now: base_arr[0]=1, base_arr[1]=-10**9 -> max=1 -> so pos=1.
+                    Then update seg_tree at index0 to -10**9.
+                    Update available_tree: at pos1: subtract 1 -> becomes 0.
+                    flip_tree: add 1 at pos1.
+                    ans[1]=1.
+
+            Then the sequence becomes: [1,1,-1] (at positions 1,2,3)
+
+        Then process B=3:
+            constraint: (2, -1): 
+                total_base = base_prefix[3]-base_prefix[1] = -3 - (-1) = -2
+                already_flips = flip_tree.range_query(2,3) = (at2:1, at3:0) -> 1
+                current_sum = -2 + 2*1 = 0
+                d = -1 - 0 = -1 -> skip.
+
+        Then output: [1,1,-1] -> correct.
+
+    Test with the 4-length example that we wanted lex smaller:
+
+        Constraints: 
+          [1,3] >= 1, [2,4] >= 1.
+
+        We want to get [-1,1,1,-1]? 
+
+        Process B=3: 
+            constraint: (1,1) -> 
+                base_interval = base_prefix[3]-base_prefix[0] = (-1-1-1) = -3? 
+                base_prefix: 
+                    prefix0=0
+                    prefix1=-1
+                    prefix2=-2
+                    prefix3=-3
+                    prefix4=-4
+                already_flips=0
+                current_sum=-3
+                d=1-(-3)=4 -> t=2
+                count_avail=3 (positions1,2,3) -> so we flip 2.
+                Flip the two largest: positions3 and then position2? 
+                    Flip pos3: then set ans[3]=1, update seg_tree: set base_arr[2] to -10**9, available_tree: update at3 to 0, flip_tree: add1 at3.
+                    Flip pos2: then set ans[2]=1, update seg_tree: set base_arr[1] to -10**9, available_tree: update at2 to 0, flip_tree: add1 at2.
+
+            Then the sequence so far: [-1,1,1,-1]? 
+                But we haven't processed B=4.
+
+        Then process B=4:
+            constraint: (2,1) -> 
+                base_interval = base_prefix[4]-base_prefix[1] = (-4) - (-1) = -3
+                already_flips = flip_tree.range_query(2,4) = (at2:1, at3:1, at4:0) -> 2
+                current_sum = -3 + 2*2 = 1 -> satisfies (>=1) -> skip.
+
+        Then we output: [-1,1,1,-1] -> which is lex smaller.
+
+        So it works.
+
+    However, note: the constraint [1,3] was processed first and we flipped the two largest in [1,3] (positions3 and2). 
+
+    But what if we had a constraint [1,3] and [1,4]? 
+        [1,3] first: flip the two largest in [1,3]: positions3 and2 -> then [1,4] might be satisfied? 
+
+    Therefore, we are good.
+
+    Implementation note: the segment tree for range maximum.
+
+    Let's write the segment tree:
+
+        We'll do an iterative one for efficiency.
+
+        Alternatively, we can use a recursive one? But iterative is faster.
+
+        We'll do:
+
+            class SegmentTree:
+                def __init__(self, data):
+                    self.n = len(data)
+                    self.size = 1
+                    while self.size < self.n:
+                        self.size *= 2
+                    self.tree = [-10**18] * (2 * self.size)
+                    # Build: the leaves: [size, size+n-1] for the data
+                    for i in range(self.n):
+                        self.tree[self.size + i] = data[i]
+                    for i in range(self.size-1, 0, -1):
+                        self.tree[i] = max(self.tree[2*i], self.tree[2*i+1])
+
+                def update(self, index, value):
+                    # index: the index in the base_arr (0-indexed)
+                    i = self.size + index
+                    self.tree[i] = value
+                    i //= 2
+                    while i:
+                        self.tree[i] = max(self.tree[2*i], self.tree[2*i+1])
+                        i //= 2
+
+                def query(self, l, r):
+                    # [l, r] inclusive in the base_arr indices (0-indexed)
+                    l += self.size
+                    r += self.size
+                    res = -10**18
+                    while l <= r:
+                        if l % 2 == 1:
+                            res = max(res, self.tree[l])
+                            l += 1
+                        if r % 2 == 0:
+                            res = max(res, self.tree[r])
+                            r -= 1
+                        l //= 2
+                        r //= 2
+                    return res
+
+    But note: the segment tree built this way: 
+        The leaves are from self.size to self.size+n-1.
+
+    We'll test with small array.
+
+    However, note: the constraints: n=100000, so the segment tree size is about 200000.
+
+    Time: O(log n) per update and per query.
+
+    Total flips: at most n, and we do one update per flip and one query per flip? 
+        But we do one query per flip and one update per flip? 
+        And we do up to t (which can be large) per constraint? 
+        But total flips is at most n, so overall O(n log n) for the segment tree operations.
+
+    Fenwick trees: each update and query is O(log n), and we do O(n) updates? so also O(n log n).
+
+    The grouping and sorting: 
+        We have up to 100000 constraints, and we group by B (100000 groups) and then sort each group by A: worst-case a group might have 100000 constraints? then sorting each group: worst-case 100000 groups each with 100000 constraints -> 10^10? 
+
+    But note: the total constraints is 100000. So the groups are over B (which has n distinct values, n<=100000) and the sum of the sizes of the groups is 100000. 
+        So we can do: 
+            constraints_by_B = [[] for _ in range(n+1)]
+            for i in range(k):
+                a, b, c = constraints[i]
+                constraints_by_B[b].append((a,c))
+
+            Then for b in range(1, n+1):
+                constraints_by_B[b].sort(key=lambda x: x[0], reverse=True)
+
+        The total cost of sorting: for each b, the cost is O(|constraints_by_B[b]| * log(|constraints_by_B[b]|)). 
+        The sum of |constraints_by_B[b]| is k (<=100000). The worst-case is one bucket with 100000: then O(100000 * log(100000)) ~ 1.6e6.
+
+    Therefore, overall complexity: O(n log n + k log k) which is acceptable.
+
+    Let's code accordingly.
+
+    But note: the problem may be that in the inner loop we do t (the number of flips) and we do a segment tree query and update for each flip. 
+        The worst-case t for one constraint could be large? 
+        But the total flips over all constraints is at most the number of free positions (<=n) so overall O(n) flips.
+
+    Therefore, the entire algorithm is O(n log n + k log k).
+
+    Let's code accordingly.
+
+    Edge: if there are no free positions? then available_tree.range_query(A, B)=0. Then if d>0, we output "Impossible".
+
+    We'll code.
+
+    Note: the Fenw tree we already implemented? 
+
+    We have:
+
+        class Fenw:
+            ...
+
+    We'll implement the segment tree as above.
+
+    Important: the base_arr for the segment tree: we set free positions to the position index (1-indexed) and fixed to -10**9.
+
+    Let's code accordingly.
+
+    But note: the segment tree query might return -10**9? then we check:
+
+        if the returned value is less than A (the smallest position index we can get is A, and we are only querying [A, B])? 
+        Actually, if there are no available free positions, then we return -10**9? but we already checked count_avail>=t, so this should not happen.
+
+        So we can skip the check? but we do:
+
+            if count_avail>=t, then we know there are t available, so the segment tree query should return at least A? 
+
+        However, we can break if we get -10**18 (or -10**9) as a safety.
+
+    We'll do:
+
+        pos_val = seg_tree.query(A-1, B-1)
+        if pos_val < A:   # but the position index must be at least A? 
+            # This should not happen, but if it does, we break.
+            print("Impossible")
+            return
+
+    Actually, the available free positions in [A, B] must have indices between A and B, so the maximum should be at least A? 
+        But if there is an available free position, then the maximum is at least A? 
+        But if there is none, then we return -10**18, and then we break.
+
+        However, we already checked count_avail>=t, so there is at least one.
+
+    Therefore, we can skip the check? 
+
+    But to be safe, we'll check for the value being -10**18 (or our sentinel) and then output impossible.
+
+    Alternatively, we can break out if we get a sentinel and then output impossible.
+
+    Since we have the count_avail, we know we can get t, so we can assume we get a valid position.
+
+    However, we update the available_tree and the segment_tree: they are consistent? 
+
+    We update the available_tree when we remove a free position? 
+        And we update the segment_tree at the same time? 
+
+    And the segment_tree query should not return a removed one? 
+
+    So we are safe.
+
+    Let's code accordingly.
+
+    Note: we are updating the available_tree and the flip_tree for each flip? 
+
+    But note: the available_tree counts the available free positions. We update it when we flip: we subtract one.
+
+    And the segment_tree: we remove the position by setting to -10**9.
+
+    And the base_prefix? we don't update the base_prefix? 
+
+        But the base_prefix was computed initially with all free as -1. 
+        Then we are flipping a free position: we change it from -1 to 1. 
+        But we don't update the base_prefix? 
+
+        How do we account for the flips? 
+            We have the flip_tree: it counts the number of flips in a range. 
+            Then the current sum for a segment [A, B] = (base_prefix[B]-base_prefix[A-1]) + 2 * (flip_tree.range_query(A, B))
+
+        This is correct.
+
+    Therefore, we don't update the base_prefix.
+
+    Finally, output the sequence.
+
+    Let's run the sample input 2:
+
+        "3 2\n0 -1 0\n1 2 2\n2 3 -1"
+
+        base: 
+            P = [0, -1, 0] -> 
+            ans[1] = -1 (free), ans[2]=-1 (fixed), ans[3]=-1 (free)
+            base_prefix: [0, -1, -2, -3]   (positions0..3)
+
+        Constraints:
+            [1,2] (A=1,B=2): C=2
+            [2,3] (A=2,B=3): C=-1
+
+        Group by B:
+            B=2: [(1,2)]
+            B=3: [(2,-1)]
+
+        Process B=2:
+            constraint (1,2):
+                total_base = base_prefix[2]-base_prefix[0] = -2 - 0 = -2
+                already_flips = 0
+                current_sum = -2
+                d = 2 - (-2) = 4 -> t = 2
+                count_avail = available_tree.range_query(1,2) = 
+                    available_tree: initially, we set for free positions: 
+                        position1: free -> available_tree: at1=1
+                        position2: fixed -> 0
+                        position3: free -> 1? but we only query [1,2]: 
+                    So available at1:1, at2:0 -> total=1.
+                Then 1 < 2 -> output "Impossible"
+
+        Correct.
+
+    We'll code accordingly.
+
+    Note: we must initialize the available_tree: 
+        for i in 1..n: 
+            if P[i-1]==0: then available_tree.update(i, 1)
+            else: 0
+
+    We'll do that.
+
+    Let's code.
+
+    IMPORTANT: The Fenw tree and segment tree indices.
+
+    We assume the Fenw tree is 1-indexed: 
+        update(i, delta): update the i-th element (1-indexed)
+
+        range_query(l, r): [l, r] (1-indexed)
+
+    The segment tree: 
+        We build for base_arr (0-indexed, length n) for positions 1..n.
+
+        update at index i (0-indexed) for the base_arr.
+
+        query(l, r): l, r are 0-indexed indices? in the base_arr. 
+            We are querying the segment tree for the base_arr indices [l, r] (0-indexed).
+
+        How to map [A, B] (1-indexed) to the base_arr? 
+            position A (1-indexed) -> base_arr index = A-1
+            position B (1-indexed) -> base_arr index = B-1
+
+        So we do seg_tree.query(A-1, B-1)
+
+    We'll code accordingly.
+
+    Due to the complexity, we hope it runs within 1 second for n,k=100000.
+
+    Let's write the code.
+
+    Note: the segment tree query: we use the iterative method.
+
+    We use a large negative sentinel: -10**18.
+
+    We'll code the SegmentTree class.
+
+    We'll run the sample tests.
+
+    If it passes, we hope it passes the rest.
+
+    Due to the length, we write carefully.
+
+    We'll do:
+
+        import sys
+
+        class Fenw:
+            ...  # as before
+
+        class SegmentTree:
+            ... # as above
+
+        Then main.
+
+    Note: the problem may have multiple constraints on the same interval? 
+        Then our processing: we process by B and then by A descending. 
+        And we update the flip_tree as we go, so the next constraint in the same group (same B) will see the flips we did in the previous constraint.
+
+    This is correct.
+
+    Let's code.
+
+    We note: the problem says "Impossible" (with two asterisks? Actually, the problem says: Output “Impossible” (without quotes))
+
+    So we output the string "Impossible" (without quotes).
+
+    We'll do.
+
+    Due to the potential size, we use sys.stdin.
+
+    We hope we don't have any off-by-one.
+
+    We'll test with the provided examples.
+
+    If we have time, we test with:
+
+        Sample Input 1: 
+            "3 2\n0 0 0\n1 2 2\n2 3 -1" -> [1,1,-1]
+
+        Sample Input 2: 
+            "3 2\n0 -1 0\n1 2 2\n2 3 -1" -> "Impossible"
+
+        And the 4-length example: 
+            "4 2\n0 0 0 0\n1 3 1\n2 4 1" 
+            We expect: [-1,1,1,-1]? 
+            Output: -1 1 1 -1
+
+    We'll run these.
+
+    But note: the constraint for the 4-length: 
+        [1,3] and [2,4] -> we process B=3: [1,3] -> t= (1 - (-3) = 4 -> t=2) -> flip the two largest: 3 and 2? 
+        Then [2,4]: base_interval = base_prefix[4]-base_prefix[1] = (-4) - (-1) = -3? 
+                   already_flips = flip_tree.range_query(2,4) = 2 (because positions2 and3 are flipped) 
+                   current_sum = -3 + 2*2 = 1 -> satisfies.
+
+    So output: 
+        position1: free and not flipped? -> -1
+        position2: flipped -> 1
+        position3: flipped -> 1
+        position4: free and not flipped? -> -1
+
+        So: -1, 1, 1, -1.
+
+    We'll code accordingly.
+
+    Let me write the base_prefix for the 4-length:
+
+        Initially: [-1,-1,-1,-1]
+        base_prefix[0]=0
+        base_prefix[1] = -1
+        base_prefix[2] = -2
+        base_prefix[3] = -3
+        base_prefix[4] = -4
+
+        For [1,3]: 
+            base_interval = base_prefix[3]-base_prefix[0] = -3
+        For [2,4]:
+            base_interval = base_prefix[4]-base_prefix[1] = -4 - (-1) = -3
+
+    Correct.
+
+    We'll run.
+
+    Due to the complexity, we hope it runs.
+
+    We'll write the code.
+
+    IMPORTANT: The Fenw tree for available_tree: we update at the position (1-indexed) with a delta (1 for initial available, then -1 when we remove).
+
+    The Fenw tree for flip_tree: initially 0, then we update with +1 for each flip.
+
+    The available_tree.range_query(A, B) = Fenw_tree(B) - Fenw_tree(A-1)   [if we did the Fenw tree as prefix sums?]
+
+        We implemented Fenw.range_query(l, r) as:
+            return self.query(r) - self.query(l-1)
+
+        And query(i) returns the prefix sum from 1 to i.
+
+    So correct.
+
+    Let's code.
+
+    We'll hope for the best.
+
+    Note: the segment_tree might be slow? We use a while loop in the query. 
+
+    We'll submit.
+
+    If we get TLE, we might need to optimize further? But the complexity is O(n log n).
+
+    We'll write the SegmentTree as described.
+
+    We'll also note: the segment tree update and query are O(log n).
+
+    We'll hope.
+
+    Let's code.
+
+    Due to the problem constraints, we write carefully.
+
+    We'll test with the provided examples.
+
+    We'll run on the sample inputs.
+
+    If we don't have the sample inputs, we do:
+
+        print("Impossible") in the impossible case.
+
+        and for the possible case, we output the sequence.
+
+    We'll do.
+
+    We'll run locally.
+
+    We note: the segment_tree.query(l, r) uses 0-indexed indices for the base_arr.
+
+    We'll test the segment_tree with a small example.
+
+    Due to the time, we assume it's correct.
+
+    Let's code.

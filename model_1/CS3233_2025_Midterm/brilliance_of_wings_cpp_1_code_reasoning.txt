@@ -1,0 +1,546 @@
+ Okay, we are going to follow the approach described in the editorial.
+ Steps:
+ 1. Read the integer N.
+ 2. Read the next N-1 edges of the first tree. Normalize each edge (store as (min(u, v), max(u, v))).
+ 3. Read the next N-1 edges of the second tree. Normalize each edge and store them in a set (or unordered_set in C++ for faster lookup).
+ 4. For each edge in the first tree, check if it exists in the set of the second tree's edges. If not, increment a counter.
+ 5. The counter is the answer: the number of edges in the first tree that are not in the second tree.
+
+ Complexity: O(N) for reading and processing. The set operations are average O(1) per lookup.
+
+ Important: The constraints are up to 10^5, so we must use efficient data structures.
+
+ Implementation in C++:
+
+ We'll use:
+   #include <iostream>
+   #include <vector>
+   #include <unordered_set>
+   #include <algorithm>
+   #include <cctype>
+   but actually we don't need vectors for the second tree, just a set of edges.
+
+ However, note: we cannot use a set of pairs without a hash function? So we can use an unordered_set with a custom hash for pairs, or we can use a set (which is tree-based, O(log n)) per operation. But 10^5 * log(10^5) is about 500,000 operations, which is acceptable? Actually, worst-case 10^5 * log2(10^5) ≈ 10^5 * 17 = 1.7e6, which is acceptable in C++ in 1 second.
+
+ Alternatively, we can use an unordered_set with a hash for pairs. Since the numbers are up to 10^5, we can create a hash by: 
+   hash = (v1 * some_large_prime) ^ (v2 * another_prime) 
+   or use the standard library's hash for pairs if we are using C++11 or later? Actually, C++ standard doesn't provide a hash for pairs by default. So we can do:
+
+   Option 1: use set (std::set) -> O(N log N) total for building and querying.
+   Option 2: use unordered_set with a custom hash.
+
+ Since N is 10^5, and we are doing 10^5 lookups and 10^5 insertions, we want to avoid O(N log N) if possible? Actually, O(N log N) is acceptable for 10^5 in 1 second? In C++ it should be acceptable, but we can try to do unordered_set for O(1) per operation.
+
+ Let me write a custom hash for pair<int, int>:
+
+   struct hash_pair {
+      template <class T1, class T2>
+      size_t operator()(const pair<T1, T2>& p) const {
+          auto hash1 = hash<T1>{}(p.first);
+          auto hash2 = hash<T2>{}(p.second);
+          return hash1 ^ (hash2 << 1);
+      }
+   };
+
+ But note: the above might cause collisions? Alternatively, we can use:
+
+   return hash1 * 31 + hash2;
+
+ Actually, a common method: 
+
+   return (static_cast<long long>(p.first) << 20) ^ p.second;
+
+ However, that might not be safe for large numbers? We know that p.first and p.second are at most 10^5, so we can do:
+
+   return static_cast<long>(p.first) * 1000000 + p.second;
+
+ But then the maximum value would be 10^5 * 1000000 + 10^5 = 100000000000 + 100000 = 100000100000, which is about 10^11, which is acceptable for long? But then we are storing as long, but unordered_set for pairs? Actually, we are storing the pair as the key? We can store the pair and use a custom hash.
+
+ Alternatively, we can use:
+
+   unordered_set<long> edges2_set;
+   and store an edge (u, v) as: u * (N+1) + v   [since v<=N, so u*(N+1)+v is unique?]
+
+ How about: 
+      long key = (static_cast<long>(u) * (static_cast<long>(1000000)) + v;
+   But then we have to make sure that u and v are normalized: so we have stored the normalized edge (min, max). Then we can compute the key as: 
+      key = 1LL * u * (1000000) + v;
+
+ But note: u and v are at most 10^5, so the maximum key is 10^5 * 1000000 + 10^5 = 100000000000 + 100000 = 100000100000, which is less than 2^40 (about 1e12) and long long in C++ is 64 bits, so we can do.
+
+ However, the problem says memory limit 1024 MB, so storing 100000 integers as long long for the set? Actually, we are storing the edges as long long in the set? The set would have 10^5 elements, which is acceptable.
+
+ But note: we can also use a pair and a custom hash for unordered_set. Since C++11, we can define:
+
+   unordered_set<pair<int, int>, hash_pair> edges2_set;
+
+ and define the hash_pair struct.
+
+ I'll choose the custom hash for pairs because it's cleaner and avoids the multiplication which might be error-prone for very large numbers? Actually, the multiplication by 1000000 is safe for numbers up to 10^5 (because 10^5 * 1000000 is 10^11, which fits in a long long? but we don't need long long for the key if we use pair?).
+
+ Actually, let me use the custom hash for pairs. Since the numbers are not huge, the XOR-shift hash might be okay? But to reduce collisions, we can use:
+
+   struct hash_pair {
+      size_t operator()(const pair<int, int>& p) const {
+          return (static_cast<size_t>(p.first) << 32) | p.second;
+      }
+   };
+
+ But that requires that size_t is 64-bit? And that p.first and p.second are 32-bit. Actually, int is 32-bit on most systems? But in C++ standard, int is at least 16 bits. We can use:
+
+   return static_cast<long long>(p.first) * 1000000007LL + p.second;
+
+ That's a common method.
+
+ However, we can also use the standard library's hash for integers and combine:
+
+   static const auto my_hash = [](const pair<int, int>& p) {
+        return std::hash<long long>()( (static_cast<long long>(p.first) << 32) + p.second);
+   };
+
+ But simpler: use the boost-like method:
+
+   struct hash_pair {
+      template <class T1, class T2>
+      std::size_t operator () (const std::pair<T1,T2> &p) const {
+          auto h1 = std::hash<T1>{}(p.first);
+          auto h2 = std::hash<T2>{}(p.second);
+          return h1 ^ (h2 << 1);
+      }
+   };
+
+ But the XOR-shift might not be the best. Alternatively, we can do:
+
+   return h1 * 31 + h2;
+
+ Actually, we can use:
+
+   struct hash_pair {
+      size_t operator()(const pair<int, int>& p) const {
+          return (static_cast<size_t>(p.first) * 1000000007) + static_cast<size_t>(p.second);
+      }
+   };
+
+ This should be safe.
+
+ However, the problem is that the standard doesn't guarantee that std::hash<int> is good enough? Actually, we can rely on it. But to be independent, we can do:
+
+   static hash<long long> hasher;
+   long long combined = static_cast<long long>(p.first) * 1000000 + p.second;
+   return hasher(combined);
+
+ But then we are doing a hash of a long long, which is provided. Alternatively, we can use the combined value as the key and use unordered_set<long long>? That might be simpler.
+
+ Steps for the second option:
+
+   Represent each normalized edge (u, v) as: key = u * 1000000LL + v.
+
+ Why 1000000? Because v is at most 100000, so u * 1000000 + v is unique.
+
+ But note: we are normalizing the edge so that u <= v, and u and v are in [1, 100000]. Then the maximum u is 100000, and the maximum v is 100000, so the maximum key is 100000*1000000 + 100000 = 100000000000 + 100000 = 100000100000, which is about 10^11, which fits in a long long (which is 64-bit, and 10^11 is 100 billion, which is less than 2^64).
+
+ So we can do:
+
+   unordered_set<long long> edges2_set;
+
+   for each edge in the second tree:
+        u = min(x, y); v = max(x, y);
+        long long key = 1LL * u * 1000000LL + v;
+        edges2_set.insert(key);
+
+   Similarly, for each edge in the first tree, we compute the same key and check.
+
+ However, note: what if we have two different edges that map to the same key? It's impossible because u and v are normalized and then the key is uniquely determined.
+
+ But we must ensure that the multiplier is at least 100001? Actually, 1000000 is greater than 100000, so it's safe.
+
+ Alternatively, we can use 200000? But 1000000 is safe.
+
+ But let me use 200000? Actually, the maximum v is 100000, so we can use 200000? Actually, we can use (N+1) which is 100001, but then the key would be: u * (N+1) + v. Since u and v are in [1, N] and N=100000, then the maximum key is 100000 * 100001 + 100000 = 100000 * 100002 = 10000200000, which is also acceptable.
+
+ However, the problem says N>=2 and up to 100000, so we can do:
+
+   long long key = 1LL * u * (N + 1) + v;
+
+ This is safe because v <= N, so u*(N+1) + v <= N*(N+1) + N = N^2 + 2*N, which is about 10^10 for N=100000 -> 10^10 + 200000, which is acceptable.
+
+ Actually, 10^10 is 10,000,000,000 which fits in long long.
+
+ Alternatively, we can use:
+
+   long long key = (static_cast<long long>(u) << 32) | v;
+
+ But that requires that v is less than 2^32, which is true, and u is also less than 2^32. But then we are storing the entire pair in 64 bits. However, this method only works if u and v are nonnegative and less than 2^32. Since u and v are at most 100000 (which is less than 2^17), we can use:
+
+   long long key = (static_cast<long long>(u) << 20) | v;
+
+ Because 2^20 is 1048576 which is greater than 100000, so we can use 20 bits for v? Actually, we can shift by 20 bits and then OR with v. Then the maximum key is (100000 << 20) | 100000, which is about 100000 * 2^20 + 100000, which is around 100000 * (1048576) + 100000 = 104,857,600,000 + 100,000 = 104,857,700,000, which is acceptable as a long long.
+
+ However, the bit-shift method is more efficient? But it's the same as multiplication in terms of time? Actually, the compiler might optimize the multiplication by a constant. But let's stick to the multiplication by (N+1) because it's clear.
+
+ So:
+
+   long long key = 1LL * u * (N + 1) + v;
+
+ But note: we have to use the same method for both trees.
+
+ However, the problem: what if N is 100000? Then (N+1) is 100001. Then the key for (u, v) is u * 100001 + v.
+
+ How about (100000, 100000): 100000 * 100001 + 100000 = 10000100000 + 100000 = 10000200000.
+
+ This is unique for each pair (u, v) with u<=v? Actually, we are storing normalized edges, so each edge is stored as (min, max). And the key is computed from the normalized pair.
+
+ Steps:
+
+   Read N.
+   Read the first tree: for i in [0, N-2]:
+        read u, v -> normalize to (min, max) and store in a vector? Actually, we don't need to store the first tree if we are going to process immediately? But we have to read the entire input first? Actually, we are reading all data at once? Or we can read sequentially.
+
+   But the input: first N-1 edges for T1, then next N-1 edges for T2.
+
+   We can:
+
+      cin >> N;
+      vector<pair<int, int>> tree1;
+      for (int i = 0; i < N-1; i++) {
+          int u, v;
+          cin >> u >> v;
+          if (u > v) swap(u, v);
+          tree1.push_back({u, v});
+      }
+
+      unordered_set<long long> tree2Set;
+      for (int i = 0; i < N-1; i++) {
+          int u, v;
+          cin >> u >> v;
+          if (u > v) swap(u, v);
+          long long key = 1LL * u * (N+1) + v;
+          tree2Set.insert(key);
+      }
+
+      int count = 0;
+      for (auto& edge : tree1) {
+          long long key = 1LL * edge.first * (N+1) + edge.second;
+          if (tree2Set.find(key) == tree2Set.end()) {
+              count++;
+          }
+      }
+
+      cout << count << endl;
+
+ But note: the problem states that the two trees are on the same set of vertices. And we are counting the edges that are in T1 but not in T2.
+
+ However, the sample: 
+      Input: 
+          4
+          1 2
+          2 3
+          3 4   -> T1: edges: (1,2), (2,3), (3,4)
+          Then T2: 
+              3 1
+              4 1
+              2 4
+
+          Normalized T2 edges: 
+              (3,1) -> (1,3)
+              (4,1) -> (1,4)
+              (2,4) -> (2,4)
+
+          Now, T1 edges: 
+              (1,2) -> not in T2? T2 has (1,3), (1,4), (2,4) -> not present -> count=1 for (1,2)
+              (2,3) -> not in T2? -> count=2
+              (3,4) -> not in T2? -> count=3
+
+          Then output 3.
+
+      So it matches.
+
+ But note: the problem says the two trees have the same set of vertices? Yes.
+
+ However, we are counting the edges that are in T1 but not in T2. But what about edges that are in T2 but not in T1? We don't care? Actually, each operation removes one edge from T1 and adds one edge from T2. The operations required are exactly the number of edges that we have to remove from T1 (which is the same as the number of edges we have to add from T2). But note: the set of edges that are in T2 but not in T1 is the same size as the set of edges in T1 not in T2? Because the total edges in T1 is N-1, and the common edges are the same in both, so the symmetric difference is of size: (N-1 - |common|) for T1 and same for T2. So the number of edges to remove is |T1 \ T2|, and then we add |T2 \ T1| which is the same number? Actually, we are doing one operation per removal and one addition per operation. So the number of operations is exactly |T1 \ T2|.
+
+ Therefore, the answer is the number of edges in T1 that are not in T2.
+
+ However, note: the problem statement says that after every operation the tree must remain a tree. And indeed, by removing one edge we break the tree into two components, and then we add an edge that connects two components (so we are allowed to add any edge? but we are going to add an edge that is in the target tree T2). Actually, we don't necessarily have to add an edge that is in T2? But the problem says we are transforming to T2. So we are going to add an edge from T2 that is missing? But we don't have to add exactly the missing edge? Actually, the problem doesn't specify that we must add an edge that is in T2, but the goal is to get T2. However, the minimal operations is the symmetric difference divided by something? Actually, it is known that the minimum number of operations is |T1 \ T2|.
+
+ Why? Because each operation can fix one edge: we remove an edge that is in T1 but not in T2, and then we can add an edge that is in T2 but not in T1. Then after one operation, we have replaced one bad edge with a good one. Then we require |T1 \ T2| operations.
+
+ But note: the operations might fix more than one edge? Actually, sometimes an operation might fix two edges? But in this problem, we are only replacing one edge per operation.
+
+ Actually, the known result for transforming one spanning tree into another is that the minimum number of operations is the size of the symmetric difference divided by 2? 
+
+ Let me think: 
+
+   We have two trees T1 and T2. The symmetric difference of edges is E = (T1 \ T2) ∪ (T2 \ T1). The minimum number of operations is |E|/2? 
+
+ But note: each operation removes one edge from T1 and adds one edge from T2. So after one operation, we reduce the symmetric difference by 2? Because we remove an edge that is in T1 but not in T2 (so that edge is in E) and we add an edge that is in T2 but not in T1 (so that edge is also in E). So we remove two edges from E? Then the total operations would be |E|/2.
+
+ However, our previous reasoning was that the answer is |T1 \ T2|, which is the same as |T2 \ T1|, and |E| = |T1 \ T2| + |T2 \ T1| = 2 * |T1 \ T2|, so then the operations would be |T1 \ T2| = |E|/2.
+
+ But wait: the sample: 
+        T1: { (1,2), (2,3), (3,4) }
+        T2: { (1,3), (1,4), (2,4) }
+        |T1 \ T2| = 3, |T2 \ T1| = 3, |E|=6, and the answer is 3, which is |E|/2.
+
+ So the answer is |E|/2? But in our initial approach we computed |T1 \ T2|, which is 3, and we output 3. Then the answer is |T1 \ T2|? But |T1 \ T2| is the same as |E|/2? Because |E| = 2 * |T1 \ T2|? Actually, yes: because the symmetric difference is the disjoint union of T1\T2 and T2\T1, and they have the same size? Actually, no: they are disjoint and |T1\T2| = |T2\T1|? 
+
+ Why? Because both T1 and T2 have N-1 edges. Then:
+
+        |T1| = |T2| = N-1
+        |T1 ∩ T2| = k
+        Then |T1 \ T2| = (N-1) - k
+        |T2 \ T1| = (N-1) - k
+
+        So |E| = 2 * (N-1 - k)
+
+        Then the number of operations is (N-1 - k) = |T1 \ T2| = |T2 \ T1| = |E|/2.
+
+ Therefore, we can also compute: 
+        answer = (|E|) / 2
+        but we are counting |T1 \ T2|, which is (N-1) - k, and that is the same as |E|/2.
+
+ So we can output |T1 \ T2|.
+
+ Therefore, the code above is correct.
+
+ But note: we are storing the edges of T2 in a set. Then we count the edges in T1 that are not in T2. Then we output that count.
+
+ However, there is a catch: what if an edge is in both trees? Then we skip counting.
+
+ So the code is:
+
+   Read N.
+   Read T1: N-1 edges, normalize each edge and store in a list.
+   Read T2: N-1 edges, normalize each edge and store in an unordered_set<long long> (or set) by key = u*(N+1)+v.
+
+   Then count = 0;
+   for each edge in T1:
+        key = u*(N+1)+v
+        if key is not in T2 set, then count++
+
+   Output count.
+
+ But note: we are using the same normalization for both trees.
+
+ Let me test with a small sample: N=2.
+
+   T1: one edge (1,2) -> normalized (1,2) -> key = 1*(2+1) + 2 = 1*3+2 = 5.
+   T2: one edge (1,2) -> same key 5 -> then count=0.
+
+   Output 0.
+
+   But what if T2 has (2,1)? Then normalized is (1,2) -> same key.
+
+   So it works.
+
+ Implementation:
+
+   We'll use:
+
+      #include <iostream>
+      #include <vector>
+      #include <unordered_set>
+      #include <algorithm>
+      using namespace std;
+
+   Steps:
+
+      int main() {
+          ios::sync_with_stdio(false);
+          cin.tie(0);
+
+          int N;
+          cin >> N;
+
+          vector<pair<int, int>> tree1;
+          for (int i = 0; i < N-1; i++) {
+              int u, v;
+              cin >> u >> v;
+              if (u > v) swap(u, v);
+              tree1.push_back({u, v});
+          }
+
+          unordered_set<long long> tree2Set;
+          for (int i = 0; i < N-1; i++) {
+              int u, v;
+              cin >> u >> v;
+              if (u > v) swap(u, v);
+              long long key = 1LL * u * (N+1) + v;
+              tree2Set.insert(key);
+          }
+
+          int count = 0;
+          for (auto edge : tree1) {
+              long long key = 1LL * edge.first * (N+1) + edge.second;
+              if (tree2Set.find(key) == tree2Set.end()) {
+                  count++;
+              }
+          }
+
+          cout << count << endl;
+          return 0;
+      }
+
+ But note: the problem constraints are 10^5, so we must be cautious about the unordered_set performance (worst-case O(n) per operation? but average O(1)). We can also use a set (tree-based) which is O(log n) per operation, which is acceptable for 10^5.
+
+ Alternatively, to avoid potential worst-case in unordered_set (if there are many collisions), we can use a set. But unordered_set should be faster on average.
+
+ However, let me use unordered_set with a better method: reserve enough buckets.
+
+   tree2Set.reserve(N-1);
+
+ But that might help.
+
+ Actually, we can also use the custom hash for the set of pairs? But we are using a long long key, and the standard library has a hash for long long? Actually, unordered_set<long long> uses std::hash<long long> which is efficient.
+
+ But we are storing long long keys and the numbers are up to about 10^11, so the hash function for long long is likely good.
+
+ However, we can also use:
+
+      unordered_set<long long> tree2Set;
+      tree2Set.reserve(N-1);
+
+ But note: the problem says memory limit 1024 MB, so storing 100000 long long is about 800 KB? (each long long is 8 bytes, 100000 * 8 = 800,000 bytes = 0.8 MB) plus the overhead of the hash table (which might be about the same) -> total about 1.6 MB? So we are safe.
+
+ Let me code accordingly.
+
+ But note: what if we use set? Then the total memory is about 100000 * (size of a node) which is about 3 pointers (for a red-black tree) so 24 bytes per node? 100000 * 24 = 2.4 MB, which is also acceptable.
+
+ And set is O(log n) per operation, and 100000 * log2(100000) ≈ 1.7e6 operations, which is acceptable in 1 second.
+
+ So for safety, we can use set to avoid worst-case performance of unordered_set? Because worst-case unordered_set can be O(n) per operation if there are many collisions? But the keys are unique and spread out? Actually, the keys are from 1 to about 10^11, so the chance of collision in the hash table is low? And the standard library's hash for long long is the identity? Or not, but it's designed to be good.
+
+ I think unordered_set is safe.
+
+ Alternatively, we can use set and get O(N log N) which is acceptable.
+
+ Let me choose set for simplicity and avoid potential worst-case in unordered_set? Actually, worst-case in unordered_set is rare for these keys? But to be safe in contest, set is guaranteed O(log n).
+
+ I'll use set<long long> for T2.
+
+ Code:
+
+      set<long long> tree2Set;
+      for (int i = 0; i < N-1; i++) {
+          int u, v;
+          cin >> u >> v;
+          if (u > v) swap(u, v);
+          long long key = 1LL * u * (N+1) + v;
+          tree2Set.insert(key);
+      }
+
+      Then for each edge in T1, we do:
+          long long key = ...;
+          if (tree2Set.count(key) == 0) then count++;
+
+      set::count is O(log n).
+
+ Total: O(N log N) which is acceptable for N=100000.
+
+ But note: the problem time limit is 1.0s, and 100000 * log2(100000) ≈ 100000 * 17 = 1.7e6 operations, which is acceptable in C++.
+
+ Alternatively, we can use unordered_set and it will be faster on average.
+
+ I'll use unordered_set and reserve.
+
+   unordered_set<long long> tree2Set;
+   tree2Set.reserve(N-1);
+   tree2Set.max_load_factor(0.25); // to reduce collisions? but not necessary.
+
+ But without custom hash for long long? The standard one is fine.
+
+ Actually, we can just do:
+
+   unordered_set<long long> tree2Set;
+   tree2Set.reserve(N-1);
+
+   Then insert the N-1 keys.
+
+   Then the lookup will be average O(1).
+
+ So total time O(N).
+
+ Let me do that.
+
+ Code:
+
+   #include <iostream>
+   #include <vector>
+   #include <unordered_set>
+   #include <algorithm>
+   using namespace std;
+
+   int main() {
+        ios::sync_with_stdio(false);
+        cin.tie(0);
+
+        int N;
+        cin >> N;
+
+        vector<pair<int, int>> tree1;
+        tree1.reserve(N-1);
+        for (int i = 0; i < N-1; i++) {
+            int u, v;
+            cin >> u >> v;
+            if (u > v) swap(u, v);
+            tree1.push_back({u, v});
+        }
+
+        unordered_set<long long> tree2Set;
+        tree2Set.reserve(N-1); // reserve at least N-1 buckets
+
+        for (int i = 0; i < N-1; i++) {
+            int u, v;
+            cin >> u >> v;
+            if (u > v) swap(u, v);
+            long long key = 1LL * u * (N+1) + v;
+            tree2Set.insert(key);
+        }
+
+        int count = 0;
+        for (auto edge : tree1) {
+            long long key = 1LL * edge.first * (N+1) + edge.second;
+            if (tree2Set.find(key) == tree2Set.end()) {
+                count++;
+            }
+        }
+
+        cout << count << endl;
+        return 0;
+   }
+
+ Let me test with the sample:
+
+   N=4
+   T1: 
+        (1,2) -> (1,2): key = 1*5+2 = 7
+        (2,3) -> (2,3): key = 2*5+3=13
+        (3,4) -> (3,4): key=3*5+4=19
+
+   T2:
+        (3,1) -> (1,3): key=1*5+3=8
+        (4,1) -> (1,4): key=1*5+4=9
+        (2,4) -> (2,4): key=2*5+4=14
+
+   Then we check:
+        7 in T2? -> no -> count=1
+        13 in T2? -> no -> count=2
+        19 in T2? -> no -> count=3
+
+   Output 3.
+
+ So it's correct.
+
+ However, note: what if the normalized edge in T2 has u and v swapped? We already swap, so we are safe.
+
+ Therefore, the code is as below.
+
+ Note: we are using long long for the key, which is safe for N up to 100000 (since key = u*(N+1)+v <= 100000 * 100001 + 100000 = 100000*100002 = 10000200000, which is about 1e10, which fits in long long).
+
+ But what if the system is 32-bit? long long is 64 bits, so it's safe.
+
+ Let me run the code on the sample.
+
+ But we are writing for online judge, so it's safe.
+
+ Final code.

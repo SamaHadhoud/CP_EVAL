@@ -1,0 +1,7 @@
+First, we need to check whether the graph is a bipartite graph.
+
+If the graph is not bipartite, there will be a path starts from a node A and ends in itself with odd distance. Therefore, for each case, we can always make the bussinessmen to meet at the same node. Hence, the answer is always 0.
+
+Let assume the graph is bipartite. Assume we color the node with red and blue. If the initial starting points of the bussinessmen are from the same color, the answer will be 0 as we can move both bussinessmen to the same node. If the initial starting points are from different color, both bussinessman will never met. Hence, we need to find the minimum of $\lvert B[i] - B[j] \rvert$ where $i$ is a node with a red color and $j$ is a node with a blue color.
+
+To achieve this, we can put pair of node beauty and its color into a set. As the set is sorted, we can see that for any valid index $i$ on set $S$, if $S[i].\text{color} \ne S[i-1].\text{color}$, we know that $S[i].\text{beauty} - S[i-1].\text{beauty}$ is a candidate solution. For every candidate solution, we put them on a separate set, let say $Z$. Hence, for each question, we simply get the smallest value in set $Z$. For every update, we need to update set $S$ and $Z$ appropriately.

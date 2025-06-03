@@ -1,0 +1,172 @@
+To solve this problem, we need to construct the lexicographically smallest sign sequence (comprising -1 and 1) of length \( N \) that satisfies \( K \) constraints and some prefilled positions. Each constraint specifies that the sum of elements in a subarray \([A_i, B_i]\) must be at least \( C_i \). The solution involves a greedy algorithm that processes constraints in a specific order to ensure minimal flips (from -1 to 1) while maintaining lexicographical order.
+
+### Approach
+1. **Initialization**:
+   - **Base Prefix Array**: Compute the initial prefix sums where prefilled positions use their values, and free positions are set to -1.
+   - **Data Structures**: Use two Fenwick trees (Binary Indexed Trees):
+     - `flip_tree` to track the number of flips (from -1 to 1) in the sequence.
+     - `available_tree` to count available free positions (positions that are not prefilled and not yet flipped).
+   - **Set of Free Positions**: Maintain a set of indices of free positions for efficient access.
+
+2. **Constraint Processing**:
+   - **Order**: Sort constraints primarily by increasing \( B_i \) (right endpoint) and secondarily by decreasing \( A_i \) (left endpoint). This ensures processing smaller intervals first and prioritizing constraints that start later within the same \( B_i \).
+   - **Deficit Calculation**: For each constraint, compute the deficit \( d = C_i - \text{base\_interval} - 2 \times \text{already\_flips} \), where:
+     - `base_interval` is the initial sum of the subarray \([A_i, B_i]\).
+     - `already_flips` is the count of already flipped positions in \([A_i, B_i]\).
+   - **Flip Handling**: If \( d > 0 \), calculate the required flips \( t = \lceil d/2 \rceil \). If there are fewer available free positions than \( t \), output "Impossible". Otherwise, flip the \( t \) largest available free positions in \([A_i, B_i]\) (to keep left positions as -1 for lexicographical order).
+
+3. **Output**: After processing all constraints, output the sequence where prefilled positions are unchanged, free positions are 1 if flipped, else -1.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <set>
+#include <algorithm>
+using namespace std;
+
+class Fenw {
+    vector<int> tree;
+    int n;
+public:
+    Fenw(int size) {
+        n = size;
+        tree.assign(n+1, 0);
+    }
+    void update(int idx, int delta) {
+        if (idx <= 0) return;
+        while (idx <= n) {
+            tree[idx] += delta;
+            idx += idx & -idx;
+        }
+    }
+    int query(int idx) {
+        if (idx <= 0) return 0;
+        int sum = 0;
+        while (idx) {
+            sum += tree[idx];
+            idx -= idx & -idx;
+        }
+        return sum;
+    }
+    int range_query(int l, int r) {
+        if (l > r) return 0;
+        if (l < 1) l = 1;
+        if (r > n) r = n;
+        return query(r) - query(l-1);
+    }
+};
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(0);
+
+    int n, k;
+    cin >> n >> k;
+    vector<int> P(n);
+    for (int i = 0; i < n; i++) {
+        cin >> P[i];
+    }
+
+    vector<long long> base_prefix(n+1, 0);
+    for (int i = 1; i <= n; i++) {
+        if (P[i-1] == 0) {
+            base_prefix[i] = base_prefix[i-1] - 1;
+        } else {
+            base_prefix[i] = base_prefix[i-1] + P[i-1];
+        }
+    }
+
+    Fenw flip_tree(n);
+    Fenw available_tree(n);
+    set<int> available_set;
+    vector<int> ans(n+1);
+
+    for (int i = 1; i <= n; i++) {
+        if (P[i-1] == 0) {
+            ans[i] = -1;
+            available_tree.update(i, 1);
+            available_set.insert(i);
+        } else {
+            ans[i] = P[i-1];
+        }
+    }
+
+    vector<vector<pair<int, int>>> constraints_by_B(n+1);
+    for (int i = 0; i < k; i++) {
+        int a, b, c;
+        cin >> a >> b >> c;
+        constraints_by_B[b].push_back(make_pair(a, c));
+    }
+
+    for (int b = 1; b <= n; b++) {
+        if (constraints_by_B[b].size() == 0) continue;
+        sort(constraints_by_B[b].begin(), constraints_by_B[b].end(), [](const pair<int,int>& p1, const pair<int,int>& p2) {
+            return p1.first > p2.first;
+        });
+    }
+
+    for (int b = 1; b <= n; b++) {
+        for (auto &con : constraints_by_B[b]) {
+            int a = con.first;
+            int c = con.second;
+            long long base_interval = base_prefix[b] - base_prefix[a-1];
+            long long already_flipped = flip_tree.range_query(a, b);
+            long long total_current = base_interval + 2 * already_flipped;
+            long long d = c - total_current;
+
+            if (d <= 0) {
+                continue;
+            }
+
+            long long t = (d + 1) / 2;
+            long long count_avail = available_tree.range_query(a, b);
+            if (count_avail < t) {
+                cout << "Impossible" << endl;
+                return 0;
+            }
+
+            while (t--) {
+                auto it = available_set.upper_bound(b);
+                if (it == available_set.begin()) {
+                    cout << "Impossible" << endl;
+                    return 0;
+                }
+                it--;
+                if (*it < a) {
+                    cout << "Impossible" << endl;
+                    return 0;
+                }
+                int pos = *it;
+                available_set.erase(it);
+                available_tree.update(pos, -1);
+                flip_tree.update(pos, 1);
+                ans[pos] = 1;
+            }
+        }
+    }
+
+    for (int i = 1; i <= n; i++) {
+        if (i > 1) cout << " ";
+        cout << ans[i];
+    }
+    cout << endl;
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Initialization**:
+   - The `base_prefix` array is computed to store the initial prefix sums of the sequence, where free positions are set to -1.
+   - Two Fenwick trees, `flip_tree` and `available_tree`, are initialized to track flipped positions and available free positions, respectively.
+   - The `available_set` stores indices of free positions for efficient access.
+
+2. **Constraint Processing**:
+   - Constraints are grouped by their right endpoint \( B_i \) and sorted by their left endpoint \( A_i \) in descending order for each \( B_i \).
+   - For each constraint, the deficit \( d \) is calculated. If \( d > 0 \), the required number of flips \( t \) is determined. If sufficient free positions exist, the largest \( t \) positions in \([A_i, B_i]\) are flipped to 1 to maintain lexicographical order.
+
+3. **Output**:
+   - After processing all constraints, the sequence is output, with prefilled positions unchanged and free positions set to 1 if flipped, otherwise -1. If any constraint cannot be satisfied, "Impossible" is printed.
+
+This approach efficiently meets constraints while ensuring the lexicographically smallest sequence by strategically flipping the largest available positions first, leaving left positions as -1 for as long as possible. The use of Fenwick trees ensures optimal performance for large inputs.

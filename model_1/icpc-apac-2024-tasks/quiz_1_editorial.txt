@@ -1,0 +1,292 @@
+### Approach
+The problem involves efficiently answering multiple queries about the k-th smallest element in a sorted array L, where L is constructed by computing a specific value for every pair of nodes (x, y) in a rooted tree. The value for each pair is defined as:
+```
+value = (x-1)*n² + (LCA(x,y)-1)*n + (y-1)
+```
+Given the constraints (n and q up to 100,000), a brute-force approach is infeasible. Instead, we leverage the structure of the problem:
+
+1. **Problem Analysis**:
+   - The array L is sorted, and each element is derived from node pairs (x, y).
+   - The value can be decomposed into three parts: the row (x-1), the LCA component (LCA(x,y)-1, and the column (y-1). The row part dominates, so elements are grouped by x. Within each row x, elements are sorted by the inner value: `(LCA(x,y)-1)*n + (y-1)`.
+
+2. **Key Insight**:
+   - For a fixed x, the inner values depend on the LCA between x and y, which can be determined by the path from the root to x. Specifically, for each node z on this path, the set of y where LCA(x,y) = z is the subtree of z excluding the subtree of the child leading to x.
+
+3. **Handling Queries**:
+   - For each query k, determine the row x0 and the position r within that row: `x0 = (k-1) // n + 1`, `r = (k-1) % n + 1`.
+   - For chain trees (each node has at most one child), a direct formula computes the r-th element in the row.
+   - For general trees:
+     - Precompute DFS in/out times and a wavelet tree (or 2D range counting structure) to answer queries like: count nodes in a DFS interval with node indices ≤ X.
+     - For the path from the root to x0, iterate over each node z in the path:
+        - Compute the valid y values in the set S(z) (subtree of z excluding the next child on the path).
+        - Use binary search to find the smallest inner value V such that the count of y with `(z-1)*n + (y-1) ≤ V` is at least r.
+     - The final answer is `(x0-1)*n² + V`.
+
+4. **Complexity**:
+   - **Chain Tree**: Each query is O(1).
+   - **General Tree**:
+     - Preprocessing: O(n) for DFS and O(n log n) for wavelet tree.
+     - Per Query: O(depth(x0) * log² n) due to binary search and wavelet tree queries. Caching paths for x0 avoids recomputation.
+   - Worst-case depth is O(n), but performance is practical for average-case trees.
+
+### Solution Code
+```python
+import sys
+from collections import deque
+
+sys.setrecursionlimit(300000)
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    n = int(data[0])
+    q = int(data[1])
+    parent_arr = [0] * (n+1)
+    p_list = list(map(int, data[2:2+n]))
+    children = [[] for _ in range(n+1)]
+    root = None
+    for i in range(1, n+1):
+        p_i = p_list[i-1]
+        parent_arr[i] = p_i
+        if p_i == 0:
+            root = i
+        else:
+            children[p_i].append(i)
+    
+    if root is None:
+        for i in range(1, n+1):
+            if parent_arr[i] == 0:
+                root = i
+                break
+
+    is_chain = True
+    if n > 1:
+        if len(children[root]) != 1:
+            is_chain = False
+        for i in range(1, n+1):
+            if i == root:
+                continue
+            if i != root and len(children[i]) > 1:
+                is_chain = False
+                break
+    else:
+        is_chain = True
+
+    if is_chain:
+        queries = list(map(int, data[2+n:2+n+q]))
+        answers = []
+        for kj in queries:
+            x0 = (kj - 1) // n + 1
+            r = (kj - 1) % n + 1
+            if r <= x0 - 1:
+                inner_val = (r - 1) * (n + 1)
+            else:
+                inner_val = (x0 - 1) * n + (r - 1)
+            ans = (x0 - 1) * n * n + inner_val
+            answers.append(str(ans))
+        sys.stdout.write("\n".join(answers))
+        return
+
+    in_time = [0] * (n+1)
+    out_time = [0] * (n+1)
+    timer = 0
+    A = [0] * n
+
+    stack = [root]
+    while stack:
+        u = stack.pop()
+        if u > 0:
+            in_time[u] = timer
+            A[timer] = u
+            timer += 1
+            stack.append(-u)
+            for v in reversed(children[u]):
+                stack.append(v)
+        else:
+            u = -u
+            out_time[u] = timer - 1
+
+    from array import array
+    class WaveletTree:
+        def __init__(self, arr):
+            self.arr = arr
+            n_val = len(arr)
+            self.n = n_val
+            self.min_val = min(arr)
+            self.max_val = max(arr)
+            self.tree = []
+            self.lo = []
+            self.hi = []
+            self.left = []
+            self.right = []
+            if self.min_val == self.max_val:
+                return
+            self._build(0, n_val, self.min_val, self.max_val)
+
+        def _build(self, l, r, low, high):
+            if low >= high or l >= r:
+                return
+            mid = (low + high) // 2
+            tree_node = array('I')
+            left_count = 0
+            for i in range(l, r):
+                if self.arr[i] <= mid:
+                    left_count += 1
+            tree_node.append(left_count)
+            for i in range(l, r):
+                if self.arr[i] <= mid:
+                    left_count -= 1
+                tree_node.append(left_count + (i - l))
+            self.tree.append(tree_node)
+            self.lo.append(low)
+            self.hi.append(high)
+            left_idx = len(self.left)
+            self.left.append(-1)
+            self.right.append(-1)
+            left_ptr = l
+            right_ptr = l + tree_node[0]
+            arr2 = [0] * (r - l)
+            index_left = 0
+            for i in range(l, r):
+                if self.arr[i] <= mid:
+                    arr2[index_left] = self.arr[i]
+                    index_left += 1
+                else:
+                    arr2[tree_node[0] + (i - l - tree_node[i - l + 1])] = self.arr[i]
+            for i in range(l, r):
+                self.arr[i] = arr2[i - l]
+            self.left[left_idx] = len(self.left)
+            self._build(l, l + tree_node[0], low, mid)
+            self.right[left_idx] = len(self.left)
+            self._build(l + tree_node[0], r, mid+1, high)
+
+        def _range_query_leq(self, node_idx, l, r, x):
+            if node_idx == -1 or l >= r or self.lo[node_idx] > x:
+                return 0
+            if self.hi[node_idx] <= x:
+                return r - l
+            mid = (self.lo[node_idx] + self.hi[node_idx]) // 2
+            if x <= mid:
+                if self.left[node_idx] == -1:
+                    return 0
+                left_node = self.left[node_idx]
+                if l == 0:
+                    count_left = 0
+                else:
+                    count_left = self.tree[node_idx][l]
+                left_total = self.tree[node_idx][l + r] - count_left
+                return self._range_query_leq(left_node, l - count_left, r - (count_left + self.tree[node_idx][l + r] - self.tree[node_idx][l]), x)
+            else:
+                if self.left[node_idx] == -1:
+                    left_count = 0
+                else:
+                    if l == 0:
+                        count_left = 0
+                    else:
+                        count_left = self.tree[node_idx][l]
+                    left_count = self.tree[node_idx][r + l] - count_left
+                    left_part = self._range_query_leq(self.left[node_idx], l - count_left, l - count_left + left_count, mid)
+                if self.right[node_idx] == -1:
+                    right_count = 0
+                else:
+                    right_part = self._range_query_leq(self.right[node_idx], (l - count_left) + left_count, (r - count_left) - (l - count_left) - left_count, x)
+                return left_count + right_count
+
+        def range_query_leq(self, l, r, x):
+            if l > r:
+                return 0
+            if self.min_val == self.max_val:
+                if self.min_val <= x:
+                    return r - l + 1
+                else:
+                    return 0
+            return self._range_query_leq(0, l, r, x)
+
+    wavelet = WaveletTree(array('I', A))
+
+    path_cache = {}
+
+    queries = list(map(int, data[2+n:2+n+q]))
+    answers = []
+
+    for kj in queries:
+        x0 = (kj - 1) // n + 1
+        r_in = (kj - 1) % n + 1
+
+        if x0 not in path_cache:
+            path = []
+            cur = x0
+            while cur != 0:
+                path.append(cur)
+                cur = parent_arr[cur]
+            path.reverse()
+            path_cache[x0] = path
+        else:
+            path = path_cache[x0]
+
+        low = 0
+        high = n * n - 1
+
+        def count_in_row(V, path):
+            total = 0
+            for idx, z in enumerate(path):
+                base = (z - 1) * n
+                if V < base:
+                    continue
+                bound_val = V - base + 1
+                if bound_val < 1:
+                    continue
+                X = bound_val
+                if X > n:
+                    X = n
+
+                if idx < len(path) - 1:
+                    c = path[idx+1]
+                    L1 = in_time[z]
+                    R1 = in_time[c] - 1
+                    count1 = wavelet.range_query_leq(L1, R1, X) if L1 <= R1 else 0
+
+                    L2 = out_time[c] + 1
+                    R2 = out_time[z]
+                    count2 = wavelet.range_query_leq(L2, R2, X) if L2 <= R2 else 0
+
+                    total += count1 + count2
+                else:
+                    L = in_time[z]
+                    R = out_time[z]
+                    total += wavelet.range_query_leq(L, R, X)
+            return total
+
+        while low < high:
+            mid = (low + high) // 2
+            if count_in_row(mid, path) >= r_in:
+                high = mid
+            else:
+                low = mid + 1
+
+        ans_val = (x0 - 1) * n * n + low
+        answers.append(str(ans_val))
+
+    sys.stdout.write("\n".join(answers))
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation
+1. **Tree Classification**:
+   - The tree is first checked if it's a chain (each node has at most one child). If so, a direct formula computes the result for each query in O(1) per query.
+
+2. **Preprocessing for General Trees**:
+   - **DFS Traversal**: Computes in-time, out-time, and an array `A` mapping DFS indices to node indices.
+   - **Wavelet Tree**: Built on `A` to efficiently count nodes in any DFS interval with node indices ≤ X.
+
+3. **Query Processing**:
+   - For each query, the row `x0` and position `r` within the row are determined.
+   - The path from the root to `x0` is retrieved or computed and cached.
+   - Binary search finds the smallest inner value `V` such that the count of valid `y` values (using the wavelet tree) meets or exceeds `r`.
+   - The final result combines the row offset and `V`.
+
+This approach efficiently handles the constraints by leveraging tree properties, binary search, and wavelet trees for range queries, ensuring optimal performance for large inputs.

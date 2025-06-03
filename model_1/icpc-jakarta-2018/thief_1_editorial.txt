@@ -1,0 +1,118 @@
+### Problem Analysis
+The problem requires constructing the shortest possible string composed of a given set of digits such that when a sliding window of length \( N \) moves over the string, at least \( K \) distinct substrings (each representing a PIN) are encountered. The sliding window moves one character at a time, so each new character added to the string creates a new window (PIN) by combining the last \( N-1 \) characters of the current state with the new character.
+
+#### Key Insights
+1. **State Representation**: The problem can be modeled using a state machine where each state is represented by the last \( N-1 \) characters of the current string. Adding a new character \( d \) forms a new PIN (state + \( d \)) and transitions the state to the last \( N-1 \) characters of this new PIN.
+2. **Graph Traversal**: The states and transitions form a directed graph (a de Bruijn graph). Each edge corresponds to a unique PIN (substring of length \( N \)). The goal is to traverse at least \( K \) distinct edges (PINs) with the shortest possible walk (string).
+3. **Rolling Hash**: To efficiently manage states and PINs without storing large strings, we use double hashing (two different moduli) to uniquely represent states and PINs, reducing storage and comparison overhead.
+4. **Greedy Walk**: Starting from an initial state, we greedily choose digits that lead to new PINs. If no such digit exists (we are stuck), we move to the next state by choosing any digit (even if it results in a duplicate PIN) to eventually reach a state with untraversed edges.
+
+### Algorithmic Approach
+1. **Special Case Handling for \( N = 1 \)**:
+   - The PINs are single digits. Output the first \( K \) distinct available digits.
+
+2. **Initialization for \( N \geq 2 \)**:
+   - **Initial State**: Create a string of length \( N-1 \) using the first available digit.
+   - **Hashing Setup**: Precompute powers of the base (for rolling hash) modulo two large primes. Initialize hash values for the initial state.
+
+3. **Constructing the String**:
+   - **Loop Until \( K \) Distinct PINs**:
+     - **Check Available Digits**: For each digit in the given order, compute the hash of the new PIN (current state + digit). If this PIN hasn't been seen, mark it as visited, increment the count, update the state and its hash, and append the digit to the result.
+     - **Handling Stuck State**: If no digit yields a new PIN, append the last available digit (to avoid staying stuck), update the state and hash, and continue. This move doesn't increase the distinct PIN count but transitions to a new state that might have untraversed edges.
+   - **Output Result**: The constructed string, starting with the initial state followed by the added digits.
+
+### Complexity Analysis
+- **Time Complexity**: \( O((N-1 + K + D) \times M) \), where \( D \) is the number of duplicate steps. Since \( N-1 + K \leq 100,000 \) and \( M \leq 10 \), the operations are feasible within 1 second.
+- **Space Complexity**: \( O(\text{max\_length}) \) for storing the string and deque, and \( O(K) \) for storing visited PIN hashes. Given the constraints, this is within 256 MB.
+
+### Solution Code
+```python
+import sys
+from collections import deque
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    n = int(data[0])
+    m = int(data[1])
+    k = int(data[2])
+    digits = list(map(int, data[3:3+m]))
+    
+    if n == 1:
+        print(''.join(str(d) for d in digits[:k]))
+        return
+        
+    mod1 = 10**9 + 7
+    mod2 = 10**9 + 9
+    base1 = 131
+    base2 = 131
+    
+    base_power1 = pow(base1, n - 2, mod1) if n >= 2 else 0
+    base_power2 = pow(base2, n - 2, mod2) if n >= 2 else 0
+    
+    init_digit = digits[0]
+    initial_state = [init_digit] * (n - 1)
+    current_state = deque(initial_state)
+    
+    H1 = 0
+    H2 = 0
+    for d in initial_state:
+        H1 = (H1 * base1 + d) % mod1
+        H2 = (H2 * base2 + d) % mod2
+        
+    s_list = [str(d) for d in initial_state]
+    visited_pins = set()
+    count = 0
+    total_length = n - 1
+    
+    while count < k and total_length < 100000:
+        found = False
+        for d in digits:
+            h1_pin = (H1 * base1 + d) % mod1
+            h2_pin = (H2 * base2 + d) % mod2
+            if (h1_pin, h2_pin) in visited_pins:
+                continue
+            visited_pins.add((h1_pin, h2_pin))
+            count += 1
+            s_list.append(str(d))
+            front_digit = current_state.popleft()
+            current_state.append(d)
+            H1 = (H1 - front_digit * base_power1) % mod1
+            H1 = (H1 * base1 + d) % mod1
+            H2 = (H2 - front_digit * base_power2) % mod2
+            H2 = (H2 * base2 + d) % mod2
+            found = True
+            total_length += 1
+            break
+            
+        if not found and count < k:
+            d = digits[-1]
+            s_list.append(str(d))
+            front_digit = current_state.popleft()
+            current_state.append(d)
+            H1 = (H1 - front_digit * base_power1) % mod1
+            H1 = (H1 * base1 + d) % mod1
+            H2 = (H2 - front_digit * base_power2) % mod2
+            H2 = (H2 * base2 + d) % mod2
+            total_length += 1
+        if count >= k:
+            break
+            
+    print(''.join(s_list))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Initialization**: The input is parsed to extract \( N \), \( M \), \( K \), and the available digits. If \( N = 1 \), the solution is straightforward: output the first \( K \) digits.
+2. **State Setup**: For \( N \geq 2 \), the initial state is a string of \( N-1 \) copies of the first available digit. The rolling hash values for this state are computed.
+3. **Building the String**:
+   - **New PINs**: For each digit, if adding it forms a new PIN (checked via hash), the digit is appended, the state and hashes are updated, and the distinct PIN count increases.
+   - **Stuck State**: If no digit forms a new PIN, the last digit is appended to transition to a new state without increasing the distinct count.
+4. **Termination**: The loop exits once \( K \) distinct PINs are found or the string length reaches the problem-imposed limit (100,000 characters), ensuring efficiency.
+5. **Output**: The constructed string, combining the initial state and added digits, is printed.
+
+This approach efficiently navigates the

@@ -1,0 +1,1262 @@
+ We are given: first line has N and K, then N lines of country names.
+ Constraints: 
+   N up to 1000, K up to 200, total length of all names <= 200,000.
+
+ Steps:
+ 1. Precompute for each country name a mapping from each character to the sorted list of indices where it appears.
+ 2. Sort the countries lexicographically (by name) to assign codes in increasing order.
+
+ However, note: the output must be in the original input order.
+
+ Approach for assigning codes for sorted list (by country name):
+   Let sorted_countries = sorted list of (name, original_index)
+
+   We traverse the sorted countries from smallest to largest.
+
+   For the first country:
+        We want the lexicographically smallest code (a subsequence of length K, starting with name[0]).
+        How to get the lexicographically smallest? 
+          We know the first character must be the first letter of the name (so fixed).
+          Then for the next K-1 characters: we want to choose the smallest possible character at the earliest possible position, but making sure that we leave enough room for the remaining characters.
+
+   For the next country i (with name S):
+        We must assign a code that is lexicographically >= the previous country's code (say t).
+        We try to find the lexicographically smallest code for S that is >= t.
+
+        We can break the process:
+          - The first character must be the first letter of S (which is S[0]).
+          - Compare with t[0]:
+               If S[0] > t[0]: then we can assign the lexicographically smallest code for S (starting with S[0]) and that will be > t.
+               If S[0] < t[0]: then we cannot (since we need >=) -> return NO.
+               If S[0] == t[0]: then we have to match at least the first j characters? and then be >=.
+
+        We can design a function: 
+          find_code_geq(S, t, K, pos_map) -> returns a string (code) for S that is lexicographically >= t and is a subsequence of S of length K, and as small as possible? 
+          but note: we don't need the absolute smallest for the entire sequence? we just need one that is >= the previous and then we can use that as the base for the next.
+
+        However, note: if we assign the smallest code >= t for S, then we leave as much room as possible for the next countries.
+
+        But what if the smallest code >= t for S is the same as the previous code? Then we must assign a code that is strictly greater? 
+          Actually, the condition: 
+            S (current country name) is lexicographically greater than the previous country name? 
+            Not necessarily: the sorted list is by name, but consecutive names might be equal? 
+          However, the problem states: no two countries share the same country name. So the current country name is strictly greater than the previous? 
+          But the problem says: 
+            "S is lexicographically smaller than T if and only if S' is lexicographically smaller than T'"
+          Therefore, we require that the codes are in the same strict order as the country names. 
+          Since the country names are distinct and sorted, we have:
+            name_i < name_{i+1} (in lex order) -> so we require code_i < code_{i+1}.
+
+        Therefore, we must assign a code that is strictly greater than the previous code.
+
+        So for the first country, we assign the smallest possible code.
+
+        For a subsequent country i (with name S_i) which is greater than the previous country name (S_{i-1}), we require:
+            code_i > code_{i-1]
+
+        How?
+          Step 1: try to find the smallest code for S_i that is >= code_{i-1] (call it candidate). 
+          If candidate is greater than code_{i-1] (i.e., not equal), then we assign candidate.
+          If candidate equals code_{i-1], then we must find the next code (lexicographically) for S_i that is greater than code_{i-1]. 
+
+        So we need two functions:
+          Function 1: find the lexicographically smallest code for S that is >= a target string t (and has length K, and starts with S[0]).
+          Function 2: given that we have a code t (which is the previous code) and we know that the country S has the code t as a subsequence? (but we know that at least one subsequence exists that equals t? because we just found candidate equal to t) then we want the next code (lexicographically) for S that is greater than t.
+
+        However, note: Function 1 might return t (if t is a valid code for S) and then we need to find the next.
+
+        Alternatively, we can design:
+          candidate = find_code_geq(S, prev_code, K, pos_map)
+          if candidate is None: then no code >= prev_code -> NO.
+          if candidate > prev_code: then we use candidate.
+          else (candidate == prev_code): then we need to find the next code after prev_code for S.
+
+        How to find the next code after a given code t for a string S?
+          We can use a similar idea to "next permutation" in the space of subsequences? 
+
+          We traverse the code t backwards to find the first position where we can increase a character.
+
+          Specifically, we have the positions in S for the code t: let occ = [p0, p1, ..., p_{K-1}] such that S[pi] = t[i] and p0 < p1 < ... < p_{K-1}.
+
+          Then we try to change the code from the last character backwards:
+
+          For i from K-1 down to 0:
+            Let the current character at position i be t[i]. 
+            We are at position occ[i] in S.
+
+            What are the constraints for changing the i-th character?
+              We can change the i-th character to a letter > t[i] that appears in S at an index > (occ[i-1] if i>0 else -1) and at an index <= (n - (K - i)) so that we can form the rest.
+
+            If we can find such a character, then we choose the smallest such character (to get the next code) and then for the remaining positions (from i+1 to K-1) we assign the lexicographically smallest subsequence (to minimize the code).
+
+          If we cannot change at i, then we move to i-1.
+
+          If we can change at i, then we form:
+            prefix = t[0:i] 
+            then the new character at position i: c (the smallest letter greater than t[i] that we found at an index in S that is available)
+            then for the suffix of length (K - i - 1): we take the lexicographically smallest subsequence from the remaining part (from the index after the chosen c to the end, and we must leave at least (K-i-1) characters).
+
+          We can precompute the lexicographically smallest suffix of a given length from a starting index? 
+
+        We'll write:
+          next_code_helper(S, t, K, pos_map) -> returns the next code after t (lexicographically) that is a subsequence of S and of length K, or None if not exists.
+
+        But note: the code must start with S[0]. Since t starts with S[0] (because the first character of the code must be the first letter of the country name), and we are going to change only from the i-th character (i>=0) then the prefix [0:i] is fixed? Actually, we are going to change at a position i (which might be 0? but note: if i=0, then the first character must be the same as the country's first letter? and if we change the first character to a letter greater than t[0]? but note: the country's first letter is fixed (S[0]) and t[0] must be S[0] because the code must start with S[0]. Therefore, we cannot change the first character to a different letter? unless we change it to a letter that is still S[0]? but that's the same. Actually, we cannot change the first character to a letter different from S[0]. So we start from i>=1? 
+
+        Actually, the first character is fixed. So we can only change from index 1 onwards.
+
+        Steps for next_code_helper:
+          Precondition: t is a valid code for S (so we have the positions in S for t).
+
+          Step 1: Reconstruct the occurrence indices of t in S (if we haven't stored them). We have the mapping pos_map. We can do:
+
+          occ = []
+          current_index = -1
+          for i in range(K):
+            c = t[i]
+            # find the next occurrence of c in S after current_index
+            arr = pos_map.get(c, [])
+            pos = bisect.bisect_right(arr, current_index)
+            if pos >= len(arr):
+                # This should not happen because t is a valid code? 
+                return None
+            occ.append(arr[pos])
+            current_index = arr[pos]
+
+          Step 2: Now, starting from the last character (i = K-1) down to 0 (but skip i=0? because the first character is fixed? actually, we cannot change the first character? because the first character must be S[0] and t[0] is S[0]. So we start at i=K-1 down to 1.
+
+          Actually, we can also change the first character? But we cannot: because the first character must be S[0]. So we start from i=1 to i=K-1.
+
+          However, note: what if we change the first character? We cannot. So we skip i=0.
+
+          For i from K-1 down to 1:
+            Let L = occ[i-1] + 1   (the next character must start after the (i-1)-th character in the string)
+            Let R = len(S) - (K - i)   (because we need K-i characters after this one)
+
+            We are going to change the i-th character to a letter greater than t[i] that appears in the substring S[L:R+1] (if any).
+
+            We try letters from t[i]+1 to 'Z'. For each letter c, we check if there is an occurrence in S[L:R]? (using pos_map: for letter c, we have sorted indices. We can do: 
+                arr = pos_map.get(c, [])
+                idx = bisect.bisect_left(arr, L)
+                if idx < len(arr) and arr[idx] <= R:
+                    candidate_char = c
+                    candidate_index = arr[idx]
+                    break
+
+            If we found one, then we form:
+                prefix = t[0:i]   (which we are keeping)
+                then the new character: candidate_char
+                then for the suffix (length = K - i - 1), we need to form the lexicographically smallest subsequence from S[candidate_index+1: ] of length K-i-1.
+
+                How to form the lexicographically smallest subsequence of a fixed length from a starting index? 
+                    We can do greedily: at each step, choose the smallest character that allows the rest to be formed.
+
+                We can write a helper: greedy_suffix(S, start_index, length, pos_map, n) -> returns the lexicographically smallest subsequence of S[start_index:] of length 'length', or None if not possible.
+
+            Then the new code = prefix + candidate_char + suffix.
+
+            If we can form the suffix, then we return this new code.
+
+          If we don't find any candidate for i, then we backtrack to the previous index (i-1).
+
+          If we go through all i (from K-1 down to 1) and none works, then there is no next code.
+
+        Note: we must be careful that the first character is fixed.
+
+ 3. Implementation of helper functions:
+
+    a. greedy_suffix(S, start, length, pos_map, n) 
+        - If length==0, return "".
+        - We are going to form a string of 'length' characters from S[start:].
+        - We require: we need to pick one character at a time: for each position, we try from 'A' to 'Z'. For a candidate character c:
+              We look in the mapping for c: the list of indices in S that are >= start and <= (n - (length - current_step)) [so that we leave enough room for the rest].
+
+        We can do:
+          current = start
+          res = []
+          for j in range(length):
+              R_bound = n - (length - j - 1) - 1   # Actually, we need to leave (length - j - 1) characters after the one we pick. So the next character we pick must be at index <= (n - (length - j - 1) - 1) ??? 
+                    But note: the last character we pick must be at most at index n-1, then the next to last must be at most n-2? 
+                    Actually, if we are going to pick j-th character (0-indexed in the suffix), then we need to pick at an index such that there are at least (length - j - 1) characters after it.
+                    So the index we pick must be <= n - (length - j)   (because the last character must be at index at least that index+ (length-j) -1? not exactly)
+
+                    Actually: we require that after picking an index 'idx' for the j-th character, we have (length - j - 1) characters to pick from the part S[idx+1:] and we need at least (length - j - 1) characters. So the condition is: 
+                         idx <= n - (length - j)   [because the next character must be at idx+1, then we need (length - j - 1) characters, so the last one must be at most n-1: the condition is that the last character must be at least idx+ (length - j - 1) away? and the last character must be <= n-1, so: idx + (length - j - 1) <= n-1  => idx <= n - (length - j)].
+
+          So for the j-th character (0-indexed in the suffix), we can only pick a character at an index in [current, n - (length - j)].
+
+          Then we iterate c from 'A' to 'Z', and for each c:
+               if c in pos_map:
+                   arr = pos_map[c]
+                   pos_in_arr = bisect.bisect_left(arr, current)
+                   if pos_in_arr < len(arr) and arr[pos_in_arr] <= n - (length - j):
+                       pick this c, and set current = arr[pos_in_arr] + 1
+                       break
+
+          If we found one, then append c and move to next j.
+          If we didn't find for any c, return None.
+
+    b. find_code_geq(S, t, K, pos_map) 
+        - The first character must be S[0]. Therefore, if S[0] < t[0]: then no solution? because we cannot assign a code starting with S[0] that is >= t (which starts with a bigger letter). -> return None.
+        - If S[0] > t[0]: then we can assign the lexicographically smallest code for S? (which will be >= t? because the first character is bigger). 
+        - If S[0] == t[0]: then we have to match the first character.
+
+        Steps:
+          res = [S[0]]
+          current_index = 0   (because we must use the first character at index0? but note: the first character must be the first letter, so we take the first occurrence? which is at index0? However, what if the first character appears later? But the first character is S[0] and the first letter of the string is S[0]. So we take the first occurrence at index0.
+
+          Then we have to match the rest (K-1 characters).
+
+          We also have a flag "bound" that indicates we are still bounded by t (meaning the prefix so far equals the prefix of t). Initially, bound = (S[0]==t[0]) -> which is True.
+
+          For j in range(1, K):
+              L = current_index + 1
+              R = n - (K - j)   # because we need K-j characters after this one.
+
+              If L > R: then we cannot form the code -> return None.
+
+              The next character we can choose: 
+                  If we are bound, then the next character must be at least t[j]. 
+                  Otherwise, we can choose any character from 'A' to 'Z'.
+
+              We iterate from the lower bound to 'Z' (in increasing order) to pick the smallest available character that we can use.
+
+              For candidate_char from (lower_bound) to 'Z':
+                  If candidate_char is in the mapping and there is an occurrence in [L, R] (we can use the first occurrence in that range) then we pick it.
+
+              If we don't find any, return None.
+
+              Then update:
+                 res.append(candidate_char)
+                 current_index = the index of that candidate_char (the one we found: the first occurrence in [L,R] for candidate_char)
+
+              And update bound: 
+                 if bound is True and candidate_char > t[j]: then we break the bound (so for the next characters, we are not bound by t) -> set bound = False.
+
+              If bound is True and candidate_char == t[j], then we remain bound.
+
+          Then return the string ''.join(res)
+
+    c. next_code_helper(S, t, K, pos_map) as described above.
+
+ 4. Then the main loop:
+
+      sorted_list = sorted list of (name, original_index)
+      prev_code = None
+
+      for i, (name, orig_idx) in enumerate(sorted_list):
+          if i==0:
+              code0 = find_code_geq(name, "A"*K, K, pos_maps[name])   # but note: we want the smallest code? and the smallest code is >= "A"*K? but we know the first character is fixed to name[0] (which is at least 'A'). 
+                     However, we can use a target t that is the string of K times the smallest letter? but we don't know the letter. Alternatively, we can set the target to be a string of K times the letter 'A'? but that might be too low. Actually, the first character must be name[0], which is at least 'A'. And the rest we can choose arbitrarily.
+
+                     But we want the smallest code? Then we can set the target as: 
+                         t0 = name[0] + (K-1)*'A'
+                     However, note: the rest of the code must be at least 'A', but the condition is that the entire code must be >= that? 
+
+                     Actually, we can set the target as a string of K times the smallest letter (which is 'A')? and then the function will naturally pick the smallest code that is >= "A"*K.
+
+                     However, the first character is fixed to name[0], so the code must start with name[0]. Then the rest: we can choose the smallest possible.
+
+          However, we can set the target as the minimal code: the first character is name[0] and then the rest as 'A'? but that might not be achievable. So we use:
+
+          For the first country: 
+              candidate = find_code_geq(name, "A"*K, K, pos_maps[name])
+
+          But note: "A"*K might not be a valid starting point? because if name[0] is 'Z', then we require the code to start with 'Z', but "A"*K starts with 'A', which is less. Then our function will work: since name[0]='Z' > 'A', then we can assign the smallest code for that country.
+
+          Actually, we can set the target to be a string that we know is less than any code starting with name[0]. We can set the target to be a string of K times the smallest letter? but note: the first character of the target is 'A', and if the country starts with a letter greater than 'A', then we can assign the smallest code (which is name[0] + then the next K-1 as the smallest available).
+
+          Alternatively, we can set the target to be a string of length K: the first character is name[0] and the rest are 'A'? but that might be too high? because if the country name doesn't have enough 'A's? 
+
+          Actually, we can set the target to be the string of K times the letter 'A'. That is safe because the first character of the code is name[0] (which is at least 'A') and the rest we can choose arbitrarily.
+
+          However, if we set the target to be "A"*K, then:
+            If name[0] > 'A', then we are free to assign the smallest code (which will be >= "A"*K) and we don't care about the rest of the target? because the first character is already bigger.
+
+          So for the first country: 
+            candidate = find_code_geq(name, "A"*K, K, pos_maps[name])
+
+          But note: we want the smallest code for the country? and that is what we are getting.
+
+      Then for the next country:
+
+          candidate = find_code_geq(name, prev_code, K, pos_maps[name])
+          if candidate is None: then NO.
+
+          if candidate > prev_code: then assign candidate.
+
+          else: (candidate == prev_code) then we must assign a code that is greater than prev_code. 
+                next_candidate = next_code_helper(name, prev_code, K, pos_maps[name])
+                if next_candidate is None: then NO.
+                else: assign next_candidate.
+
+ 5. Finally, we output "YES" and then the codes in the original order.
+
+ Note: We must store the code for each country by its original index.
+
+ 6. Edge: K might be 0? but K>=1.
+
+ Implementation note: 
+   The total length of all names is 200,000, so building the pos_map for each name is acceptable.
+
+   The function find_code_geq and next_code_helper and greedy_suffix: 
+        They iterate over the 26 letters at each step? and the steps are at most K (which is 200). So worst-case 26*200 per call? 
+        But note: we call these functions for each country? and the countries are 1000. 
+
+        Worst-case: 
+          1000 * (cost of find_code_geq) -> 1000 * (200 * 26) = 5,200,000 operations? which is acceptable.
+
+        Similarly, next_code_helper: worst-case we might try from the last character backwards until we find one? and for each position we try at most 26 letters? and then we do a greedy_suffix (which is O(200*26)). So worst-case for next_code_helper: 200 * 26 * (cost of greedy_suffix) = 200 * 26 * (200*26) = 200*26*200*26 = 27040000? which is 27 million per call? and we might call it for each country? worst-case 1000 * 27 million -> 27e9 operations? that might be too slow.
+
+        We must optimize.
+
+        Actually, we note that in next_code_helper, we are iterating from the last character backwards until we find a position to change. And then we break. So we do at most one greedy_suffix per call? 
+
+        And the greedy_suffix itself is O(200*26) per call? which is about 5200 operations? so the entire next_code_helper is: 
+            Reconstructing the positions: O(K) (K=200) and then a loop from K-1 down to 1 (at most 199 positions) and for each we iterate over at most 26 letters? and then one call to greedy_suffix? 
+            Worst-case: 199 * 26 * 5200? which is 199*26*5200 = 26,904,800 per call? and then 1000 countries would be 26,904,800,000 -> 26.9e9, which is too slow in Python.
+
+        Therefore, we must optimize the next_code_helper.
+
+        How can we avoid the worst-case? 
+
+        We note: the inner loop over letters (26) is acceptable. But the outer loop (199) is also acceptable? because 199*26 = 5174 per call? and then 1000 * 5174 = 5,174,000, which is acceptable? because then we do 5,174,000 * (the cost per candidate letter) and the cost per candidate letter is just a binary search? 
+
+        Actually, in next_code_helper, for each candidate letter we do a binary search in the list for that letter? which is O(log L) per candidate (L = length of the list for that letter, which is at most the length of the country name? and the total length of names is 200,000). So that is acceptable.
+
+        Then the greedy_suffix is O( (K - i) * 26) which is O(200*26) = 5200, and we do it at most once per call to next_code_helper? (when we break after the first candidate we can change). So the total per next_code_helper is about 200*26 (for the loop) * (log(L)) [for each candidate letter we do a binary search] + 5200.
+
+        But note: we break at the first candidate we can change? so we are not doing the greedy_suffix for every position? we do one greedy_suffix per call? 
+
+        Actually, we do:
+
+          for i from K-1 down to 1:
+             ... for each letter from t[i]+1 to 'Z': 
+                 do a binary search to see if there's an occurrence in [L, R] (which is O(log L))
+                 then if we find one, we break out of the inner loop and then do a greedy_suffix? and then return.
+
+          So worst-case we try all positions? and for each position, we try all letters? and then we do one greedy_suffix? 
+
+          But note: we break at the first candidate we can change? meaning the first position i and the first letter we find that works? we break and then do the greedy_suffix and return.
+
+          However, we do the inner loop over letters for each i until we find one. The worst-case is that we don't find any candidate until the last i (i=1). Then we do (K-1) * (26) binary searches? which is 199*26 = 5174 binary searches? each O(log(L)) (L is at most the length of the country name, say 200000 -> log2(200000) ~ 18). Then 5174 * 18 ~ 93,132 operations? which is acceptable.
+
+          Then we do one greedy_suffix? which is 200*26 = 5200? so total per next_code_helper is about 93,132 + 5200 = 98,332 operations? and 1000 * 98,332 = 98,332,000 which is acceptable in Python? (in 1 second, Python can do about 10^7 operations? so 98 million is borderline? but worst-case we might call next_code_helper for every country? and 1000 countries * 98,000 per call = 98e6 which is acceptable in PyPy? but in Python might be borderline? but note: worst-case total length of names is 200,000, and the length of the country name for which we are calling next_code_helper might be large? but the binary search is over the list of indices for a letter, which for one letter the list length is at most the length of the country name? but the binary search per letter per candidate is O(log(L)) and L is the number of occurrences of that letter? which can be large? but worst-case if the entire string is 'A', then the list for 'A' is the entire string? so log(L) is about log(200000) which is 18? so it's acceptable.)
+
+        However, worst-case scenario: we have 1000 countries, and for each we call next_code_helper? and each next_code_helper takes 98e3 operations? then total 98e6? which is acceptable in Pyton? (CP Python might run 10e6 per second? so 98e6 is 10 seconds? which is too slow for 1 second).
+
+        Therefore, we must optimize further.
+
+        Actually, note: the problem states that the total length of all country names is 200,000. But the next_code_helper is called per country? and the country names are distinct? and the total length is 200,000? so the worst-case is that each country name is about 200? then 1000 countries * 200 = 200,000. But then the length of the country name is small (200). Then the binary search per letter is over a list of at most 200? so log(200) is about 8? then 5174 * 8 = 41,392 per call? then 1000 * 41,392 = 41,392,000? which is acceptable.
+
+        But worst-case: the total length is 200,000, but one country name might be 200,000? and the rest 0? then we have 1 country of 200,000? and 999 countries of 0? but the problem says "each contains a string which length between 1 and 200,000". So worst-case we have one country with 200,000? then we call next_code_helper for that one country? and the inner loop: 199 * 26 * (binary search in a list of up to 200,000) -> 199*26*log2(200000) ~ 199*26*18 = 93,132? which is acceptable.
+
+        So worst-case total operations: 
+          1000 * (cost of find_code_geq) -> 1000 * (200 * 26 * log(L)) -> 1000 * (200*26*18) = 1000 * 93600 = 93,600,000? which is 93.6 million? which might be borderline in Python? but note: the log factor is for the binary search in the list of a particular letter? but in find_code_geq, for each step j (from 0 to K-1) and for each candidate letter (from low_bound to 'Z') we do a binary search? worst-case 26 * K = 26*200 = 5200 per country? and 1000 countries -> 5,200,000? which is acceptable.
+
+        But in next_code_helper, worst-case we have 1000 * (199 * 26 * log(L))? which is 1000 * 199 * 26 * 18 = 1000 * 93,132 = 93,132,000? which is acceptable? because 93 million operations in Pyton might run in 10 seconds? but the problem has 1 second? 
+
+        However, note: worst-case we might have 1000 * (199 * 26) = 5,174,000 binary searches? and each binary search is O(log(L))? and the worst-case L is 200000? so log2(200000) is about 18, so 5,174,000 * 18 = 93,132,000? which is acceptable in C++ but in Python? we must hope that the constant factors are low? or we need to optimize the binary search by precomputation? 
+
+        Alternatively, we can precompute for each country name the next occurrence array (like next_pos[i][c] for position i and char c) to avoid binary searches? but that would require a 2D array of size 200000 * 26? which is 5.2e6 per country? and total countries 1000? then 5.2e6 * 1000 = 5.2e9? which is too much memory.
+
+        Therefore, we stick to the binary search over the list of positions for a letter.
+
+        We hope that the worst-case total operations 93 million is acceptable in Pyton? but in practice, the worst-case might not occur? and the constraints say total length 200,000? so the lists for the letters are not long? because the frequency of a letter in one country is at most the length of the country? and the total length is 200,000? so the worst-case for one country is 200,000? but the average country name length is 200,000/1000=200? so the binary search per letter is over a list of about 200? then the cost per binary search is O(1) (because 200 is small). Then the total for next_code_helper for 1000 countries: 1000 * (199 * 26) = 5,174,000? which is acceptable.
+
+        So we proceed.
+
+ 7. Implementation:
+
+    Precomputation for each country name: 
+        pos_maps = {}
+        for each country name S:
+            d = {}
+            for index, char in enumerate(S):
+                if char not in d:
+                    d[char] = []
+                d[char].append(index)
+            # note: the list for each char is sorted (by the index) by construction.
+            pos_maps[S] = d
+
+    Then sort the country names? but we also need the original index.
+
+    Then we do:
+
+        sorted_countries = sorted([(name, idx) for idx, name in enumerate(country_names)])
+
+        codes = [None] * n_countries
+
+        prev_code = None
+
+        for i in range(n_countries):
+            name, orig_idx = sorted_countries[i]
+            if i == 0:
+                # target: we want a code that is >= "A"*K. But note: we can set the target to be the minimal possible? 
+                # However, we want the smallest code for this country? which is >= "A"*K? but "A"*K is very small? so we can do:
+                candidate = find_code_geq(name, "A"*K, K, pos_maps[name])
+                if candidate is None:
+                    print("NO")
+                    return
+                codes[orig_idx] = candidate
+                prev_code = candidate
+            else:
+                candidate = find_code_geq(name, prev_code, K, pos_maps[name])
+                if candidate is None:
+                    print("NO")
+                    return
+                if candidate > prev_code:
+                    codes[orig_idx] = candidate
+                    prev_code = candidate
+                else:
+                    # candidate == prev_code
+                    next_candidate = next_code_helper(name, prev_code, K, pos_maps[name])
+                    if next_candidate is None:
+                        print("NO")
+                        return
+                    codes[orig_idx] = next_candidate
+                    prev_code = next_candidate
+
+        print("YES")
+        for code in codes:
+            print(code)
+
+ 8. Let's test with the sample: 
+        "INDIA", "INDONESIA", K=2.
+
+        Sorted: "INDIA", "INDONESIA"
+
+        For "INDIA": 
+            find_code_geq: 
+                target = "AA" -> first character must be 'I' (which is > 'A') -> then we are free to choose the smallest possible for the rest? 
+                The smallest code: 
+                    first character: 'I' at index0.
+                    Then for the second character: we need to pick the smallest character that appears in [1, 4] (since n=5, and we need 1 more character, so the next char must be at index<= 5-1 =4). 
+                    The available characters: 
+                         at index1: 'N' -> but we can choose 'N'? but we want the smallest? so we check from 'A' to 'Z'. 
+                         'A'? does 'A' appear in [1,4]? yes, at index4? 
+                    So the smallest character is 'A'? then code = "IA"
+
+                But the problem sample output for INDIA is "ID", which is lexicographically larger than "IA". Why? 
+
+                Because the problem says: "you may output any of them". However, the next country "INDONESIA" must have a code > "IA". 
+                    Then for "INDONESIA": 
+                        We require a code >= "IA". 
+                        The first character is 'I' (same as the first of "IA")? then the next character must be >= 'A'. 
+                        The smallest code for "INDONESIA" that is >= "IA" is "IA"? but wait: 
+                            The first character: index0='I'
+                            Then the next character: we can choose the smallest character that is >= 'A'. 
+                            The smallest character in "NDONESIA" that is >= 'A' is 'A' (at the last?) but actually, the name is "INDONESIA": 
+                                I at0, then N at1, D at2, O at3, N at4, E at5, S at6, I at7, A at8.
+                            We can choose the 'A' at index8? so the code "IA" is available.
+
+                Then we would assign "IA" for INDIA and "IA" for INDONESIA? but that violates the condition that the codes must be strictly increasing? because the country names are strictly increasing? 
+
+                Therefore, for "INDONESIA", we have to assign a code > "IA". 
+
+                Then we would call next_code_helper for "INDONESIA" with previous code "IA". 
+
+                How does next_code_helper work for "INDONESIA" and target "IA"?
+
+                Step: reconstruct the occurrences for "IA" in "INDONESIA": 
+                    I: at index0? 
+                    A: the next occurrence of 'A' after 0? at index8.
+
+                Then we start from the last character (i=1) backwards? 
+                    i=1: 
+                      L = occ[0]+1 = 1
+                      R = len(S) - (K-1) = 9 - 1 = 8? 
+                      We try to change the second character (which is 'A') to a letter greater than 'A'. The next letter is 'B'? but no 'B' in [1,8]? then 'C'? ... until 'D': at index2? 
+                      Then we form: 
+                         prefix = "I" -> then change the second character to 'D', and then the suffix: we need 0 characters? so we get "ID".
+
+                Then we assign "ID" for INDIA and "ID" for INDONESIA? but wait, we assigned "IA" for INDIA and "ID" for INDONESIA? which is strictly increasing? and then we output:
+
+                    YES
+                    IA   (for INDIA, which is the first country in sorted order? but note: sorted_countries: 
+                          sorted_countries[0] = ("INDIA",0), sorted_countries[1] = ("INDONESIA",1)
+
+                However, the sample output is:
+
+                    YES
+                    ID
+                    IN
+
+                Why? because the problem says: "you may output any of them". So we can output any assignment that satisfies the conditions.
+
+                But note: the sample output uses "ID" for INDIA and "IN" for INDONESIA. Why didn't we get that?
+
+                For the first country "INDIA": 
+                    We computed the smallest code: "IA". 
+                But the problem does not require the smallest code? it requires any code. However, we are generating the smallest code for the first country? and then for the next we generate the smallest code that is >= the previous code? and then if we get an equal code we use the next one.
+
+                However, the sample output "ID" for INDIA is larger than "IA". So why didn't we get "ID" for the first country? 
+
+                Because we generated the smallest possible code for the first country? which is "IA". 
+
+                But the problem does not require the smallest? so we could assign a larger code for the first country? 
+
+                However, the problem says: "If there are more than one possible country codes assignment, you may output any of them."
+
+                But our method for the first country is the smallest? which is the minimal code? and that might force the next country to be minimal as well? and then we might fail? 
+
+                Actually, we can choose any code for the first country? as long as we leave room for the next countries? 
+
+                How about: we want to assign the smallest code that allows the entire list to be assigned? 
+
+                But that is difficult? 
+
+                Alternatively, we can try to assign the same as the sample: 
+                    For "INDIA": we want to assign "ID", and for "INDONESIA": "IN".
+
+                How can we achieve that? 
+
+                We could change the target for the first country? not to be "A"*K? but we are using the minimal code? 
+
+                How about: we do not use the minimal code for the first country? but we must assign a code that is the minimal one that is >= "A"*K? 
+
+                But what if we set the target for the first country to be "ID"? 
+
+                We can do: 
+                    For the first country: 
+                         candidate = find_code_geq(name, "ID", K, pos_map) 
+                    Then candidate would be "ID"? because "ID" is a valid code? and it is >= "ID".
+
+                Then for the next country: 
+                    candidate = find_code_geq("INDONESIA", "ID", 2, pos_map) 
+                    The first character 'I' (same as 'I'), then the next character must be >= 'D'. 
+                    The smallest character in "INDONESIA" that is >= 'D'? 
+                         'D' at index2? then we get "ID" again? then we have to use next_code_helper to get the next code after "ID", which is "IE"? but then "IN" is actually greater than "ID", and "IE" is not the one we want.
+
+                How do we get "IN"? 
+
+                Actually, "IN" is the next code after "ID" in lex order? 
+
+                But in the next_code_helper: 
+                   We are at "ID" for "INDONESIA": 
+                      positions: I at0, D at2? 
+                   Then we try the last character (i=1): 
+                      L = 0+1 = 1, R = 8? 
+                      We try to change the second character from 'D' to a letter > 'D'? 
+                         'E'? -> E is at index5? -> then we form "IE" (and then we break) -> but we want "IN"? 
+
+                Why not "IN"? because we are going from the last character backwards? and we break at the first change? and then we form the smallest suffix? which is "E" (because we choose the smallest available character for the rest). 
+
+                But note: "IN" is available: 
+                   We can change the second character to 'N'? which is at index1? and then we don't need to form a suffix? (because we are at the last character). 
+
+                How do we get "IN"? 
+
+                In the inner loop for letters? we are iterating from 'D'+1 to 'Z'? and the first letter we find that has an occurrence in [1,8] is 'E'? but we skip 'N'? 
+
+                Actually, we are iterating in increasing order? so we find 'E' first? then we break. 
+
+                But we don't want that? we want to get the smallest code that is greater than "ID", which is "IE"? because 'E'<'N'? 
+
+                So "IN" is not the next code? "IE" is the next code? 
+
+                However, the sample output uses "IN", which is greater than "IE". 
+
+                Therefore, our method for the next_code_helper is to return the next code in lex order? which is the smallest code greater than the given code? 
+
+                So the sample output "IN" is not the next code? but a larger one? 
+
+                But the problem allows any assignment? as long as the codes are in increasing order? so we can assign "IN" for the second country? but we must assign a code that is greater than "ID" and that is a subsequence? and then we can skip "IE" and "II", etc. 
+
+                However, we are using next_code_helper to get the next code? which is the smallest code greater than the given code? and then we assign that? 
+
+                Why does the sample output "IN"? 
+
+                Because the problem does not require the smallest code? but we are generating the next code? and the next code is "IE". 
+
+                Then why the sample output is "ID" and "IN"? 
+
+                Actually, the problem statement says: 
+                    "If there are more than one possible country codes assignment, you may output any of them."
+
+                So we can output any? 
+
+                How can we get "IN"? 
+
+                We could change the algorithm: 
+                  Instead of using the next_code_helper (which returns the next code in lex order) we could try to find a code that is greater than the previous code? not necessarily the next? 
+
+                But that might be inefficient? 
+
+                Alternatively, we can avoid the next_code_helper? by:
+
+                  For the second country, we can use find_code_geq with a target that is the previous code plus one? 
+
+                How? 
+
+                  We can set the target for the second country to be the previous code? and then if we get the same code, we set the target to be the previous code with the last character increased by one? 
+
+                But that might not be safe? 
+
+                Actually, we can do:
+
+                  candidate = find_code_geq(name, prev_code, K, pos_map) 
+                  if candidate is None: fail.
+                  if candidate > prev_code: assign candidate.
+                  else: 
+                      # candidate == prev_code, then we set the target to be prev_code with the last character increased by one? 
+                      # but note: we can set the target to be the same as the previous code but with the last character increased by one? 
+                      # but that might be too high? 
+
+                Actually, we can set the target to be prev_code[0:-1] + chr(ord(prev_code[-1])+1) and then the rest as 'A'? 
+
+                But that might not be the minimal next? but we don't care? 
+
+                Then we call find_code_geq(name, new_target, K, pos_map)
+
+                Example: 
+                  prev_code = "IA"
+                  new_target = "IB"   (if K=2, then we set the last character to 'B', and the rest remains)
+
+                Then for "INDONESIA": 
+                    find_code_geq with target "IB": 
+                         first character: 'I' -> same as the first of "IB"
+                         second character: must be >= 'B'. The smallest character in "INDONESIA" that is >= 'B'? 
+                             The string: "INDONESIA": 
+                                 I, N, D, O, N, E, S, I, A
+                             The available characters: 
+                                 'D'? but 'D'<'B'? no, 'D' is ASCII 68, 'B' is 66 -> so 'D' is greater? 
+                                 But we want the smallest? so we look: 
+                                    'B'? not present? 
+                                    'C'? not present? 
+                                    'D' -> present at index2? so we choose 'D'? then code = "ID", which is < "IB"? no, "ID" is greater than "IB"? because 'D' > 'B'? 
+
+                         Actually, lexicographic order: 
+                             "IB" vs "ID": 
+                                 first character: both 'I'
+                                 second: 'B' vs 'D' -> 'B'<'D', so "IB" < "ID". 
+
+                         But we set the target to "IB", and then we found "ID" which is >= "IB", so we assign "ID".
+
+                Then we have for "INDIA": "IA", for "INDONESIA": "ID", which is strictly increasing.
+
+                But the sample output was "ID" and "IN", but we output "IA" and "ID". 
+
+                Why not output "ID" for the first country? 
+
+                Because we set the first country to the minimal code? 
+
+                How can we output "ID" for the first country? 
+
+                We can change the target for the first country to be "ID" (if we want). But we don't know which one to choose? 
+
+                Alternatively, we can use a different strategy: 
+                  Instead of assigning the smallest code for the first country, we assign the smallest code that allows the entire list to be completed? 
+
+                That is a more global constraint? and it is complex? 
+
+                Given the constraints (N=1000, K=200) we cannot do a global assignment? 
+
+                Therefore, we stick to our greedy method? and hope that it finds a solution if exists? 
+
+                But note: the problem does not require the smallest codes? so we can assign any code? 
+
+                How about: we assign for each country the smallest code that is greater than the previous country's code? 
+
+                But for the first country, we assign the smallest code? 
+
+                Then for the second country, we assign the smallest code that is greater than the first? 
+
+                Then for the third, the smallest code that is greater than the second? 
+
+                This is greedy. 
+
+                Why in the sample we got "IA" for INDIA and then "ID" for INDONESIA? which is valid? 
+
+                And that matches the sample? 
+
+                But the sample output was "ID" and "IN", which is also valid? 
+
+                So both are acceptable.
+
+                However, the problem sample output is:
+
+                    YES
+                    ID
+                    IN
+
+                But our output for the sample would be:
+
+                    YES
+                    IA
+                    ID
+
+                Is that acceptable? 
+
+                The condition: 
+                  The country names: "INDIA" and "INDONESIA" are in sorted order: 
+                     "INDIA" < "INDONESIA"
+                  The codes: "IA" < "ID"? 
+                     Yes, because "IA" < "ID" lexicographically? 
+
+                So it is valid.
+
+                But the problem says: "you may output any of them"
+
+                Therefore, we output:
+
+                  For the first sample: 
+                      YES
+                      IA
+                      ID
+
+                But the sample output in the problem is:
+
+                    YES
+                    ID
+                    IN
+
+                Why does the problem sample output that? 
+
+                They might have chosen a different assignment? 
+
+                How can we output that? 
+
+                We would have to choose a larger code for the first country? 
+
+                How? 
+
+                We can avoid the minimal code for the first country? 
+
+                Specifically, we can set the target for the first country to be "ID" instead of "A"*K? 
+
+                Then for "INDIA", we call find_code_geq(name, "ID", 2, pos_map) -> returns "ID" (because it is valid? and >= "ID")? 
+
+                Then for "INDONESIA": 
+                    find_code_geq(name, "ID", 2, pos_map) -> returns "ID" (because it is valid? and then we have to call next_code_helper to get the next code? which is "IE"? but then we want "IN"? 
+
+                But we got "IE", not "IN". 
+
+                How to get "IN"? 
+
+                We could avoid next_code_helper and instead set a higher target? 
+
+                Specifically, after the first country has been assigned "ID", then for the second country, we set the target to be "IN" (if we know it is valid) and then call find_code_geq(name, "IN", 2, pos_map)? 
+
+                But we don't know if "IN" is valid? 
+
+                Alternatively, we can change the next_code_helper to not return the next code but any code that is greater? 
+
+                But then we might get a code that is too large and breaks the chain for future countries? 
+
+                Given the complexity, and the problem allows any assignment? we decide to output the greedy minimal assignment? 
+
+                And the sample output in the problem is just one possibility? 
+
+                But the problem says: "If there are more than one possible country codes assignment, you may output any of them."
+
+                Therefore, we output:
+
+                  Sample 1: 
+                      YES
+                      IA
+                      ID
+
+                And the second sample: 
+                    Input: 
+                        3 2
+                        IBAA
+                        IAAA
+                        IAAC
+
+                We have to output "NO".
+
+                How does our code handle the second sample? 
+
+                Countries: 
+                    "IBAA", "IAAA", "IAAC" -> sorted: 
+                        "IAAA", "IAAC", "IBAA"
+
+                First country: "IAAA": 
+                    smallest code: "IA" (using the first two: I at0 and A at1)
+
+                Second country: "IAAC": 
+                    find_code_geq("IAAC", "IA", 2, pos_map) -> 
+                         first character 'I' (same as 'I') 
+                         then the next character must be >= 'A'. 
+                         The smallest is 'A' (at index1) -> so candidate = "IA" (which equals the previous code) -> then we need the next code after "IA" for "IAAC".
+
+                How to compute next_code_helper for "IAAC" and "IA": 
+                    We have the positions: I at0, A at1? 
+                    Then we go backwards: 
+                       i=1: 
+                          L = occ[0]+1 = 1
+                          R = 4-1 = 3
+                          We try to change the second character to a letter > 'A'. The next letter is 'B'? 
+                             Check 'B' in "IAAC": 
+                                at index2: 'A' -> no 'B'? 
+                                then 'C': at index3? 
+                             Then we form: 
+                                 prefix = "I", then 'C', and then the suffix has length 0? so the code is "IC".
+
+                    So we assign "IC" for the second country.
+
+                Third country: "IBAA": 
+                    find_code_geq("IBAA", "IC", 2, pos_map) -> 
+                         first character 'I' (same as 'I') 
+                         then the next character must be >= 'C'. 
+                         The string: "IBAA": 
+                             'B' at1, 'A' at2, 'A' at3 -> no character >= 'C'? 
+                         So candidate = None -> output "NO"
+
+                But the sample output is "NO", so we output "NO", which is correct.
+
+                However, what if we had chosen a different code for the second country? 
+                  Instead of "IC", could we choose "IA" for the first country and then skip "IA" for the second country and choose a larger one? 
+
+                For the second country "IAAC": 
+                    We have other codes: 
+                         "IA" (using first I and then first A)
+                         "IA" (using first I and then second A? but that is also "IA")
+                         "IC" (using first I and then C) -> but that is the only one greater than "IA" and available.
+
+                So we must assign "IC", and then the third country fails.
+
+                Therefore, we output "NO".
+
+ 9. Conclusion: 
+        We implement the greedy assignment in sorted order, using the helper functions.
+
+        We'll hope that the worst-case performance is acceptable.
+
+        Let's code accordingly.
+
+  Note: We must be cautious with the greedy_suffix: we are going to write:
+
+      def greedy_suffix(S, start, length, pos_map, n):
+          # S: the whole string, but we are going to use the pos_map (which is built from the whole string) and the start index and n (length of S)
+          if length == 0:
+              return ""
+          res = []
+          current = start
+          for j in range(length):
+              # we need to choose a character at an index in [current, n - (length - j)]
+              R_bound = n - (length - j)   # the last character we pick must be at most this index.
+              found_char = None
+              found_index = None
+              for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                  if c not in pos_map:
+                      continue
+                  arr = pos_map[c]
+                  pos_in_arr = bisect.bisect_left(arr, current)
+                  if pos_in_arr < len(arr) and arr[pos_in_arr] <= R_bound:
+                      found_char = c
+                      found_index = arr[pos_in_arr]
+                      break
+              if found_char is None:
+                  return None
+              res.append(found_char)
+              current = found_index + 1
+          return ''.join(res)
+
+  But note: the string of letters "ABCDEFGHIJKLMNOPQRSTUVWXYZ" is fixed? and we iterate in that order? so we are picking the smallest character available? 
+
+  Similarly, in find_code_geq and next_code_helper we iterate from the current lower bound to 'Z'? 
+
+  We'll write accordingly.
+
+  Let's run the sample "INDIA" for the first country with K=2:
+
+      find_code_geq("INDIA", "AA", 2, pos_map) -> 
+          first char: 'I' >= 'A' -> use 'I'. 
+          Then for j=1: 
+             L = 0+1 = 1, R = 5-1 = 4.
+             bound = True (because we matched the first character of the target? but wait: the target is "AA", and we are at j=1, so the target's next char is 'A'. 
+             So we iterate from 'A' to 'Z': 
+                 'A': is it in the string in [1,4]? 
+                     The string: "INDIA": indices: 
+                         I:0, N:1, D:2, I:3, A:4.
+                     'A' at index4 -> within [1,4] -> pick 'A'. 
+             So code = "IA".
+
+  Then for the next country "INDONESIA", we do:
+
+        candidate = find_code_geq("INDONESIA", "IA", 2, pos_map) -> 
+            first char: 'I' (same) -> bound = True.
+            j=1: 
+                L = 0+1=1, R=9-1=8.
+                bound: the next char must be >= 'A'. 
+                We iterate from 'A' to 'Z': 
+                    'A': present at index8? -> within [1,8]? -> pick 'A'. 
+                so candidate = "IA", which equals the previous code.
+
+        Then we call next_code_helper("INDONESIA", "IA", 2, pos_map) -> 
+            First, reconstruct the occurrences: 
+                'I': the first occurrence at index0? 
+                'A': the first occurrence after 0? at index8? -> occ=[0,8]
+            Then we go backwards from i=1 (the last character) down to 1 (the first changeable character? i=1 is the last and also the first changeable? because the first character is fixed at index0? so we start at i=1).
+
+            For i=1:
+                L = occ[0]+1 = 1
+                R = 9- (2-1) = 9-1=8.
+                We try to change the last character to a letter greater than 'A'. 
+                We iterate from 'B' to 'Z': 
+                    'B': not present? 
+                    'C': not present? 
+                    'D': present at index2? -> so we choose 'D'. 
+                Then the suffix: length=0 -> so we form "I" + 'D' = "ID".
+
+            So we return "ID".
+
+        Then we assign "ID" for the second country.
+
+        So output:
+            YES
+            IA
+            ID
+
+        And the original input order: 
+            first input: "INDIA" -> index0 -> code "IA"
+            second input: "INDONESIA" -> index1 -> code "ID"
+
+        So we output:
+            YES
+            IA
+            ID
+
+        But the problem sample output is:
+            YES
+            ID
+            IN
+
+        However, our output is also valid? and the problem allows any valid assignment.
+
+        Therefore, we output that.
+
+  But note: the problem sample input is:
+
+        2 2
+        INDIA
+        INDONESIA
+
+        And we output:
+
+            YES
+            IA
+            ID
+
+        But the problem sample output is:
+
+            YES
+            ID
+            IN
+
+        Why the difference? 
+
+        The problem says: "the string on the i-th line denotes the country name of the i-th country". 
+
+        In our output, the first country in the input is "INDIA", so we output the code for the first country (which is "IA") and then the second country "INDONESIA" gets "ID". 
+
+        But the sample output has:
+
+            ID   (for the first input country? which is "INDIA")
+            IN   (for the second)
+
+        How can we achieve that? 
+
+        The issue: our sorted_countries: 
+            We sort the country names lexicographically? 
+            Then the sorted list: 
+                first: "INDIA" (which is lexicographically smaller than "INDONESIA")
+                second: "INDONESIA"
+
+            Then we assign the codes in that order: 
+                "INDIA" -> "IA"
+                "INDONESIA" -> "ID"
+
+            Then we output the codes in the original order: 
+                The first country (original index0) is "INDIA" -> code "IA"
+                The second country (original index1) is "INDONESIA" -> code "ID"
+
+        So we output:
+
+            YES
+            IA
+            ID
+
+        But the problem sample output is:
+
+            YES
+            ID
+            IN
+
+        which corresponds to:
+            first input country (INDIA) gets "ID"
+            second input country (INDONESIA) gets "IN"
+
+        How can we get that? 
+
+        We note: the condition requires that the lex order of the country names (by the original input? no) must match the lex order of the codes? 
+
+        The condition: 
+            "S is lexicographically smaller than T if and only if S' is lexicographically smaller than T'"
+
+        This must hold for every pair? 
+
+        In particular, for the two countries: 
+            "INDIA" < "INDONESIA", so we require code("INDIA") < code("INDONESIA")
+
+        Our assignment: "IA" < "ID" -> so it holds.
+
+        The problem sample assignment: "ID" < "IN" -> also holds.
+
+        But the problem does not require the same order as the input? the output must be in the original input order? 
+
+        Our output: 
+            The first line: "YES"
+            Then the next N lines: the code for the i-th input country.
+
+        So we output for the first input country the code we assigned to it? 
+
+        How did we assign? 
+            We assigned to the country name "INDIA" (which is the first input country) the code "IA", and to "INDONESIA" the code "ID".
+
+        So the output is:
+
+            YES
+            IA
+            ID
+
+        But the problem sample output is:
+
+            YES
+            ID
+            IN
+
+        They are different assignments? but both are valid? 
+
+        How can we output the sample assignment? 
+
+        We would have to assign to "INDIA" the code "ID", and to "INDONESIA" the code "IN". 
+
+        How can our algorithm achieve that? 
+
+        We sort the country names: 
+            sorted_countries = sorted(country_names) -> ["INDIA", "INDONESIA"]
+
+        Then we assign:
+            For the first country "INDIA": 
+                We want to assign "ID" (which is greater than the minimal code "IA"). 
+
+                How? 
+                    We can set the target for the first country to be "ID", then the minimal code >= "ID" for "INDIA" is "ID" (if valid).
+
+                But "ID" is valid for "INDIA": 
+                    I at0, D at2? -> yes.
+
+            Then for the second country "INDONESIA": 
+                We want to assign a code > "ID". 
+                The minimal code >= "ID" for "INDONESIA": 
+                    first char 'I' (same) 
+                    then the next char must be >= 'D'. 
+                    The smallest char in "INDONESIA" that is >= 'D'? 
+                         'D' at2 -> so we could assign "ID" again? but then we would have to use next_code_helper to get the next code? which would be "IE" (by changing the last character to 'E')? 
+
+                But we want "IN"? 
+
+                How? 
+                    We can avoid the minimal code? and then set a higher target? 
+
+                Specifically, if we do not want "ID" for the second country? we can call next_code_helper to get the next code after "ID", and then we get "IE"? but that is not "IN". 
+
+                How to get "IN"? 
+                    We can call next_code_helper again? no, because we are only allowed one call per country.
+
+                Alternatively, after we get "ID" for the first country, then for the second country we set the target to be "IN", and then call find_code_geq for "INDONESIA" with target "IN": 
+                    first char 'I' (same as 'I') 
+                    then next char must be >= 'N'. 
+                    Is there a character in "INDONESIA" that is >= 'N'? 
+                         'N' at index1 -> and 'N' is >= 'N'? so we can assign "IN" (using the first I and the first N).
+
+                So we can do:
+
+                    candidate = find_code_geq(name, "IN", K, pos_map) 
+
+                But how do we know to set the target to "IN"? 
+
+                We don't. 
+
+        Therefore, to get the sample assignment, we would have to know that "IN" is available and we want it? 
+
+        But the problem says: we may output any assignment.
+
+        So we can output:
+
+            For the first country: "ID" (if we set the target for the first country to be "ID", then we get "ID")
+            For the second country: we then set the target to be "IN", and then we call find_code_geq and get "IN", which is valid? and then we don't need next_code_helper.
+
+        How to incorporate that? 
+
+        We could try to use a higher target for the first country? but we don't know how high? 
+
+        Given the complexity, and the fact that the problem allows any assignment, we decide to output the assignment that uses the smallest possible codes? 
+
+        If the problem sample expects:
+
+            Input order: 
+                first: INDIA -> code "ID"
+                second: INDONESIA -> code "IN"
+
+            How do we achieve that in our algorithm? 
+
+            In our algorithm, we assign by sorted order? but then we output by the original order. 
+
+            In sorted order: 
+                first: INDIA -> we would assign the smallest code? which is "IA", but we want to assign "ID".
+
+            How can we assign "ID" to the first country? 
+
+            We can only do that if we set the target for the first country to be "ID". 
+
+            How about: we use a variable 'prev_code' for the previous country in sorted order? but for the first country, we set the target to be not "A"*K, but a higher target? 
+
+            Specifically, we can try to use the minimal code for the first country? which is "IA", but then we know that the next country will fail if we assign that? 
+
+            But in this sample, it doesn't fail? 
+
+            Alternatively, we can try to use a different strategy: 
+
+              Instead of using "A"*K for the first country, we use a target that is not the minimal? 
+
+            But we have no information? 
+
+            We decide to not change the algorithm? and output the greedy minimal assignment? 
+
+            And note: the sample output in the problem is just an example? they say: "you may output any of them". 
+
+            Therefore, we output:
+
+                YES
+                IA
+                ID
+
+            for the sample.
+
+        If the problem's sample output is required to match exactly? we might fail the sample test? 
+
+        But the problem says: "you may output any of them", so both are acceptable.
+
+        We'll test with the sample and hope that the judge is permissive.
+
+        However, the sample input: 
+            "2 2\nINDIA\nINDONESIA"
+
+        must output either:
+            Option1:
+                YES
+                IA
+                ID
+            or Option2:
+                YES
+                ID
+                IN
+
+        We output Option1.
+
+        But the sample output in the problem is Option2.
+
+        How to make the judge accept both? 
+
+        We might need to match the sample output? 
+
+        But the problem says: "you may output any of them"
+
+        Therefore, we can output either.
+
+        How can we output Option2? 
+
+        Insight: 
+          The minimal code for the first country ("INDIA") is "IA", but there is another code "ID" available. 
+          And if we assign "ID" to the first country, then the second country can be assigned "IN", which is greater than "ID", and then we have a valid assignment.
+
+          But our algorithm for the first country always assigns the minimal code? 
+
+        How about: 
+          For the first country, we try to assign the smallest code that will not cause a problem for the next country? 
+
+        But that is complex? 
+
+        Alternatively, we can try to run the algorithm in the sorted order? but in reverse: from the largest country to the smallest? and assign the largest possible code? 
+
+        But the problem requires the codes to be in increasing order? 
+
+        Or we can do: 
+
+          sorted_countries = sorted(country_names, reverse=True) 
+          and then assign the largest code for the last country? 
+
+        But then the codes would be in decreasing order? which is the reverse of the country names? 
+
+        Then we would have to reverse the codes? 
+
+        Alternatively, we can do: 
+          sorted_countries = sorted(country_names)
+          and then from last to first? and assign the largest code for the last country? and then for the previous country, assign a code that is less than the next? 
+
+        This is also complex.
+
+        Given the time, and since the problem allows any assignment, we output the greedy minimal assignment? and hope that the judge's test cases accept any valid assignment.
+
+        If we encounter a sample test that expects a particular assignment? we might fail? 
+
+        But the problem says: any assignment is acceptable.
+
+        Therefore, we output our assignment.
+
+        If we want to output the sample assignment for the sample, we can hardcode? but that is not acceptable.
+
+        Alternatively, we can try to see if there is a valid assignment for the entire list using a higher code for the first country? only if the minimal assignment fails for a later country? 
+
+        But that is expensive.
+
+        We'll hope that the minimal assignment works for the official test cases.
+
+        We'll output the code as described.
+
+ 10. Final code structure:
+
+        Precompute pos_maps for each country name.
+
+        sorted_countries = sorted( (name, idx) for idx, name in enumerate(country_names) )
+
+        prev_code = None
+
+        for i in range(len(sorted_countries)):
+            name, orig_idx = sorted_countries[i]
+            if i == 0:
+                # Use a target of "A"*K
+                candidate = find_code_geq(name, "A"*K, K, pos_maps[name])
+                if candidate is None:
+                    print("NO")
+                    return
+                # assign candidate
+                codes[orig_idx] = candidate
+                prev_code = candidate
+            else:
+                candidate = find_code_geq(name, prev_code, K, pos_maps[name])
+                if candidate is None:
+                    print("NO")
+                    return
+                if candidate > prev_code:
+                    codes[orig_idx] = candidate
+                    prev_code = candidate
+                else:
+                    next_cand = next_code_helper(name, prev_code, K, pos_maps[name])
+                    if next_cand is None:
+                        print("NO")
+                        return
+                    codes[orig_idx] = next_cand
+                    prev_code = next_cand
+
+        print("YES")
+        for c in codes:
+            print(c)
+
+  We'll implement the helper functions as described.
+
+  Let's hope.

@@ -1,0 +1,1054 @@
+ We are going to implement a segment tree for the problem. However, note that the constraints are up to 200,000 and Python might be slower.
+ We have to be cautious and optimize the code as much as possible.
+
+ The idea is to have a segment tree where each node stores:
+   - lc: leftmost character in the segment
+   - rc: rightmost character in the segment
+   - lrun: the length of the run starting from the left (i.e., consecutive same characters from the left)
+   - rrun: the length of the run ending at the right
+   - dens: the total density (sum of squares of runs) for the segment
+   - size: the number of characters in the segment
+
+ When merging two nodes (left and right):
+   - If the last character of the left node (left.rc) is the same as the first character of the right node (right.lc),
+     then the run that spans the boundary must be merged. Specifically, the rightmost run of the left segment and the leftmost run of the right segment are merged.
+
+   Steps for merge:
+     1. The new segment's leftmost character is left.lc, and rightmost character is right.rc.
+     2. The left run (lrun) of the new segment:
+          = left.lrun  [if the entire left segment is not a run OR if the boundary doesn't merge?]
+          But actually: if the entire left segment is a run (i.e., left.lrun == left.size) and left.rc == right.lc, then the left run extends to include the left run of the right segment? 
+          However, note: the left run of the new segment is the left run of the left segment, but if the entire left segment is a run and the left.rc equals right.lc, then the left run of the new segment becomes left.lrun + right.lrun? 
+          But wait: what if the entire left segment is a run and the boundary merges, then the left run of the new segment becomes left.lrun + (if the right segment's left run is merged? only if the entire left segment is merged then we can extend to the right's left run?).
+
+     3. Similarly, the right run (rrun) of the new segment:
+          = right.rrun if the entire right segment is a run and if the boundary merges? and then we add the left's rrun? Actually, if the entire right segment is a run and the boundary merges, then the new rrun = left.rrun + right.rrun? 
+          But note: the right run of the left segment is at the end of the left segment. However, the condition for the right run of the new segment is: if the entire right segment is a run and the boundary merges, then the new rrun is right.rrun + left.rrun? Actually, no: the right run of the new segment is the right run of the right segment, unless the entire right segment is a run and the boundary merges, then we can extend the right run backwards by the right run of the left segment? 
+
+     Actually, we have:
+        lrun: 
+          if left.lrun == left.size and left.rc == right.lc:
+             new_lrun = left.lrun + right.lrun
+          else:
+             new_lrun = left.lrun
+
+        rrun:
+          if right.rrun == right.size and left.rc == right.lc:
+             new_rrun = right.rrun + left.rrun
+          else:
+             new_rrun = right.rrun
+
+     4. The density is the sum of the two densities minus the squares of the two runs that are merged (if any) plus the square of the merged run.
+
+        Specifically: 
+          total_dens = left.dens + right.dens
+          If left.rc == right.lc, then we have to account for the merging of the last run of the left and the first run of the right.
+          Previously, we had two runs: one of length 'left.rrun' and one of length 'right.lrun'. Now they become one run of length (left.rrun + right.lrun). So we subtract the squares of the two separate runs and add the square of the merged run.
+
+          Therefore: 
+            total_dens = total_dens - (left.rrun*left.rrun) - (right.lrun*right.lrun) + ( (left.rrun + right.lrun) * (left.rrun + right.lrun) )
+
+        However, note: the runs we are merging are exactly the ones that were at the boundary. But what if the entire left segment was one run? Then the left.rrun is the entire left segment. Similarly, the right.lrun is the entire right segment? Actually, no: the left.rrun is the run at the right end of the left segment, and right.lrun is the run at the left end of the right segment. They are the two runs that are adjacent and same.
+
+        But note: the runs that are merged are exactly the last run of the left segment (which is of length left.rrun) and the first run of the right segment (which is of length right.lrun). However, in the left segment, the run at the right end is stored as rrun, and in the right segment, the run at the left end is stored as lrun. So we subtract the squares of these two and add the square of the merged run.
+
+        BUT: caution! The runs we are merging are not necessarily contiguous in the entire segment? Actually, they are adjacent. And the rest of the runs remain unchanged.
+
+        However, note: the runs that are being merged might be part of a larger run? But in the segment tree, each node has the entire segment, and the runs at the boundaries are stored. The inner runs are already accounted for in the density. The only runs that are adjacent at the boundary are these two.
+
+     5. The size is left.size + right.size.
+
+ Implementation:
+
+     We'll define a merge function for two nodes L and R:
+
+        Node res;
+        res.size = L.size + R.size;
+        res.lc = L.lc;
+        res.rc = R.rc;
+
+        // For lrun: 
+        if L.lrun == L.size and L.rc == R.lc:
+            res.lrun = L.lrun + R.lrun
+        else:
+            res.lrun = L.lrun
+
+        // For rrun:
+        if R.rrun == R.size and L.rc == R.lc:
+            res.rrun = R.rrun + L.rrun
+        else:
+            res.rrun = R.rrun
+
+        res.dens = L.dens + R.dens
+        if L.rc == R.lc:
+            # Subtract the two runs that are merged and add the merged run.
+            res.dens = res.dens - (L.rrun*L.rrun) - (R.lrun*R.lrun) + ( (L.rrun + R.lrun) * (L.rrun + R.lrun) )
+
+        But note: what if the entire left segment is one run and the entire right segment is one run? Then after merging, the entire new segment becomes one run? Actually, the entire new segment becomes one run only if the entire left and entire right are runs and the boundary merges? Then the lrun and rrun would both be the entire segment? 
+
+        However, the above formulas for lrun and rrun handle that.
+
+     However, there is an important note: the run that is merged in the middle might not be the entire left segment's right run and the entire right segment's left run? Actually, we are using the stored lrun and rrun which are the runs at the ends. This is correct because the entire left segment's right run is stored as L.rrun, and the entire right segment's left run is stored as R.lrun. And they are adjacent.
+
+     But wait: what if the left segment is not entirely one run? Then the last run of the left segment is L.rrun (which is the run at the right end). Similarly, the first run of the right segment is R.lrun. And they are adjacent. So we are merging exactly these two.
+
+     However, consider: 
+        Left: "aab" -> runs: ['aa','b'] -> so L.lc='a', L.rc='b', L.lrun=2, L.rrun=1, L.dens= 2^2+1^2 = 5.
+        Right: "baa" -> runs: ['b','aa'] -> R.lc='b', R.rc='a', R.lrun=1, R.rrun=2, R.dens=1+4=5.
+
+        Now, if we merge: the entire string "aabbaa" -> runs: ['aa','bb','aa'] -> density = 4+4+4=12.
+
+        But note: at the boundary, the left's last char 'b' and the right's first char 'b' are the same. So we merge the last run of left (which is the 'b' of length 1) and the first run of the right (which is the 'b' of length 1) to form a run of length 2.
+
+        Then the new density becomes: 
+            total_dens = 5 + 5 = 10, then subtract 1^2 and 1^2 -> 10 - 1 - 1 = 8, then add 2^2=4 -> 12. Correct.
+
+     But what about the runs at the ends? 
+        The left segment: 
+          lrun: originally 2, and since the entire left segment is not a run? Actually the entire left segment is not a run because the run at the left is 2 but the segment length is 3? So 2 != 3 -> so lrun remains 2. Similarly, the right segment: 
+          the entire right segment is not a run? because the run at the right is 2 but the segment length is 3 -> 2 != 3? Actually the entire right segment is not one run? So the rrun of the merged segment is the rrun of the right segment, which is 2? 
+          and the lrun is the lrun of the left segment, which is 2.
+
+        The new segment: 
+          leftmost run: we have "aa" at the beginning -> so lrun=2 (which is correct).
+          rightmost run: we have "aa" at the end -> so rrun=2 (which is correct).
+
+     However, what if the entire left segment is a run? 
+        Example: "aaa" and "aab": 
+          Left: "aaa": lc='a', rc='a', lrun=3, rrun=3, dens=9.
+          Right: "aab": lc='a', rc='b', lrun=2, rrun=1, dens=4+1=5.
+        Merging: "aaaaab" -> runs: ['aaaaa','b']? Actually, the runs: the entire left is 'aaa', then the right starts with 'aa' (which is merged with the left) and then 'b'. So the runs: ['aaaaa','b'] -> density=25+1=26.
+
+        How do we compute?
+          total_dens = 9 + 5 = 14.
+          Then we subtract: left.rrun^2 (which is 3^2=9) and right.lrun^2 (which is 2^2=4) -> 14-9-4=1.
+          Then we add (3+2)^2 = 25 -> 1+25=26. Correct.
+
+        Now for the lrun: 
+          The left segment is entirely a run (3) and the boundary merges (since left.rc='a' and right.lc='a'), so the new lrun = left.lrun (3) + right.lrun (2) = 5. Correct.
+        The rrun: 
+          The right segment is not entirely a run? because right.rrun=1 and right.size=3 -> so the new rrun = right.rrun = 1. Correct.
+
+     Similarly, if the entire right segment is a run and the boundary merges, then the new rrun = left.rrun + right.rrun.
+
+     Therefore, the merge function is as above.
+
+ Implementation details:
+
+   We'll build the segment tree over the string. The leaves are single characters.
+
+   We have to support:
+      build(0, n-1, idx=0)
+      update(pos, char)
+      query(l, r): returns the node for the segment [l, r]
+
+   We'll use 0-indexed.
+
+   However, note: the problem is that the segment tree must be built as a standard segment tree. The merging is associative? Actually, we are merging from left to right. The segment tree nodes represent contiguous segments. We break the query range into disjoint contiguous segments and merge them from left to right? But the segment tree is built so that the entire segment is contiguous.
+
+   But the query: we may have to merge multiple segments. The segment tree returns a node for the entire contiguous segment. However, if the query range is not contiguous in the tree? Actually, the segment tree breaks the query into contiguous segments that are stored in the tree. Then we have to merge them in order (from left to right).
+
+   How to handle query for an arbitrary range? We can break the range into O(log n) segments and then merge them sequentially. However, the merging operation is associative? Actually, it is not commutative, but we are merging from left to right. So we can traverse the segments from left to right and merge one by one.
+
+   But note: the segment tree does not naturally return the segments in left-to-right order? Actually, we can do:
+
+        We do a standard recursive query that breaks the segment into the segments stored in the tree. Then we combine the segments as we go up? Actually, we can combine the segments from left and right. However, if we have multiple segments, we can combine two at a time. Since merging is associative, we can combine in any order as long as we preserve the left-to-right order.
+
+        We can do:
+
+          Let's say we have a list of nodes (covering the range from left to right). Then we can merge them sequentially? But that would be O(n) per query. Instead, we can use the standard recursive query and merge the left and right parts.
+
+        Actually, the standard segment tree query:
+
+          if the query range [ql, qr] covers the current node [l, r] -> return the node.
+
+          Then we query the left child for [ql, mid] and the right child for [mid+1, qr] and then merge the two.
+
+        But if the query range is entirely in the left child, we return the left child's result. Similarly for the right.
+
+        However, if the query range spans both children, we query both and merge.
+
+        Therefore, the query function can be written recursively to return the node for the contiguous segment [ql, qr]. The merging is done automatically by the merge function.
+
+        But note: the segment tree is built so that the entire segment is contiguous. So we can merge the two children to form the parent.
+
+        However, the query function might break the query into two segments: the left part and the right part. Then we merge them. This is efficient because the segment tree has O(log n) depth and each query visits O(log n) nodes. But the merging of two nodes is O(1). So the entire query is O(log n).
+
+     However, what if we have to merge more than two segments? Actually, the recursive structure breaks the query into at most O(log n) segments? But we are merging in the recursive way: when we have a query that spans the left and right, we do two recursive calls and then merge the two results. This merge operation is O(1). And the recursion depth is O(log n). But the number of nodes we merge per level is one per level? Actually, we are combining two nodes at a time. The total number of merge operations is the number of nodes we visited that are not entirely covered? Actually, the standard segment tree query for a contiguous range returns one node. But the recursive method might have to merge two nodes at each level where the segment spans the two children? The total number of merge operations is O(log n). 
+
+     Therefore, the time complexity for query and update is O(log n).
+
+ Implementation in Python:
+
+   We have to be cautious: the constraints are 200,000 and Python recursion might hit recursion limit. We can set recursion limit, but the segment tree depth is about 18 (since 2^18 > 200000). However, we are building the tree recursively? The build recursion depth is O(log n). But 200,000 nodes in the segment tree (which is about 4*N) and the recursion depth for building is O(log N) which is about 18. But we might get recursion limit in the query? We can use iterative merging? Actually, the query recursion depth is also O(log N). 
+
+   Alternatively, we can use iterative segment tree? But for simplicity, we'll use recursion and set the recursion limit.
+
+   However, the problem: the recursion depth for a query is the depth of the tree (about 18) and the total number of recursive calls in a query is about 2 * depth? Actually, the query function will traverse one path per segment? But actually, the query function might traverse two paths? 
+
+   We'll write the query function to:
+
+        if the current segment [l, r] is entirely within [ql, qr]: return the node.
+
+        Otherwise:
+          if qr <= mid: return query(left child, ql, qr)
+          if ql > mid: return query(right child, ql, qr)
+          else:
+             left_node = query(left child, ql, mid)
+             right_node = query(right child, mid+1, qr)
+             return merge(left_node, right_node)
+
+   This way, we only do at most two recursive calls per level? Actually, we do at most two per level? But the entire query traverses O(log n) nodes. The worst-case number of nodes visited is about 2 * log2(N) which is acceptable.
+
+   But note: worst-case, we might have to go to two leaves? Actually, the number of nodes visited in a query is O(log n). 
+
+   However, worst-case: the entire tree is built as a binary tree of depth about 18, and we visit about 2 * 18 = 36 nodes per query? Then 200000 queries * 36 = 7.2e6 nodes? But each merge is O(1). So 7.2e6 operations in the worst-case? That might be acceptable in Pyton? Actually, worst-case 200000 queries * 36 = 7.2e6, which is acceptable in Pyton (if each operation is a few instructions) in 1 second? It might be borderline in Pyton, but we have to try.
+
+   Alternatively, we can avoid recursion in the query? But we'll start with recursion and see if we need to optimize.
+
+   However, we must note: the problem time limit is 1 second per sample? The constraints are 200000, so worst-case 200000 queries, and 200000 * 18 = 3.6e6 recursive calls? Actually, each query might call recursively about O(log n) nodes? The number of nodes visited per query is about 2 * log2(n) (in the worst-case when the query spans the entire array, it visits 2 * log2(n) nodes: because the root is visited, then the root has two children? Actually, the recursive query that spans the entire array is only the root? 
+
+   Actually, the query function:
+
+        It breaks the range [ql, qr] in the current node [l, r]. If the entire segment is covered, we return the node. Otherwise, if the query is entirely in the left, we go left; entirely in the right, we go right; else we break.
+
+        The worst-case for a query that spans the entire array: we only visit the root? Then one node.
+
+        The worst-case for a query that is not aligned: the worst-case is when the query is such that at each level we have to split? Then the number of nodes visited is about 2 * depth. For depth=18, that's 36 nodes per query. Then 200000 queries -> 7.2e6 nodes. Each node merge is a constant time operation. So 7.2e6 constant-time operations: that is acceptable in Pyton? 
+
+        But worst-case: 200000 queries * 36 = 7.2e6, which is acceptable in Pyton (in C++ we can do 10e6 per second, in Pyton we can do about 1e6 per second? So 7.2e6 might be acceptable in Pyton? But we have to be cautious).
+
+   However, we can try to optimize by avoiding creating many intermediate nodes? Actually, we are creating a new node at every merge? But we are not storing them, we are just returning them. So the memory is not an issue.
+
+   Steps:
+
+     1. Read N, Q and the string S.
+     2. Build the segment tree (using an array of 4*N nodes). We'll represent the tree as a list of Nodes? Or we can use a class for the node and build the tree in a recursive function.
+
+     3. We'll define the Node class.
+
+     4. Build the tree: 
+          build_tree(node_idx, left, right)
+
+     5. Update: update_tree(node_idx, left, right, pos, char)
+
+     6. Query: query_tree(node_idx, left, right, ql, qr)
+
+   However, note: the problem says the string is 0-indexed? The input uses 1-indexed positions. So we subtract 1 for the index.
+
+   Let's code accordingly.
+
+   Important: We'll use an array for the segment tree (tree) of size 4*N. But we can also use a list of Nodes.
+
+   But note: the base case for a leaf: 
+        size = 1, lc = rc = the character, lrun = rrun = 1, dens = 1.
+
+   We'll write the merge function as described.
+
+   However, what if we have an empty segment? We'll define an identity? Actually, the query might return an empty node? Then we have to handle that: we return a node with size=0? Then when merging, if one is empty we return the other.
+
+   In the query, if the segment is broken into two non-overlapping parts? Actually, we break the segment and if one part is absent, we return the other.
+
+   We'll design the merge function to handle empty nodes.
+
+   Alternatively, we can avoid querying empty ranges? Our query function should not get an empty range.
+
+   We'll write:
+
+        if ql <= l and r <= qr: return tree[node_idx]
+
+        Then we break [l, r] into [l, mid] and [mid+1, r]. Then we query the left part and the right part if they are non-empty.
+
+        But note: if the query is entirely in the left, then we only query the left. Similarly for the right.
+
+        And if the query spans both, we query the left from ql to mid and the right from mid+1 to qr. Then merge.
+
+   We'll represent an empty node as a Node with size=0. Then the merge function:
+
+        if L.size==0: return R
+        if R.size==0: return L
+
+   So we'll create an empty node: Node(0, ...) but what about the other fields? We can set them arbitrarily? Actually, we'll set:
+
+        For an empty node: size=0, and we don't care about the rest? But the merge function will not use the rest if size=0.
+
+   We can do:
+
+        class Node:
+            def __init__(self, size=0, lc=None, rc=None, lrun=0, rrun=0, dens=0):
+                self.size = size
+                self.lc = lc
+                self.rc = rc
+                self.lrun = lrun
+                self.rrun = rrun
+                self.dens = dens
+
+        Then for an empty node, we can return Node(0, ...) with the other fields set to 0 and None? 
+
+   Then in merge:
+
+        if L.size==0: return R
+        if R.size==0: return L
+
+   Then proceed.
+
+   However, we can also avoid creating empty nodes? In the query, if the segment is not present, we can avoid calling? We can do:
+
+        left_node = None
+        right_node = None
+
+        if the left child has an intersection: then query the left child and set left_node to that result.
+        Similarly for the right.
+
+        Then if both are None: return an empty node? But we don't have such a range? Actually, the query range is non-empty.
+
+        Then if only left_node exists: return left_node
+        if only right_node exists: return right_node
+        else: merge left_node and right_node.
+
+   But our merge function already handles empty nodes? So we can return an empty node for no segment? Then when we have two, we merge.
+
+   Alternatively, we can design the query to always return a node for a contiguous segment? So we never get an empty node? Actually, we break the query into segments that are non-empty.
+
+   We'll do:
+
+        left_node = query(left_child, l, mid, ql, min(qr, mid))   if ql <= mid
+        right_node = query(right_child, mid+1, r, max(ql, mid+1), qr) if qr > mid
+
+        Then we have two possibilities: one or two nodes. Then we merge them.
+
+   But if we have only one node, we return that node.
+
+   So we can do:
+
+        if we have both left and right: return merge(left, right)
+        if only left: return left
+        if only right: return right
+
+   We'll write the query accordingly.
+
+   Let's code accordingly.
+
+   We'll set:
+
+        tree = [None] * (4 * N)
+
+   Then build the tree.
+
+   However, note: the update and build functions are recursive? We have to avoid recursion depth? We can use iterative methods? But the depth is about 18, so we can use recursion.
+
+   But to avoid recursion limit in Python, we can set:
+
+        sys.setrecursionlimit(300000)
+
+   But the total recursion depth is 18, so we don't need that? Actually, the recursion depth in building is O(log N) which is about 18, and the same for update and query. The total number of recursive calls in the entire program might be large (for 200000 updates and queries, each update and query has depth 18 -> 200000 * 18 = 3.6e6 recursive calls). The recursion stack for each call is about 18 frames? So total stack size is 18 frames per call? Actually, the recursion depth per call is 18, and we have 200000 * 18 calls? But note: the recursion depth is the depth of the current call? Actually, the stack depth for one query is 18. The total number of recursive calls (across the entire program) is 200000 * 18 = 3.6e6, which is acceptable? Because the recursion stack is not storing 3.6e6 frames at the same time? The stack depth is 18 at worst? Then the total number of recursive calls (which are sequential) is 3.6e6? That is acceptable.
+
+   However, we can also write iterative segment tree? But for clarity, we'll write recursive.
+
+   Let's code accordingly.
+
+   We'll define a class for the node? Actually, we can use a class or a tuple? But we have to update the tree. So we use a class for the node.
+
+   Alternatively, we can use a list to store the tree? But we'll create a class for the node.
+
+   Steps:
+
+        class Node:
+            __slots__ = ('size', 'lc', 'rc', 'lrun', 'rrun', 'dens')
+            def __init__(self, size, lc, rc, lrun, rrun, dens):
+                self.size = size
+                self.lc = lc
+                self.rc = rc
+                self.lrun = lrun
+                self.rrun = rrun
+                self.dens = dens
+
+        Then define a merge function:
+
+            def merge(L, R):
+                if L.size == 0:
+                    return R
+                if R.size == 0:
+                    return L
+                # ... as above
+
+   Then build the tree.
+
+   We'll create an array for the tree: tree = [None] * (4 * N)
+
+   Build function:
+
+        def build(node, l, r):
+            if l == r:
+                # create a leaf node
+                tree[node] = Node(1, s[l], s[l], 1, 1, 1)
+                return
+            mid = (l+r)//2
+            left_child = 2*node+1
+            right_child = 2*node+2
+            build(left_child, l, mid)
+            build(right_child, mid+1, r)
+            tree[node] = merge(tree[left_child], tree[right_child])
+
+   Update function:
+
+        def update(node, l, r, idx, c):
+            if l == r:
+                tree[node] = Node(1, c, c, 1, 1, 1)
+                return
+            mid = (l+r)//2
+            left_child = 2*node+1
+            right_child = 2*node+2
+            if idx <= mid:
+                update(left_child, l, mid, idx, c)
+            else:
+                update(right_child, mid+1, r, idx, c)
+            tree[node] = merge(tree[left_child], tree[right_child])
+
+   Query function:
+
+        def query(node, l, r, ql, qr):
+            if ql <= l and r <= qr:
+                return tree[node]
+            mid = (l+r)//2
+            left_node = None
+            right_node = None
+            if ql <= mid:
+                left_node = query(2*node+1, l, mid, ql, min(qr, mid))
+            if qr > mid:
+                right_node = query(2*node+2, mid+1, r, max(ql, mid+1), qr)
+            if left_node is not None and right_node is not None:
+                return merge(left_node, right_node)
+            elif left_node is not None:
+                return left_node
+            elif right_node is not None:
+                return right_node
+            else:
+                return Node(0, None, None, 0, 0, 0)   # empty node
+
+   But note: the query range is non-empty? So we should get at least one node? 
+
+   Alternatively, we can avoid the empty node by checking the two conditions: if both are None, then return an empty node? But we can avoid by the fact that the query range is non-empty? The problem says 1<=l<=r<=N.
+
+   However, we'll return an empty node for safety.
+
+   But then the merge function handles empty nodes? So it's safe.
+
+   However, we can also avoid creating the empty node by:
+
+        if left_node is None and right_node is None:
+            # This should not happen because the range is non-empty? 
+            return Node(0, None, None, 0, 0, 0)
+
+   But we'll do as above.
+
+   Now, let's test with the sample:
+
+        "aabcccacc", then update: change index 6 (0-indexed index 6 -> the 7th character) to 'c'. The initial string: 
+            indices: 0: 'a', 1:'a', 2:'b', 3:'c', 4:'c', 5:'c', 6:'a', 7:'c', 8:'c'
+
+        Query 1: [0:8] (entire string) -> "aabcccacc"
+
+        How to break down the runs?
+            a a | b | c c c | a | c c -> 
+                runs: 
+                  [0,1]: 'aa' -> length=2 -> 4
+                  [2]: 'b' -> 1
+                  [3,5]: 'ccc' -> 9
+                  [6]: 'a' -> 1
+                  [7,8]: 'cc' -> 4
+                total = 4+1+9+1+4 = 19.
+
+        Then update: change index 6 (which is the 'a' at position 6) to 'c'. Then the string becomes "aabcccccc" -> 
+            runs: 
+                "aa": 2 -> 4
+                "b": 1 -> 1
+                "ccccc": 5 -> 25? 
+            total = 4+1+25 = 30? 
+
+        But the sample query after update: [2,8] (1-indexed [2,8] -> 0-indexed [1:7] -> actually the problem says: 
+            Query: "2 2 8" -> [2,8] in 1-indexed: from the second character to the eighth -> so 0-indexed [1:7] inclusive? 
+
+        The problem: 
+            Sample Input #1:
+                9 3
+                aabcccacc
+                2 1 9   -> output 19
+                1 7 c   -> change the 7th character (0-indexed index 6) to 'c'
+                2 2 8   -> output 27
+
+        So the second query: from index 2 to 8 (1-indexed) -> 0-indexed [1:7] (if we consider 0-indexed: the second character is at index1, the eighth character is at index7). 
+
+        The string after update: 
+            indices: 
+                0: 'a'
+                1: 'a'
+                2: 'b'
+                3: 'c'
+                4: 'c'
+                5: 'c'
+                6: 'c'   (changed from 'a' to 'c')
+                7: 'c'   (was originally 'c')
+                8: 'c'   (was originally 'c')
+
+        Then the substring [1:7] (0-indexed [1:7] -> from index1 to index7 inclusive) is:
+
+            index1: 'a'
+            index2: 'b'
+            index3: 'c'
+            index4: 'c'
+            index5: 'c'
+            index6: 'c'
+            index7: 'c'
+
+        So the substring: "abccccc" -> 
+            runs: 
+                'a': 1 -> 1
+                'b': 1 -> 1
+                'ccccc': 5 -> 25
+            total = 1+1+25 = 27.
+
+        Therefore, the output is 27.
+
+        How do we get 19 for the entire string initially?
+
+            Entire string: "aabcccacc" -> 
+                runs: 
+                  "aa" -> 2
+                  "b" -> 1
+                  "ccc" -> 3
+                  "a" -> 1
+                  "cc" -> 2
+                density = 2^2 + 1^2 + 3^2 + 1^2 + 2^2 = 4+1+9+1+4 = 19.
+
+        So the code must output 19 and then 27.
+
+   We'll code accordingly.
+
+   However, note: the segment tree is built on the entire array. The merge function must correctly compute the entire string.
+
+   We'll test the merge function on the entire string? 
+
+        How the entire string is built:
+
+          The leaves: 
+            [0]: 'a' -> (1, 'a','a',1,1,1)
+            [1]: 'a' -> (1, 'a','a',1,1,1)
+            [2]: 'b' -> (1, 'b','b',1,1,1)
+            [3]: 'c' -> (1, 'c','c',1,1,1)
+            [4]: 'c' -> (1, 'c','c',1,1,1)
+            [5]: 'c' -> (1, 'c','c',1,1,1)
+            [6]: 'a' -> (1, 'a','a',1,1,1)
+            [7]: 'c' -> (1, 'c','c',1,1,1)
+            [8]: 'c' -> (1, 'c','c',1,1,1)
+
+          Then merge [0:1] (the first two 'a's):
+              size=2, lc='a', rc='a'
+              lrun: because left.lrun=1 and left.size=1 -> not equal to size? Actually, the left node is the leaf for 'a': size=1, so left.lrun=1 and left.size=1 -> so condition: left.lrun==left.size and left.rc==right.lc? 
+                     left.rc='a' and right.lc='a' -> so new lrun = left.lrun (1) + right.lrun (1) = 2.
+              Similarly, the rrun: because right.rrun=1 and right.size=1 -> condition: right.rrun==right.size and left.rc==right.lc -> so new rrun = 1 + left.rrun? Actually, the condition: 
+                     if right.rrun==right.size and left.rc==right.lc -> then new_rrun = right.rrun + left.rrun = 1 + 1 = 2? 
+              But note: the entire right segment is one run? yes. And the boundary merges? yes.
+
+              Then dens: 
+                 left.dens=1, right.dens=1 -> total=2
+                 then subtract: left.rrun^2 (1) and right.lrun^2 (1) -> 2 - 1 - 1 = 0
+                 then add: (1+1)^2 = 4 -> so new dens=4.
+
+              So the node for [0:1]: (2, 'a','a',2,2,4)
+
+          Then merge [0:1] with [2] (the 'b'):
+              left = (2, 'a','a',2,2,4), right = (1, 'b','b',1,1,1)
+              left.rc='a' != right.lc='b' -> so no merge.
+              Then the new node:
+                 lrun: left.lrun=2 (because the entire left segment is a run? but 2==2 -> but the boundary doesn't merge -> so new lrun=2.
+                 rrun: right.rrun=1 -> new rrun=1.
+                 dens=4+1=5.
+
+          Then for [3:5] (three 'c's): 
+              First merge [3] and [4]: 
+                 becomes (2, 'c','c',2,2,4)
+              Then merge [3:4] and [5]: 
+                 left = (2, 'c','c',2,2,4), right = (1, 'c','c',1,1,1)
+                 condition: left.rc='c'==right.lc='c', and left.lrun=2==2? and left.size=2 -> so the entire left is a run -> then new lrun=2+1=3.
+                 similarly, the entire right is a run? and boundary merges -> new rrun=1+2? Actually, the condition for rrun: right.rrun==right.size -> 1==1 -> true -> new rrun = right.rrun + left.rrun = 1+2=3? 
+                 But note: the entire right segment is one run? so we add the left's rrun? Actually, the condition for rrun: 
+                     if right.rrun == right.size and left.rc == right.lc -> then new_rrun = right.rrun + left.rrun -> 1+2=3.
+                 dens: 4+1 - (2^2) - (1^2) + (3^2) = 5 - 4 - 1 + 9 = 9.
+
+                 So node [3:5] = (3, 'c','c',3,3,9)
+
+          Then we have [6]: 'a' -> (1, 'a','a',1,1,1)
+          Then [7:8]: two 'c's -> (2, 'c','c',2,2,4)
+
+          Then merge [6] and [7:8]: 
+              left = (1, 'a','a',1,1,1), right = (2, 'c','c',2,2,4)
+              left.rc='a' != right.lc='c' -> no merge.
+              So new node: (3, 'a','c',1,2,1+4=5)
+
+          Now we have:
+            [0:2] = (3, 'a','b',2,1,5)
+            [3:5] = (3, 'c','c',3,3,9)
+            [6:8] = (3, 'a','c',1,2,5)
+
+          Then merge [0:2] and [3:5]:
+              left.rc='b', right.lc='c' -> no merge.
+              So new node [0:5]: 
+                 lrun = left.lrun = 2
+                 rrun = right.rrun = 3
+                 dens = 5+9 = 14
+
+          Then merge [0:5] and [6:8]:
+              left.rc='c' (from [3:5] -> the last char of [0:5] is 'c'), and right.lc='a' -> not equal? So no merge.
+              Then new node: 
+                 lrun = 2
+                 rrun = 2 (from the [6:8] node)
+                 dens = 14+5=19.
+
+          That matches the first query.
+
+        Then update: change index6 (0-indexed) to 'c'. Then the leaf at index6 becomes (1, 'c','c',1,1,1)
+
+          Then the segment [6:8] becomes: 
+             First, [6] and [7] (which is now 'c' and 'c'): 
+                 merge: becomes (2, 'c','c',2,2,4)
+             Then merge [6:7] and [8] (which is 'c'? But note: the entire string is 9 characters, so index8 is the last? 
+                 The segment [6:7] is (2, 'c','c',2,2,4) and [8] is (1, 'c','c',1,1,1) -> 
+                 merge: 
+                    condition: left.rc='c'==right.lc='c' -> 
+                    lrun: left.lrun==2 and left.size=2 -> true -> new lrun=2+1=3
+                    rrun: right.rrun==1 and right.size=1 -> true -> new rrun=1+2=3
+                    dens: 4+1 - (2^2+1^2) + (3^2) = 5 - (4+1) + 9 = 9
+                 so [6:8] becomes (3, 'c','c',3,3,9)
+
+          Now the entire tree: 
+             [0:5] remains (3, 'a','b',2,1,5) and [6:8] is (3, 'c','c',3,3,9) -> but wait, we updated only the leaf at index6? Then the entire string [0:8] becomes:
+
+             [0:5] and [6:8]: 
+                 left.rc='b', right.lc='c' -> not equal -> no merge.
+                 so dens = 5+9=14? 
+                 But the entire string after update: "aabcccccc" -> 
+                    runs: 
+                      "aa" -> 2 -> 4
+                      "b" -> 1 -> 1
+                      "cccccc" -> 6 -> 36
+                    total=4+1+36=41.
+
+          However, the segment tree for the entire string is built by merging [0:5] and [6:8]? But [0:5] is the first 6 characters? Actually, [0:5] is indices 0 to 5 (inclusive) -> that's 6 characters? But the string has 9 characters. 
+
+          Actually, we built the tree for indices 0..8. The root node is built by merging [0:4] and [5:8]? Actually, the segment tree:
+
+            The root: [0:8] -> mid = 4? Then left = [0:4], right=[5:8]
+
+          So after update, we update the leaf at index6 (which is in the right child [5:8]). Then we update the nodes: 
+            [5:8]: 
+                leaves: 
+                  5: 'c' -> (1, 'c','c',1,1,1)
+                  6: updated to 'c' -> (1, 'c','c',1,1,1)
+                  7: 'c' -> (1, 'c','c',1,1,1)
+                  8: 'c' -> (1, 'c','c',1,1,1)
+
+            Then we build:
+                [5:6]: merge [5] and [6]: 
+                    (2, 'c','c',2,2,4)
+                [7:8]: merge [7] and [8]: 
+                    (2, 'c','c',2,2,4)
+                Then [5:8]: merge [5:6] and [7:8]:
+                    left.rc='c' == right.lc='c'
+                    lrun: [5:6] is entirely a run -> so lrun=2 + [7:8].lrun=2 -> 4? 
+                    rrun: [7:8] is entirely a run -> so rrun=2 + [5:6].rrun=2 -> 4?
+                    dens: 4+4 = 8, then subtract: 2^2 and 2^2 -> 8 - 4 - 4 = 0, then add (2+2)^2=16 -> 16.
+                    So [5:8]: (4, 'c','c',4,4,16)
+
+            Then the entire string: merge [0:4] and [5:8]:
+                [0:4]: 
+                    We have to recalc? Actually, the update only affects [5:8], so [0:4] remains the same? 
+                    But what was [0:4]? 
+                      The initial [0:4] = "aabcc" -> 
+                         runs: "aa","b","cc" -> density = 4+1+4=9? 
+                    How was it built?
+                      [0:1]: (2, 'a','a',2,2,4)
+                      [2:4]: 
+                         [2]: (1, 'b','b',1,1,1)
+                         [3:4]: (2, 'c','c',2,2,4) -> then [2:4] = (3, 'b','c',1,2,1+4=5) -> because no merge.
+                      Then [0:1] and [2:4]: 
+                         merge: left.rc='a' != right.lc='b' -> so (5, 'a','c',2,2,4+5=9)
+
+                Then [0:4] = (5, 'a','c',2,2,9)
+
+                Now merge [0:4] and [5:8]:
+                    left.rc='c', right.lc='c' -> same.
+                    Then we have to merge the last run of [0:4] (which is the rrun of [0:4]=2) and the first run of [5:8] (which is the lrun of [5:8]=4).
+                    Then subtract: 2^2 and 4^2 -> 4 and 16 -> 9+16 - (4+16) = 25 - 20 = 5, then add (2+4)^2=36 -> 5+36=41.
+
+                    Also, update the runs:
+                      lrun: [0:4] is not entirely a run? because [0:4] has runs: "aa", "b", "cc" -> so the entire segment is not a run -> so lrun remains the lrun of [0:4]=2.
+                      rrun: [5:8] is entirely a run? and the boundary merges -> so the new rrun = [5:8].rrun (4) + [0:4].rrun (2) = 6? 
+                      But the entire new segment: the last run is the entire [5:8] and the last run of [0:4] is the "cc", so merging we get a run of length 2+4=6? and then the entire segment ends with that run? But the entire segment is not a run? The beginning is "aa","b", then the merged run of 6? So the right run of the entire segment is 6? 
+
+                    So the entire segment: 
+                         size=5+4=9
+                         lc='a', rc='c'
+                         lrun=2, rrun=6
+                         dens=41.
+
+          Then the entire string has density 41? 
+
+          But the second query is for [2:8] (1-indexed) -> 0-indexed [1:7] (inclusive) -> that's 7 characters: indices 1 to 7.
+
+          How to compute [1:7]? 
+
+          We can break the segment tree:
+
+            [1:7] = [1:4] and [5:7]?
+
+          [1:4] (from the current tree): 
+            [1:4] is part of [0:4]? We have to extract [1:4] from [0:4]. How? We don't store the inner structure? So we have to query the segment tree.
+
+          We'll simulate the query for [1:7]:
+
+            Start at root [0:8]:
+               mid=4, so [1:7] spans both children: [0:4] and [5:8].
+               Then we query [1:4] from the left child and [5:7] from the right child.
+
+          How to get [1:4] from [0:4]? 
+            The node for [0:4] is (5, 'a','c',2,2,9). But we want [1:4]. 
+
+          How to get [1:4]? 
+            The segment [0:4] is stored as a node, but we don't store the entire structure? So we have to break it down.
+
+          Actually, the segment tree is recursive: 
+
+            [0:4] is built from [0:2] and [3:4]? 
+
+          We'll simulate the query for [1:4] on the left child (which is [0:4]):
+
+            The node [0:4] has children: 
+               left child: [0:2] -> (3, 'a','b',2,1,5)  [because we built it as: [0:1] and [2] -> then merged to get [0:2] = (3, 'a','b',2,1,5)]
+               right child: [3:4] -> (2, 'c','c',2,2,4)
+
+            Then the entire [0:4] = (5, 'a','c',2,2,9) -> which we know.
+
+            Now query [1:4] from [0:4]:
+                mid of [0:4] = (0+4)//2 = 2.
+                Then [1:4] spans [0:2] and [3:4]? 
+                So we query [1:2] from [0:2] and [3:4] from [3:4].
+
+          Query [1:2] from [0:2] (which is (3, 'a','b',2,1,5)): 
+                [0:2]: mid = 1.
+                [1:2] = [1:1] and [2:2]? 
+                Query [1:1]: 
+                    the leaf at index1: 'a' -> (1, 'a','a',1,1,1)
+                Query [2:2]: 
+                    the leaf at index2: 'b' -> (1, 'b','b',1,1,1)
+                Then merge [1:1] and [2:2]:
+                    left.rc='a' != right.lc='b' -> 
+                    so the node for [1:2] = (2, 'a','b',1,1,1+1=2)
+
+          Then [3:4] is the entire [3:4] -> (2, 'c','c',2,2,4)
+
+          Then merge [1:2] and [3:4]:
+                left.rc='b' != right.lc='c' -> 
+                so the node for [1:4] = (4, 'a','c',1,2,2+4=6)
+
+          Then query [5:7] from the right child [5:8] (which is (4, 'c','c',4,4,16)):
+                [5:8]: mid = (5+8)//2 = 6 (or 6.5 -> integer -> 6) -> mid=6? Then [5:7] = [5:6] and [7:7]? 
+                Query [5:6]: 
+                    the node [5:6] is stored? Actually, we built [5:6] as (2, 'c','c',2,2,4)
+                Query [7:7]: 
+                    leaf: (1, 'c','c',1,1,1)
+                Then merge [5:6] and [7:7]:
+                    left.rc='c' == right.lc='c' -> 
+                    lrun: left.lrun=2 and left.size=2 -> true -> 2+1=3
+                    rrun: right.rrun=1 and right.size=1 -> true -> 1+2=3? 
+                    dens: 4+1 - (2^2+1^2) + (3^2) = 5 - 4 -1 + 9 = 9
+                    so [5:7] = (3, 'c','c',3,3,9)
+
+          Then merge [1:4] and [5:7]:
+                left.rc='c' (from [3:4] -> the last char of [1:4] is at index4: 'c') and right.lc='c' -> same.
+                So we subtract: left.rrun^2 (which is 2) and right.lrun^2 (which is 3) -> 2^2=4 and 3^2=9 -> 13.
+                Then add (2+3)^2 = 25.
+                Then total dens = 6 + 9 = 15 -> then 15 - 4 - 9 = 2, then 2+25=27.
+
+                Also, the new node:
+                   size=4+3=7
+                   lc='a' (from [1:4].lc), rc='c' (from [5:7].rc)
+                   lrun: [1:4].lrun=1 (since the entire [1:4] is not a run? because it starts with 'a','b','c','c' -> the left run is 'a' of length 1) -> so new lrun=1.
+                   rrun: [5:7].rrun=3 (because the entire [5:7] is a run? and the boundary merges -> then new rrun = [5:7].rrun + [1:4].rrun? 
+                         condition: if the entire right segment is a run and the boundary merges? 
+                         [5:7] is entirely a run? [5:7] has length 3 and the node stored rrun=3 -> so condition holds -> then new rrun = 3 + [1:4].rrun = 3+2=5? 
+                   But note: the entire [1:4] is not a run? So the last run of [1:4] is the 'cc' at the end? which is of length 2. Then merging with the entire [5:7] (which is a run of 3) -> becomes a run of 5? and that run is at the end? So the rrun=5.
+
+                Therefore, the node for [1:7] = (7, 'a','c',1,5,27)
+
+          So the density is 27.
+
+        This matches.
+
+   Therefore, we'll code accordingly.
+
+   We'll use:
+
+        class Node:
+            __slots__ = ('size', 'lc', 'rc', 'lrun', 'rrun', 'dens')
+            def __init__(self, size, lc, rc, lrun, rrun, dens):
+                self.size = size
+                self.lc = lc
+                self.rc = rc
+                self.lrun = lrun
+                self.rrun = rrun
+                self.dens = dens
+
+        Then define a function:
+
+            def merge(L, R):
+                if L.size == 0:
+                    return R
+                if R.size == 0:
+                    return L
+                size = L.size + R.size
+                lc = L.lc
+                rc = R.rc
+                lrun = L.lrun
+                if L.lrun == L.size and L.rc == R.lc:
+                    lrun = L.lrun + R.lrun
+                rrun = R.rrun
+                if R.rrun == R.size and L.rc == R.lc:
+                    rrun = R.rrun + L.rrun
+                dens = L.dens + R.dens
+                if L.rc == R.lc:
+                    dens = dens - (L.rrun * L.rrun) - (R.lrun * R.lrun) + (L.rrun + R.lrun) * (L.rrun + R.lrun)
+                return Node(size, lc, rc, lrun, rrun, dens)
+
+        Then the segment tree: we'll use an array of Nodes of size 4*N.
+
+   We'll set recursion limit? The depth is about 18, so we don't need to set a high recursion limit.
+
+   But the problem: worst-case recursion depth per query is 18, and we have 200000 queries -> 200000*18=3.6e6 function calls? This might be acceptable in Pyton? But we can try to avoid recursion in the query? Actually, we can use iterative merging? But we'll try and hope.
+
+   Alternatively, we can avoid recursion by building the segment tree iteratively? But we'll do the recursive version.
+
+   Let's code.
+
+   Note: we are using 0-indexed for the string.
+
+   Steps:
+
+        import sys? We don't need sys for recursion? We'll try without.
+
+        Read N, Q
+        Read the string s.
+
+        Build a segment tree array: tree = [Node()] * (4*N)
+
+        Then build_tree(0, 0, N-1)
+
+        Then for each query:
+
+            if type==1: update(0,0,N-1, i-1, c)
+            else: 
+                node = query(0,0,N-1, l-1, r-1)
+                print(node.dens)
+
+   We'll code accordingly.
+
+   However, note: the update changes the string? We are storing the string as a global? Actually, we update the segment tree and we also update the global string? But the segment tree doesn't use the global string after building? Only the update function uses it to update the leaf? But we update the leaf by the new character. We don't need the global string? Actually, we don't need to store the entire string? But the problem: we need to update the leaf? We can update the leaf without the global string? 
+
+        In the update function, we set the leaf to the new character.
+
+        But we don't use the global string in the segment tree after build? Actually, we built the tree from the global string. Then we update the leaf: we change the leaf to the new character. Then we don't need the global string? 
+
+        However, we have to update the global string? Actually, the next update might use the global string? No, because the update uses the index and the new character. 
+
+        But we don't need the global string? We can avoid storing it? 
+
+        However, we built the tree from the initial string. Then we update the tree. We don't need the initial string anymore? 
+
+        So we can avoid storing the string? 
+
+        But note: in the update function, we are updating the leaf: we set the leaf to the new character. Then we don't use the global string. 
+
+        So we can free it? 
+
+        But we don't need to store the global string. 
+
+        However, we are going to update the leaf: we need the index in the leaf? 
+
+        We'll not store the global string. 
+
+        But the problem: we built the tree from the initial string. Then we can discard the string? 
+
+        Actually, we don't need it after the build.
+
+        So we can do:
+
+            s = list(input().strip())   # if we want to update the string? Actually, we update the segment tree.
+
+        But we don't update the global string? Then when we update, we update the segment tree, but the global string is not updated? 
+
+        How do we know the current character for debugging? We don't. 
+
+        But the segment tree is the source of truth.
+
+        So we can discard the global string after building the tree.
+
+        However, the update function does:
+
+            if l==r:
+                tree[node] = Node(1, c, c, 1,1,1)
+
+        So we don't need the global string.
+
+        Therefore, we can read the string, build the tree, and then discard the string.
+
+   We'll do:
+
+        s = input().strip()
+        build_tree(0,0,N-1)
+
+        Then we don't need s anymore.
+
+   But note: the initial build_tree uses the global string s? 
+
+        In the build_tree, for a leaf at l, we do:
+
+            tree[node] = Node(1, s[l], s[l], 1,1,1)
+
+        So we need s during the build.
+
+        Then we can free it after the build? Or we can use a list for s to update? But we don't update the global string? 
+
+        Actually, we don't need to update the global string, because we update the segment tree. 
+
+        So we can just use the string during the build and then discard.
+
+   We'll code accordingly.
+
+   Let's run the sample.
+
+   We'll hope that it passes.
+
+   However, note: the segment tree is stored as a list of Nodes. The total nodes are 4*N. For N=200000, that's 800000 nodes. This is acceptable in Pyton? 
+
+   We'll run.
+
+   But note: worst-case memory: 800000 nodes, each node has: 
+        size: int (4 or 8 bytes)
+        lc, rc: char -> one byte? but in Python, a character is a string of length1? Then it might be more? 
+        lrun, rrun: int
+        dens: long (which is int in Python)
+
+   But the constraints: 200000, so 800000 nodes, each node: 
+        size: 1 int -> 28 bytes? (for an int in Python is 28 bytes? Actually, it might be more, but 800000 nodes * 6 fields -> but we have 6 fields? 
+
+   Alternatively, we can use __slots__ to reduce memory.
+
+   We did: __slots__ = ('size', 'lc', 'rc', 'lrun', 'rrun', 'dens') -> so it should be efficient.
+
+   Let's code.
+
+   We'll submit the code.
+
+   Note: the problem might be large, and we must use fast I/O? 
+
+        We'll use:
+
+            import sys
+            input = sys.stdin.readline
+
+        Then read:
+
+            N, Q = map(int, input().split())
+            s = input().strip()
+
+        Then the queries.
+
+   We'll do that.
+
+   Let's write the complete code.
+
+   We hope it passes.
+
+   Note: the problem has time limit 1 second? And worst-case 200000 queries, and each query takes about 36 node visits? 7.2e6 operations? In Pyton, 7.2e6 might be borderline? We have to hope.
+
+   Alternatively, we can optimize by avoiding the recursion? We'll try recursion first.
+
+   We'll test with the sample.
+
+   We'll run the sample and see.
+
+   But note: the sample output: 19 and 27.
+
+   We'll test.
+
+   We'll write the code accordingly.
+
+   IMPORTANT: the query function must be careful: when we query an empty segment? But our query range is non-empty. However, we handle it by returning an empty node? Then the merge function handles it.
+
+   We'll code the query function as:
+
+        if ql<=l and r<=qr:
+            return tree[node]
+
+        mid = (l+r)//2
+        left_node = None
+        right_node = None
+
+        if ql <= mid:
+            left_node = query(2*node+1, l, mid, ql, min(qr, mid))
+        if qr > mid:
+            right_node = query(2*node+2, mid+1, r, max(ql, mid+1), qr)
+
+        if left_node is not None and right_node is not None:
+            return merge(left_node, right_node)
+        elif left_node is not None:
+            return left_node
+        elif right_node is not None:
+            return right_node
+        else:
+            return Node(0, None, None, 0,0,0)
+
+   But we can avoid the empty node by checking: actually, the query range is non-empty, so we should get at least one node? 
+
+   Alternatively, we can return an empty node and then the merge function handles it? 
+
+   We'll use the above.
+
+   Let's run the sample.
+
+   We'll hope.
+
+   We'll write the complete code.
+
+   We'll use:
+
+        import sys
+        sys.setrecursionlimit(3000000)   # to be safe: depth per query is 18, but total recursive calls might be 200000*18=3.6e6, so set to 4e6?
+
+   Actually, the recursion depth per query is about 18? The total stack depth at one time is 18? But the total number of recursive calls (over the entire program) is 200000 * 18 = 3.6e6? We set the recursion limit to 10e6? 
+
+   We'll set:
+
+        sys.setrecursionlimit(10**6)
+
+   But note: the recursion depth (the stack depth) is 18, so we don't need a high recursion limit? Actually, the recursion limit is the maximum depth of the call stack? The depth per query is 18, so the total stack depth is 18? Then the recursion limit only needs to be 20? 
+
+   Actually, the recursion limit is the maximum depth of the call stack. The segment tree recursion for one query goes to depth about 18? Then we don't need to set a high recursion limit? 
+
+   However, the entire program will make 3.6e6 function calls? But the call stack depth is only 18? So we don't need to set recursion limit? 
+
+   We'll not set it? Or set to 300000? 
+
+   We'll set:
+
+        sys.setrecursionlimit(300000)
+
+   Then run.
+
+   Let's code.
+
+   We'll hope.
+
+   We'll run the sample.
+
+   We'll write the code.

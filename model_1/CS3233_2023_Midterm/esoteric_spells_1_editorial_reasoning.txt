@@ -1,0 +1,1486 @@
+We are given up to 100 test cases. In each test case, we are given an integer n (1<=n<=100) and a list of n integers a_i (0<=a_i<=10^18). 
+Each member i can cast any spell in the set {0,1,...,a_i}. We are to choose one number from each set such that the XOR of all chosen numbers is maximized.
+
+Additionally, we must output the maximum XOR value and one set of choices (x_1, x_2, ..., x_n) that achieves that maximum.
+
+Note: The problem is a generalization of the classic "maximum XOR of two numbers" from two arrays to n arrays. However, the classic two-array problem is solved with a trie, which is efficient for two arrays but becomes complex for n arrays.
+
+But note the constraints: n is at most 100. However, the numbers can be as large as 10^18 (so about 60 bits). We cannot iterate over all numbers in the sets because the sets can be huge.
+
+We need an efficient way. 
+
+Observation:
+The problem is equivalent to: 
+  Let V_i = {0,1,...,a_i}. 
+  We want to maximize x_1 XOR x_2 XOR ... XOR x_n over x_i in V_i.
+
+Another observation: The set {0,1,...,a_i} is contiguous from 0 to a_i. This contiguous property is important.
+
+Classic results:
+1. For two sets, the maximum XOR can be found by building a bit trie for one set and then for each number in the other set, traverse the trie to find the maximum XOR partner.
+
+But for n sets? We can use linear algebra over GF(2) and basis representation? However, note that the sets are contiguous and not arbitrary.
+
+Alternatively, we can use dynamic programming over bits? But 60 bits and 100 sets? The state space would be 2^(60) which is too big.
+
+We need a smarter way.
+
+Insight: 
+The set of XORs we can form is the set of all numbers from 0 up to the XOR-closure of the sets? But note: the sets are intervals [0, a_i]. 
+
+It is known that the XOR of any set of numbers chosen from intervals [0, a_i] is a set that can be characterized by a linear basis? But we are not limited to linear basis because we are allowed to choose one from each set arbitrarily.
+
+But note: the problem is asking for the maximum value of the XOR, and also an example.
+
+We can use the following idea:
+
+Let F = { XOR_{i=1}^{n} x_i : x_i in [0, a_i] }.
+
+We wish to compute max F.
+
+We can use a greedy bit-by-bit approach from the most significant bit to the least. This is similar to the classic problem of maximum XOR subset for a set of numbers, but here we have constraints.
+
+However, we have the freedom of choosing one number from each interval. We can use the idea of "linear basis with constraints" but it is complex.
+
+Alternatively, we can use recursion with memoization over bits? The state can be (bit_position, vector_of_states_for_each_interval). But that state vector would be of size n and each state having 2 states? Actually, for each interval and at a given bit, the constraint is whether we have become less than a_i already? But that leads to a state of size 2^n * (number of bits) which is 2^100 * 60 -> too big.
+
+We need a different approach.
+
+Known result: The set of XORs that can be formed from sets S_1, S_2, ..., S_n is the Minkowski XOR? Actually, no.
+
+Another idea: 
+  We can represent the problem as: 
+      maximize z = x_1 XOR x_2 XOR ... XOR x_n, with 0<=x_i<=a_i.
+
+We can use a bit DP that goes from high bit to low bit and decides the bits of the numbers. But the state has to remember the constraints: for each x_i, we have a flag indicating whether we are still matching the prefix of a_i or we have become strictly less. Then the state has 2^n possibilities per bit? But n is 100, so 2^100 is about 1e30, too big.
+
+We need to optimize the state.
+
+But note: the constraints on the bits: the numbers are bounded by 10^18, so we have at most 60 bits. However, the state space 2^n * 60 is too big.
+
+Alternative approach: use iterative bit-by-bit with basis and feasibility. This is non‐trivial.
+
+Here is a known solution from competitive programming:
+
+We can use a recursive function that goes from the highest bit to the lowest. The state is:
+
+   dp[bit][mask] = whether it is possible to assign the bits from the current bit (inclusive) down to bit 0 such that the XOR of the entire n numbers has the bits from the current bit to the highest bit already fixed to the prefix we have chosen? 
+
+But wait, we are building the XOR result from high bit to low bit. We want to maximize the XOR. So we try to set each bit from the highest to the lowest if possible.
+
+How does the state look? 
+
+Let's define:
+   We are processing bit b (starting from 60 down to 0).
+   We have a mask of n bits: mask_i indicates for the i-th number whether it is already strictly less than a_i (then mask_i=1) or still equal to a_i (then mask_i=0). 
+
+But note: if we are already less, then the rest bits can be chosen arbitrarily. If we are still matching, then we are constrained by the remaining bits of a_i.
+
+The state: dp[b][mask] = the set of possible XOR patterns for the bits from b down to 0 that we can achieve? Actually we don't need the entire set, we just need to know if we can achieve a certain pattern? 
+
+But we want to maximize the overall XOR. So we try to set the b-th bit to 1 if possible, else 0.
+
+We can do:
+
+   Let res = 0 (this will be the maximum XOR value we build bit by bit)
+   And we also want to assign the numbers? Actually we need to output the numbers.
+
+Alternatively, we can do:
+
+   We'll do a DP that for each bit and mask, we remember:
+      dp[b][mask] = whether we can achieve the desired assignment for the rest bits (from b-1 down to 0) given the current mask.
+
+But we also want to maximize the overall XOR. So we do:
+
+   For b from high to low (say from 60 down to 0):
+      Try to set the current bit in the result to 1, and check if there is an assignment for the n numbers that:
+          - For each number i, the bits we assign so far (from high to b) form a prefix that is <= the prefix of a_i? But we have the mask that tells us if we are strictly less then we are free, else we must be <= a_i's prefix.
+
+      How to check? 
+
+      We can define:
+          state: mask (n bits) -> which numbers are already less than their a_i.
+
+      Then for the current bit b, we try to assign bits to each of the n numbers: either 0 or 1. But note: if we are constrained (mask_i=0) then we cannot assign a bit that is greater than the b-th bit of a_i. And if we assign a bit that is less than the b-th bit of a_i, then we set mask_i=1 for the next state.
+
+      Additionally, we are building the XOR result. Let the current bit of the result be the XOR of the bits we assign to the n numbers.
+
+      We want to set the result's bit to 1 if possible.
+
+      So we try:
+          option1: set the b-th bit of the result to 1.
+          option2: set to 0.
+
+      We try option1 first because we want to maximize.
+
+      How do we assign the bits to the numbers? We have to assign a bit to each number: for the i-th number, we assign a bit x_i,b.
+
+      Constraints for number i:
+          if mask_i=0 (so far equal to a_i), then we can assign:
+             - 0: then if the b-th bit of a_i is 0, then we have a problem: we cannot assign 1? Actually: we are constrained to not exceed a_i. So if a_i has a 0 at bit b, then we can only assign 0. And we remain constrained only if we assign 0 and a_i has 0? Actually, we remain constrained? Because we are still matching: if we assign 0 and a_i has 0, then we are still matching. But if we assign 0 and a_i has 1, then we become less? Actually: if a_i has a 1 and we assign 0, then we become strictly less (because the a_i has 1 and we have 0, so we are lower). Similarly, if a_i has 0 and we assign 0, we remain constrained? But if we assign 1 when a_i has 0, that would be invalid.
+
+          if mask_i=1: then we are free to assign 0 or 1.
+
+      Now, we want the XOR of the assigned bits (for the n numbers) to be 1 (for option1) or 0 (for option0).
+
+      Then we update the mask for the next state (for bit b-1).
+
+      Then we do DP for the next bit.
+
+      However, the state mask has 2^n states and n<=100, which is 2^100 states -> too many.
+
+But note: 100 test cases, and 60 bits per test case: total states 100 * 60 * 2^100 which is astronomical.
+
+We need a better solution.
+
+Alternative Insight:
+
+The problem is known in the literature. One known solution is to use a greedy algorithm that builds the answer bit by bit and uses the concept of "linear basis" but adapted to the constraints. However, note that the sets are intervals [0, a_i]. 
+
+Another known approach: 
+
+  The set of numbers that can be chosen for the i-th member is [0, a_i]. It is known that the maximum XOR value we can form is the maximum value in the set:
+
+      S = { x_1 XOR x_2 XOR ... XOR x_n : x_i in [0, a_i] }
+
+  and this set is a linear subspace? Not exactly, but it has structure.
+
+  We can use the following theorem: 
+      The set of all XORs that can be formed from intervals [0, a_1] x ... x [0, a_n] is an interval [0, M] for some M? 
+      But note: not necessarily, because the XOR of two intervals is not always an interval. 
+
+  However, we can use the idea from: 
+      "The Maximum XOR for n Numbers Each in an Interval" 
+
+  There is a known solution using recursion by bit and state compression by grouping numbers that have the same constraint? 
+
+  Actually, we can use the following:
+
+      We start with the highest bit, say bit b. 
+      Let's denote by f(b, constraints) the maximum XOR we can get for bits b..0, and also the possibility to set the current bit to 1.
+
+  But the state "constraints" is the current lower bounds? Actually, we can represent the constraints by the vector of the current values that we have chosen so far? That is too heavy.
+
+  Alternatively, we can use the following idea:
+
+      For each bit from high to low, we try to set the bit to 1. We can set the bit to 1 if there exists an assignment of bits to the n numbers at bit b such that:
+          - The XOR of the bits at b is 1.
+          - The assignment does not break the constraints (i.e., the numbers we are building for each i are still in [0, a_i]).
+
+      But how to check without state explosion?
+
+      We can use a greedy: for each number i, we can choose a bit at b arbitrarily? Not exactly: we have to consider the constraints from previous bits? Actually, we haven't fixed the entire number, but we are building the number bit by bit.
+
+      We need to know: for the i-th number, what are the possible choices for the bits from b down to 0? 
+
+      Actually, we can use the following: 
+
+          For a fixed bit b, and for each number i, we have two (or more) choices for the bit at b. But note: we also have to account for the constraint from the higher bits: we have already chosen bits above b. 
+
+      However, we are processing from high to low, and the constraint for the higher bits is already fixed: the prefix we have chosen for the i-th number is less than or equal to the prefix of a_i in the higher bits. 
+
+      So for each number i, we have:
+
+          current_prefix_i: the bits we have chosen from the highest bit to b+1.
+
+          Then at bit b, if the current_prefix_i is less than the prefix of a_i at bits above b, then we are free to choose 0 or 1 at bit b and also for the lower bits arbitrarily. 
+
+          But if the current_prefix_i is equal to the prefix of a_i at bits above b, then we are constrained by the bit at b: we cannot choose a bit at b that is greater than the b-th bit of a_i.
+
+      However, we haven't fixed the current_prefix_i? Actually, we are building the numbers at the same time as the XOR result.
+
+      This becomes circular.
+
+  We break the circularity by iterating over the possible choices for the current bit for all numbers? That would be 2^n possibilities per bit -> 2^100 per bit, and 60 bits: 60 * 2^100 which is too big.
+
+  But note: we are iterating over test cases (100 test cases) -> worst-case 100 * 60 * 2^100 operations, which is about 100 * 60 * 1e30 -> too big.
+
+We need a more efficient solution.
+
+Another known solution: 
+
+  We can use the following greedy algorithm:
+
+      Let ans = 0.
+      Let base = 0.
+
+      For bit from 60 down to 0:
+          Let's try to set the current bit in the answer to 1.
+
+          How? We wish to know: is there an assignment of numbers x_i in [0, a_i] such that the XOR of the x_i has the bits we have already set in ans (for higher bits) and also has the current bit set to 1, and the rest bits can be arbitrary.
+
+          But note: we have not fixed the lower bits. So we can think: 
+
+              We want to know: for each number i, we can choose a number in [0, a_i] that has a prefix (from the highest bit to the current bit) that we require? 
+
+          Actually, we can use a feasibility check: 
+
+              We fix the higher bits of the numbers: we have already chosen the bits above b. For the i-th number, we have a partial number: P_i (bits above b). Then for the bits from b down to 0, we have to form a number that is in [0, a_i - P_i * 2^b] ??? 
+
+          This is messy.
+
+  Alternatively, we can use a different approach: we can use the inclusion-exclusion of linear basis? 
+
+  Known result: 
+      The maximum XOR we can form is the maximum value in the set: 
+          S = [0, a_1] XOR [0, a_2] XOR ... XOR [0, a_n]
+
+      and it is known that S is a union of linear subspaces? 
+
+  There is a paper: "The Lattice Structure of Sets of Surjective Functions" that might be related? 
+
+  But let me think simpler: 
+
+      It is known that the XOR of two intervals [0, a] and [0, b] is [0, a XOR b] if a and b are such that the highest bit is set in both? Not exactly.
+
+  Actually, the set [0, a] XOR [0, b] = { x XOR y : x<=a, y<=b } might not be an interval.
+
+  Example: [0,1] XOR [0,1] = {0,1} (because 0^0=0, 0^1=1, 1^0=1, 1^1=0) -> {0,1} which is not contiguous? Actually it is {0,1} which is contiguous from 0 to 1.
+
+  But [0,2] XOR [0,1]: 
+        0^0=0, 0^1=1, 1^0=1, 1^1=0, 2^0=2, 2^1=3 -> {0,1,2,3} = [0,3].
+
+  [0,3] XOR [0,1]: 
+        0^0=0, 0^1=1, 1^0=1, 1^1=0, 2^0=2, 2^1=3, 3^0=3, 3^1=2 -> {0,1,2,3} = [0,3].
+
+  [0,1] XOR [0,2]: same as above.
+
+  [0,3] XOR [0,3]: 
+        {0,1,2,3} XOR {0,1,2,3} = 
+          0^0=0, 0^1=1, 0^2=2, 0^3=3,
+          1^0=1, 1^1=0, 1^2=3, 1^3=2,
+          2^0=2, 2^1=3, 2^2=0, 2^3=1,
+          3^0=3, 3^1=2, 3^2=1, 3^3=0 -> {0,1,2,3}.
+
+  So it seems that [0, a] XOR [0, b] = [0, 2^k-1] for some k? Not always: [0,1] XOR [0,1] = [0,1] (if we consider the maximum is 1).
+
+  Actually, the maximum XOR in [0, a] XOR [0, b] is min( a|b, (1<<(k+1))-1 ) where k is the highest bit in a|b? 
+
+  But what about three sets? 
+
+  There is a known solution: 
+      "Given sets of the form [0, a_i], the maximum XOR is the bitwise OR of all a_i." 
+      Is that true?
+
+  Sample: 
+      n=1: then maximum XOR is a_1 -> which is the OR of all a_i? -> yes.
+      n=2: [0,3] and [0,3]: maximum XOR is 3 XOR 0 = 3, or 3 XOR 3=0, or 3 XOR 2=1, ... but the maximum is 3. And OR is 3|3=3 -> matches.
+      But consider: [0,3] and [0,1]: 
+          maximum XOR: 3 XOR 0 = 3, 3 XOR 1 = 2, 2 XOR 1 = 3 -> maximum is 3.
+          OR: 3|1 = 3 -> matches.
+
+      But consider: [0,3], [0,3], [0,3]:
+          We can get 3 XOR 3 XOR 3 = 3, or 3 XOR 2 XOR 1 = 0, but also 3 XOR 0 XOR 0 = 3, or 3 XOR 1 XOR 2 = 0, but can we get 3? 
+          How about 3 XOR 3 XOR 0 = 0, 3 XOR 3 XOR 1 = 1, 3 XOR 3 XOR 2 = 2, 3 XOR 3 XOR 3 = 3 -> so the maximum is 3.
+
+          But the OR is 3|3|3=3.
+
+      However, consider: [0,1], [0,1], [0,1]:
+          The possible XORs: 
+             0: 0^0^0, 0^1^1, 1^0^1, 1^1^0, and 1^1^1=1, 1^0^0=1, etc. -> the set is {0,1}. 
+          The maximum is 1, and the OR is 1|1|1=1.
+
+      But wait, can we get 1? 
+          Yes: 1^0^0 = 1.
+
+      Now consider: [0,2], [0,2], [0,1]:
+          OR = 2|2|1 = 3.
+          Can we achieve 3?
+             We need x XOR y XOR z = 3.
+             The numbers: x,y in [0,2], z in [0,1]. 
+             The maximum any number can be is 2, and 2 in binary is 10, 3 is 11.
+             We would need the least significant bit to be 1 in the XOR, which requires an odd number of 1's in the least significant bit.
+             But z is either 0 or 1. 
+             Possibilities:
+                 z=0: then we need x XOR y = 3 -> but x,y <=2, so maximum x XOR y = 2 XOR 2 = 0, 2 XOR 1 = 3? -> 2 (10) XOR 1 (01) = 11=3. So if we choose x=2, y=1, z=0 -> 2 XOR 1 XOR 0 = 3.
+             So we can achieve 3.
+
+          Therefore, the maximum is 3, which equals the OR.
+
+      Conjecture: The maximum damage is the bitwise OR of all a_i.
+
+  Proof sketch: 
+      We can achieve the bitwise OR: 
+          For each bit j, if the bit j is set in at least one a_i, then we can set that bit in one of the numbers (by choosing that number to have the bit j set) and set that bit to 0 in the others? 
+          But then the XOR would have that bit set only once -> so it would be set.
+
+          However, we cannot independently choose because one number might have to set multiple bits? 
+
+      How to achieve the OR value as the XOR? 
+          Let T = OR(a_i). 
+          We want to choose x_i such that XOR_i x_i = T.
+
+          And we know that T has a bit set only if at least one a_i has that bit set.
+
+          For a fixed bit j, we can set the bit j in one of the a_i that has the bit set, and set it to 0 in the others.
+
+          But can we do that for every bit independently? 
+
+          We can use a greedy assignment: 
+            For bit j from high to low:
+              We want to assign the bit j to one of the numbers that has not been fixed and that has a_i with bit j set.
+
+          However, we must ensure that the number we choose for bit j does not exceed a_i. And also, we have to assign all bits consistently.
+
+      Actually, we can do:
+
+          Let T = OR(a_i). 
+          We will assign for the i-th number: 
+             x_i = a_i & T   ??? 
+
+          But then the XOR of the x_i might not be T.
+
+      Alternatively, we can use the following assignment:
+
+          We start with all x_i = 0.
+          For each bit j (from high to low) that is set in T:
+              We find one number i such that a_i has the bit j set and that hasn't been assigned a bit that would make it exceed a_i? 
+
+          But note: if we set bit j in x_i, then we are adding 2^j to x_i. We must ensure that x_i does not exceed a_i. 
+
+          However, since a_i has bit j set, then as long as the bits we set in x_i are a subset of the bits in a_i, we are safe? 
+
+          But consider: a_i might not have the bit j set? Actually, we only set bit j in x_i if a_i has bit j set.
+
+          But then the number x_i we build might be: the bits we set for x_i are a subset of the bits in a_i, so x_i <= a_i.
+
+          However, the catch: we might set multiple bits in the same number? And that is okay.
+
+          But what about the XOR? 
+             The XOR of the x_i: 
+                 For bit j, we set it in exactly one number? In this assignment, we set it in only one number. 
+
+          How? We can decide to set bit j in exactly one number (and leave the others 0 for that bit). 
+
+          But then the XOR at bit j is 1, as desired.
+
+          But what if we have already set some lower bits in that number? We must avoid conflicts? 
+
+          Actually, we can assign the bits greedily: 
+
+             We consider the bits from high to low. 
+             For bit j:
+                 We look for a number i such that:
+                     a_i has bit j set, and 
+                     the current x_i we have built (for bits higher than j) is exactly the prefix of a_i for those bits? 
+                 But we haven't built the lower bits yet. 
+
+          Alternatively, we can simply set for each bit j, we assign it to any one of the numbers that has bit j set in a_i. But then the same number might be used for multiple bits. 
+
+          And the number we form for number i would be the OR of the bits j that we assigned to it? 
+
+          But then the number x_i = OR_{j assigned to i} (2^j) and this is a subset of a_i (because we only assign if a_i has the bit) so x_i <= a_i.
+
+          Then the XOR of the x_i: 
+             Each bit j is set in exactly one number (the one we assigned), so the XOR has that bit set -> so the XOR is T.
+
+          Therefore, we can achieve T.
+
+          And is it the maximum? 
+
+          Note: the XOR of numbers cannot have a bit set if that bit is not set in at least one of the numbers. So the maximum XOR cannot have a bit that is not in T. Hence, T is the maximum.
+
+      Therefore, the maximum damage is T = a_1 | a_2 | ... | a_n.
+
+  But wait! Consider the sample: 
+      Input: 
+        3
+        3 7 1
+
+      Then T = 3 | 7 | 1 = 3 | 7 = 7, and 7|1=7.
+
+      The sample output is 7. -> matches.
+
+      Another sample:
+        4
+        3 2 3 3
+
+        T = 3 | 2 | 3 | 3 = 3 | 2 = 3.
+
+      Output is 3 -> matches.
+
+  Therefore, the maximum damage is the bitwise OR of all a_i.
+
+  And we can construct an assignment as follows:
+
+      Let T = a_1 | a_2 | ... | a_n.
+
+      For each i, we want to assign x_i such that:
+          x_i has only bits that are in a_i, and 
+          for each bit j in T, it appears in exactly one x_i.
+
+      How to assign? 
+
+          We can do: 
+            Initialize an array x[1..n] to 0.
+            Let R = T  (we will remove bits as we assign them)
+
+            For bit j from 0 to 60 (but we can go from high to low, it doesn't matter) if the bit j is set in T:
+                Find an index i such that a_i has bit j set. 
+                Then set the bit j in x_i, and remove bit j from R.
+
+            But note: we can assign multiple bits to the same number. And we don't remove the bit from T, we just assign it to one number.
+
+          However, we must assign each bit exactly once. 
+
+          Since T is the OR of the a_i's, for each bit j in T, there is at least one a_i that has the bit.
+
+          So we can do:
+
+            for j in range(60, -1, -1):
+                if T has bit j:
+                    pick any i such that a_i has bit j -> and set bit j in x_i.
+
+          But then the number x_i we built for i is the OR of the bits we assigned to it? And since we only set bits that are in a_i, then x_i <= a_i? 
+
+          However, consider: what if we set two bits in the same number that are both in a_i, then it's safe.
+
+          But is there a possibility that we set a bit that is not in a_i? We only set bit j in x_i if a_i has bit j.
+
+          Therefore, x_i will be a subset of a_i, so x_i <= a_i.
+
+          Then the XOR: 
+              For each bit j in T, we set it in exactly one x_i, and in the others we set 0. So the XOR will have bit j set.
+
+              For a bit not in T, it is not set in any a_i, so not set in any x_i, so the XOR has 0.
+
+          Therefore, the XOR is T.
+
+  However, there is a catch: we might assign bits arbitrarily to any available a_i, but what if there is a bit j that appears in many a_i? We only need to assign it to one.
+
+  Therefore, the assignment is:
+
+      x_i = 0 for all i.
+      For each bit j (0 to 60) such that T has bit j set:
+          pick the first index i such that a_i has bit j set, and set x_i = x_i | (1 << j)
+
+      But note: we want to output one assignment. This assignment might work, but is it the only possibility? 
+
+      However, what if we set bit j in one a_i, and then later we set bit k in the same a_i? That is allowed.
+
+      Example: 
+          n=2, a = [3, 3] (binary 11, 11)
+          T = 3 (binary 11).
+
+          We have two bits: bit0 and bit1.
+
+          We can assign:
+             bit1: assign to a_0 -> x0 = 2, then bit0: we can assign to a_1 -> x1 = 1 -> XOR = 2 XOR 1 = 3 -> works.
+
+          Or we could assign bit0 to a_0 and bit1 to a_1: then x0=1, x1=2 -> XOR=1^2=3.
+
+          Or we could assign both bits to the same a_i? 
+             If we assign both bits to a0: then x0=3, x1=0 -> XOR=3.
+             But if we try to assign bit0 to a0 and then bit1 to a0: that is the same as above.
+
+          But our algorithm: 
+             We traverse bits from high to low? 
+                 bit1: in T? yes. Then we pick the first a_i that has bit1: a0 has bit1? yes -> set x0 |= (1<<1) -> x0=2.
+                 bit0: in T? yes. Then we pick the first a_i that has bit0: a0 has bit0? yes -> set x0 |= (1<<0) -> x0=3.
+                 Then x1 remains 0.
+
+          This gives XOR=3^0=3.
+
+          So it works.
+
+      But what if we traverse from low to high? 
+          bit0: set in a0 -> set x0=1.
+          bit1: set in a0 -> set x0=3.
+          Then x0=3, x1=0 -> XOR=3.
+
+      So the order does not matter.
+
+  However, we must be cautious: we are only setting the bits that are in T. 
+
+  Therefore, the solution is:
+
+      For each test case:
+          n = int(input())
+          a = list of n integers.
+
+          T = 0
+          for i in range(n):
+              T |= a[i]
+
+          Then, construct an assignment:
+
+              x = [0] * n
+              # We need to assign each bit in T to one a_i that has that bit.
+              # But note: a number might not have the bit? But T is the OR, so if a bit is in T, at least one a_i has it.
+
+              # We can iterate over the bits. The problem says a_i can be 0, then we skip.
+
+              # However, we can do:
+
+              #   For each bit j from 0 to 60:
+              #       if T has the j-th bit set:
+              #           find the first index i such that the j-th bit of a_i is set, and set the j-th bit in x_i.
+
+              # But note: we are setting bits independently. This is safe.
+
+          Then output:
+              first line: T
+              second line: x_0, x_1, ... x_{n-1}
+
+  But wait: what if a_i is 0? 
+      Then a_i has no bit set. So we cannot set any bit in x_i? That's okay, because then x_i remains 0.
+
+  And if a bit j is in T, then at least one a_i that is non-zero has that bit? But if a_i=0, then we skip it.
+
+  However, what if there is a bit j that is in T and appears in at least one a_i that is non-zero, but we might assign it to a_i that is non-zero? 
+
+  Therefore, the algorithm for assignment:
+
+      for j in range(0, 61):   # we consider bits 0 to 60
+          if T has the j-th bit: 
+              for i in range(n):
+                  if a_i has the j-th bit:
+                      x[i] |= (1 << j)
+                      break   # we only need to assign this bit to one number? 
+
+      But wait: if we break, then we assign the bit to the first number that has it. But what if we don't break? Then we assign it to every number that has it? That would be wrong.
+
+      We only want to set the bit in one number so that the XOR gets the bit. 
+
+      But note: if we set the bit in multiple numbers, then the XOR will be 0 for that bit (because 1 XOR 1 = 0). 
+
+      So we must set it in exactly one number.
+
+      Therefore, we break after we set it in one number.
+
+  However, what if we break and then the same number might get multiple bits? That is okay.
+
+  Therefore, the assignment:
+
+      x = [0] * n
+      for j in range(0, 61):
+          if T & (1 << j):   # or if (T >> j) & 1:
+              # find the first i such that (a_i has the j-th bit) 
+              for i in range(n):
+                  if a_i & (1 << j):
+                      x[i] |= (1 << j)
+                      break   # break the inner loop and move to next j
+
+      But note: what if we don't break? Then we assign the bit to the first a_i that has it, and then break so we don't assign it again.
+
+  However, what if there is no a_i with the j-th bit? 
+      But T has the j-th bit only if at least one a_i has it. So we will always find one.
+
+  But note: we are iterating j from 0 to 60. The numbers a_i can be 0, but then they have no bits. But T would not have a bit that is not in any a_i.
+
+  Example: 
+      a = [0, 1] -> T = 1.
+      j=0: T has bit0? yes. Then we look for an a_i with bit0: 
+          a0=0: 0 has bit0? no -> skip.
+          a1=1: has bit0 -> set x[1] |= 1 -> x[1]=1, x[0]=0.
+
+      Then XOR = 0^1 = 1 = T.
+
+  But what if we have multiple bits? 
+
+      a = [0, 3] -> T=3 (binary 11).
+      j=0: T has bit0? yes -> find the first a_i with bit0: a0=0 -> skip, a1=3 (binary 11) -> has bit0? yes -> set x[1] = 1 (binary 01).
+      j=1: T has bit1? yes -> find the first a_i with bit1: a0=0 -> skip, a1=3 -> has bit1? yes -> set x[1] |= 2 -> x[1]=3.
+
+      Then XOR = 0^3 = 3 = T.
+
+  Therefore, the solution is:
+
+      T = 0
+      for i in range(n):
+          T |= a[i]
+
+      Then, initialize x = [0]*n.
+      For j in range(0, 61):
+          if T has bit j:
+             for i in range(n):
+                 if a[i] has bit j:
+                     x[i] |= (1 << j)
+                     break   # break the inner loop
+
+      Then output T and x.
+
+  However, note: the problem does not require the assignment to be minimal in any sense. There could be multiple. 
+
+  But is this assignment always valid? 
+
+      We set x[i] only to bits that are set in a[i]. Therefore, x[i] <= a[i]? 
+          Since we set a subset of the bits of a[i]? 
+
+          Actually, we set some bits that are in a[i]. But note: we might set bits that are not contiguous? 
+
+          However, the value of x[i] is the OR of the bits we assigned to it. And since the bits we assign are a subset of the bits in a[i], then x[i] <= a[i]. 
+
+          But what if a[i] has a gap? For example, a[i] = 5 (binary 101). 
+          Suppose we assign the bit0 to another number and then the bit2 to this number: then x[i] = 4 (binary 100) which is <=5? yes.
+
+          But what if we assign both bit0 and bit2 to the same number? 
+             Then x[i] = 5, which is <=5? yes.
+
+          However, we break after we assign a bit to one number. So we never assign the same bit to two numbers, but we might assign multiple bits to the same number.
+
+          Therefore, the value x[i] is at most the OR of the bits we assign to it, which is at most the OR of the bits that are in a[i] and in T? 
+
+          But note: we only assign bits that are in a[i]? Actually, we assign a bit j to x[i] only if a[i] has bit j. 
+
+          Therefore, x[i] is the OR of some subset of the bits of a[i]. And since a[i] is the maximum, the OR of any subset of the bits of a[i] is <= a[i]? 
+
+          This is true only if a[i] has the property that it is an OR of its bits? Actually, no: 
+              Consider a[i] = 3 (binary 11), then the OR of the bits is 3, which equals a[i]. 
+              a[i] = 5 (101): the OR of the bits {bit0 and bit2} is 5, which equals a[i]. 
+
+          But note: the OR of any subset of the bits of a[i] is at most a[i]? 
+
+          Actually, the OR of a set of bits is the same as the sum? Only if the bits are distinct. And they are distinct. 
+
+          Therefore, the value we build for x[i] is the sum of the powers of two that we assign, and since we only assign bits that are in a[i], then x[i] <= a[i]. 
+
+  Therefore, the solution is valid.
+
+  However, note: what if we do not break? Then we would set the bit j in every a_i that has the bit? Then the XOR would be 0 for that bit? 
+
+      But we want the XOR to be T, so we must set it in an odd number of numbers? Actually, we want exactly one.
+
+  Therefore, we break after the first one.
+
+  But what if we set it in an odd number of numbers? Then the XOR bit would be 1. But if we set it in one number, that's odd. 
+
+  However, we are only setting it in one number per bit. So the XOR for bit j is 1.
+
+  So the algorithm is:
+
+      for each test case:
+          n = int(input())
+          a = list(map(int, input().split()))
+
+          T = 0
+          for num in a:
+              T |= num
+
+          x = [0] * n
+          # Iterate over bits: from 0 to 60 (since numbers up to 10^18, about 60 bits)
+          for j in range(61):   # j from 0 to 60
+              if T & (1 << j):
+                  for i in range(n):
+                      # Check if a[i] has the j-th bit
+                      if a[i] & (1 << j):
+                          x[i] |= (1 << j)
+                          break   # assign this bit to the first a[i] that has it and break the inner loop
+
+          print(T)
+          print(" ".join(map(str, x)))
+
+  Let's test on the sample: 
+      Sample 1: [3,7,1] 
+          T = 3|7|1 = 7 (binary 111)
+
+          j=0: T has bit0? 7 in binary: ...0111 -> bit0 is 1 -> set: 
+                a0=3: has bit0? 3: 11 -> yes -> set x0 = 1 (binary 001)
+                break.
+          j=1: T has bit1? yes -> 
+                a0=3: has bit1? 3: binary 11 -> yes -> set x0 = 1 | 2 = 3 (binary 11)
+                break.
+          j=2: T has bit2? yes -> 
+                a0=3: has bit2? 3: binary 11 -> the bit2? 3 is 0b11 -> bit2 is not set? 
+                a1=7: 7 in binary: 111 -> bit2 is set -> set x1 = 4 (binary 100) -> so x1=4.
+                break.
+          Then x2 remains 0? -> but we have to assign to a2=1? 
+          However, we did not assign bit0 and bit1 to x2? 
+
+          But wait, we assigned bit0 and bit1 to x0, and bit2 to x1. 
+          Then the numbers: 
+              x0 = 3, x1 = 4, x2 = 0 -> XOR = 3 ^ 4 ^ 0 = 7? 
+              But 3^4 = 7 -> 7^0=7 -> yes.
+
+          However, the sample output is "3 5 1". 
+
+          Why 5? 
+             3 (binary 011), 5 (101), 1 (001): 011 XOR 101 = 110 -> 110 XOR 001 = 111 = 7.
+
+          So there are multiple assignments. Our assignment is [3,4,0] which is valid.
+
+          But the problem says: if there are multiple, output any.
+
+      Sample 2: [3,2,3,3] 
+          T = 3|2|3|3 = 3 (binary 11)
+
+          j=0: T has bit0? 3 has bit0? yes -> 
+                a0=3: has bit0? yes -> set x0 = 1
+          j=1: T has bit1? yes -> 
+                a0=3: has bit1? yes -> set x0 = 1 | 2 = 3.
+
+          Then x1, x2, x3 remain 0.
+
+          Then the numbers: [3,0,0,0] -> XOR=3.
+
+          The sample output is [3,0,3,3] -> which also gives 3.
+
+          So both are valid.
+
+  However, note: in the first sample, we set x0=3 and x1=4. 
+      But note: a0=3, and 3<=3 -> valid.
+      a1=7, and 4<=7 -> valid.
+      a2=1, and 0<=1 -> valid.
+
+  So it's valid.
+
+  But wait: in the first sample, we assigned two bits to a0 and one to a1, and none to a2. 
+
+  The sample output assigned: a0=3, a1=5, a2=1.
+
+  Why did we not assign a1=5? 
+      We broke at the first a_i that has the bit.
+
+  How can we get 5? 
+      For bit0: we could assign to a2: 
+          if at j=0: we skip a0 and a1? But we break at the first one we find. 
+
+      We are iterating j from 0 to 60, and for each j we assign the bit to the first a_i that has it.
+
+      To get the sample output [3,5,1]:
+          bit0: must be set in two numbers: 3 (binary 11) has bit0, 1 (binary 01) has bit0, and 5 (101) has bit0? 
+          Actually, we want the XOR to be 7: 
+             We want the bit0 to be set in an odd number of numbers. The sample output sets it in 3 and 1? 
+             3: 11 -> bit0=1
+             5: 101 -> bit0=1
+             1: 01 -> bit0=1 -> so three ones -> XOR bit0 = 1.
+
+          But our algorithm sets only one number for bit0.
+
+      How to achieve multiple? 
+          We cannot: because then we would set the bit0 in more than one number? But then the XOR would be 1 only if the count is odd? 
+
+          But our algorithm sets exactly one number per bit. That yields a valid assignment.
+
+      However, the problem does not require a particular assignment, so either is acceptable.
+
+  But note: what if we do not break? Then we set the bit in every number that has it? Then the XOR for that bit would be 1 only if the number of numbers that have the bit is odd? 
+
+      For bit j: 
+          Let k = number of a_i that have the bit j.
+          If we set the bit j in every a_i that has it, then the XOR for bit j is (k mod 2).
+
+          But we want the XOR for bit j to be 1. 
+
+          Therefore, we must set the bit j in an odd number of numbers (and at least one) to get 1.
+
+      We can do:
+
+          Instead of setting it in one, we can set it in an arbitrary odd number? 
+
+          But the problem: we must set it in at least one number (because T has the bit) and we can choose any odd number of numbers that have the bit.
+
+      Then the assignment would be:
+
+          For each bit j that is in T:
+              choose an arbitrary subset S_j of the indices i such that a_i has the bit j and |S_j| is odd.
+
+          Then set for each i: x_i = OR_{j: i in S_j} (1<<j)
+
+          But then the constraint: x_i <= a_i? 
+              The value x_i is the OR of the bits j for which we assigned the bit to i. 
+              Since each bit j is present in a_i (because we only assign to a_i that has the bit), then x_i is a subset of the bits of a_i -> so x_i <= a_i.
+
+          And the XOR: 
+              For bit j, it is set in the numbers in S_j, and the XOR is |S_j| mod 2 = 1.
+
+          Therefore, the XOR is T.
+
+      But how to choose the subsets S_j? 
+
+          We can do independently per bit. 
+
+          However, we must choose the subsets arbitrarily as long as |S_j| is odd.
+
+          The minimal choice: one element per bit. 
+
+          But we can also choose three, five, etc.
+
+      Therefore, we can also do:
+
+          For each bit j in T:
+              Let count = number of a_i that have the bit j. 
+              Then we can set the bit in one number (if count>=1) -> that is odd.
+
+          So the minimal one is sufficient.
+
+      But note: we can also set it in three numbers? 
+          Example: n=3, a_i = [3,3,3] (so T=3, binary 11).
+          We want to set bit0: we can set it in one number -> x0=1, x1=0, x2=0 -> then XOR bit0=1.
+          Or set it in three numbers: x0=1, x1=1, x2=1 -> then XOR bit0 = 1^1^1 = 1.
+
+          Similarly for bit1: set in one number: then x0=0, x1=0, x2=2 -> then XOR bit1=1? 
+          Or set in three numbers: x0=2, x1=2, x2=2 -> then XOR bit1 = 0? (because 2^2^2=2, which has bit1 set? 2 is 10 -> bit1=1, but 2^2=0, then 0^2=2 -> has bit1 set? 
+          Actually: 2^2^2 = (2^2)=0, then 0^2=2 -> which is 10 -> so bit1 is set. 
+
+          So the XOR of three 2's is 2, which has the bit set? 
+
+          How about: 
+            2 in binary: 10
+            XOR of three 10's: 
+               10
+               10
+               10
+              ----
+              10   -> because 10 XOR 10 = 00, then 00 XOR 10 = 10.
+
+          So the XOR of an odd number of the same bit mask (with only one bit) is the bit mask.
+
+          Therefore, we can set the bit j in any odd number of the numbers that have the bit.
+
+      But the problem: we are free to choose any assignment. 
+
+      However, the minimal assignment (one per bit) is simpler and we know how to do it.
+
+  Therefore, we stick to the one assignment per bit.
+
+  But note: what if we have a bit j that is in T, and we set it in one number, but then that number might get a very large value? 
+      For example: if we have a_i = (1<<60) for one i, and the rest are 0, then T = (1<<60).
+      We set the bit60 in the first a_i -> x0 = 1<<60, which is exactly a0. 
+      Then the rest are 0. 
+      XOR = 1<<60, which is T.
+
+  Therefore, the solution:
+
+      T = 0
+      for i in range(n):
+          T |= a[i]
+
+      x = [0]*n
+      # We'll iterate over bits from 0 to 60
+      for j in range(61):
+          if T & (1 << j):
+              # find the first i such that a[i] has the j-th bit
+              for i in range(n):
+                  if a[i] & (1 << j):
+                      x[i] |= (1 << j)
+                      break
+
+      Print T and x.
+
+  However, note: the problem says that the numbers a_i can be 0. Our algorithm handles that.
+
+  But what if a_i is 0? Then we skip it in the inner loop.
+
+  Time complexity: 
+      For each test case: 
+          n <= 100, and we iterate over 61 bits -> worst-case 100*61 = 6100 per test case, and 100 test cases -> 610000, which is acceptable.
+
+  Therefore, we output the solution.
+
+  But wait: what if the bit j is in T but we break the inner loop and then we never set it? 
+      Actually, we break the inner loop after we set it in one number. And we know there is at least one number that has the bit because T is the OR.
+
+  So it is safe.
+
+  Let me test with a_i=0: 
+      Suppose a = [0, 1] -> T=1.
+      j=0: T has bit0 -> 
+          i=0: a0=0 -> 0 & 1 -> 0 -> skip.
+          i=1: a1=1 -> 1&1=1 -> set x1=1, break.
+      Then x0=0, x1=1 -> XOR=1 -> correct.
+
+  Therefore, we are done.
+
+  Code:
+
+      C = int(input().strip())
+      for _ in range(C):
+          n = int(input().strip())
+          a = list(map(int, input().split()))
+          T = 0
+          for num in a:
+              T |= num
+
+          # Initialize x with zeros
+          x = [0] * n
+          # Consider bits from 0 to 60
+          for j in range(61):   # j from 0 to 60
+              bit = 1 << j
+              if T & bit:
+                  # Find the first index i such that a[i] has the j-th bit
+                  for i in range(n):
+                      if a[i] & bit:
+                          x[i] |= bit
+                          break
+
+          print(T)
+          # Output the list x
+          print(" ".join(map(str, x)))
+
+  But note: the problem says the numbers a_i can be up to 10^18, which is about 2^60, so 61 bits (0 to 60) is safe.
+
+  However, what about the bit 60? 
+      1<<60 is 2^60, which is about 1e18.
+
+  Therefore, we use j in range(0,61).
+
+  Let's run the sample: 
+      Sample 1: [3,7,1] -> 
+          T = 3|7|1 = 7
+          x = [0,0,0] initially.
+          j=0: bit=1 -> T has it? 7&1=1 -> true.
+              a0=3: 3&1=1 -> set x0=1 -> x=[1,0,0]
+          j=1: bit=2 -> 7&2=2 -> true.
+              a0=3: 3&2=2 -> set x0 = 1|2 = 3 -> [3,0,0]
+          j=2: bit=4 -> 7&4=4 -> true.
+              a0=3: 3&4=0 -> skip
+              a1=7: 7&4=4 -> set x1=4 -> [3,4,0]
+          j=3: bit=8 -> 7&8=0 -> skip.
+
+          Then output: 7 and [3,4,0]
+
+  The sample expected [3,5,1] but we output [3,4,0] -> valid.
+
+  Therefore, we output this solution.
+
+  Why the sample output [3,5,1]? 
+      Because 3^5^1 = 7, and 3<=3, 5<=7, 1<=1 -> valid.
+
+  We have an alternative assignment. 
+
+  The problem says: "If there are multiple possible answers, output any one of them."
+
+  So [3,4,0] is acceptable.
+
+  But note: the problem sample output is [3,5,1]. We must not fail if we output a different one.
+
+  However, the problem sample input and output are provided for two cases. We must match the maximum damage (7 and 3) but the assignment can vary.
+
+  Therefore, we are good.
+
+  One more: the second sample: [3,2,3,3] -> 
+      T = 3
+      x = [0,0,0,0]
+      j=0: bit=1 -> T has it -> 
+          a0=3: has bit0? 3&1=1 -> set x0=1 -> [1,0,0,0]
+      j=1: bit=2 -> T has it? 3&2=2 -> true.
+          a0=3: 3&2=2 -> set x0=1|2=3 -> [3,0,0,0]
+      Then output 3 and [3,0,0,0]
+
+  The sample output is [3,0,3,3] -> which also works: 3^0^3^3 = 3.
+
+  So we output [3,0,0,0] which is also valid.
+
+  Therefore, the solution is as above.
+
+  But note: the problem says the first sample output is:
+        7
+        3 5 1
+
+  and we output:
+        7
+        3 4 0
+
+  which is different. However, the problem says "if there are multiple, output any".
+
+  So we are safe.
+
+  However, the problem expects the sample output to be as given? But our assignment is valid.
+
+  We can change the assignment to assign the bit to the last available a_i? Then we might get the sample output.
+
+  For the first sample: [3,7,1]
+      j=0: we want to assign bit0 to the last a_i that has it? 
+          a0=3 has it -> skip until last? 
+          a1=7 has it? yes -> but we want the last? 
+          a2=1 has it -> so we assign to a2 -> x2=1.
+      j=1: bit1: 
+          a0=3: has bit1 -> set x0=2.
+          (we break at the first) -> so we set x0=2.
+      j=2: bit2:
+          a0=3: no -> skip, a1=7: yes -> set x1=4.
+
+      Then x = [2,4,1] -> 2^4=6, 6^1=7 -> works.
+
+      But the assignment is [2,4,1] which is not [3,5,1].
+
+      How to get 5? 
+          We note that 5 = 4+1 -> which is bit2 and bit0.
+
+      So if we assign bit0 and bit2 to a1, then a1 would have 1 (bit0) and 4 (bit2) -> 5.
+
+      How would that happen? 
+          j=0: assign bit0 to a1? -> if we choose a1 for bit0, then x1=1.
+          j=1: we must assign bit1 to someone: a0 has it -> set x0=2.
+          j=2: we assign bit2 to a1 -> then x1=1+4=5.
+
+      Then x0=2, x1=5, x2=0? -> but then we get 2^5=7, then 7^0=7 -> works.
+
+      How to achieve that? 
+          Instead of breaking at the first, we can break at the last? 
+          Or we can choose which one to assign arbitrarily? 
+
+      The problem does not require a specific assignment, so we can choose any. 
+
+      However, if we want to mimic the sample output, we can assign the bit to the last available a_i? 
+
+      Then for j=0: we assign to the last a_i that has bit0: 
+          a0 has bit0 -> skip? no, we must check all? 
+          We can do:
+
+            for i in range(n-1, -1, -1):
+                if a[i] & bit:
+                    x[i] |= bit
+                    break
+
+      Then for the first sample:
+
+          j=0: 
+              i=2: a2=1 -> has bit0 -> set x2=1.
+          j=1:
+              i=0: a0=3: has bit1 -> set x0=2.
+          j=2:
+              i=1: a1=7: has bit2 -> set x1=4.
+
+          Then x=[2,4,1] -> which is [2,4,1] not [3,5,1].
+
+      How to get 3 and 5? 
+          We note that 3 = 2+1, and 5=4+1.
+
+      So if we assign bit0 to a0 and bit2 to a1, and also bit1 to a0? 
+          Then a0: bit0 and bit1 -> 3.
+          a1: bit2 -> 4 -> not 5.
+
+      To get a1=5, we need to assign bit0 and bit2 to a1.
+
+      How about:
+
+          j=0: assign to a1? -> then x1=1.
+          j=1: assign to a0: then x0=2.
+          j=2: assign to a1: then x1=1+4=5.
+
+      Then x0=2, x1=5, x2=0 -> which is [2,5,0] -> 2^5=7, 7^0=7.
+
+      How to choose a1 for j=0? 
+          We would have to skip a0? 
+
+      Therefore, we can change the inner loop to iterate in any fixed order? 
+
+      But the problem does not specify the order. 
+
+      Since the sample output uses [3,5,1] for the first sample, and we want to match the sample output for the provided samples, we can do:
+
+          In the first sample: 
+              We want: 
+                 a0=3: so we set bits0 and bit1 in a0 -> 3.
+                 a1=5: set bit0 and bit2 -> 5.
+                 a2=1: set bit0? -> but wait, if we set bit0 in a0 and a1, then we are setting it twice? 
+
+          Actually, we cannot set the same bit in two numbers? 
+
+          The assignment we described earlier sets each bit in exactly one number.
+
+      Therefore, we cannot set bit0 in both a0 and a1.
+
+      How then does the sample output [3,5,1] work? 
+          a0=3: bits0 and 1: 11 -> 3.
+          a1=5: bits0 and 2: 101 -> 5.
+          a2=1: bit0: 1 -> 1.
+
+          But then the XOR: 
+              bit0: 1 (from a0) XOR 1 (from a1) XOR 1 (from a2) = 1 (because 1 XOR 1 =0, then 0 XOR 1=1)
+              bit1: 1 (from a0) -> 1
+              bit2: 1 (from a1) -> 1
+          So overall: 111 -> 7.
+
+      But our algorithm only sets each bit in one number. How can we set bit0 in three numbers? 
+
+      We can modify the algorithm to set the bit j in an arbitrary odd number of numbers that have the bit? 
+
+      Then the assignment:
+
+          For each bit j in T:
+             we can choose any odd-sized subset of the numbers that have the bit and set the bit in those numbers.
+
+          Then we do:
+
+             x = [0]*n
+             for j in range(61):
+                 if T & (1<<j):
+                     # We choose an odd number of indices i from the set {i: a_i has bit j}
+                     # How? We can choose the minimal odd number: 1, or 3, ... 
+                     # But we must pick at least one.
+
+                     # We can simply pick the first one? But then we get one, which is odd.
+
+                     # But if we want to set multiple, we can. However, the problem does not require any particular one.
+
+          But note: the sample output [3,5,1] uses three times bit0. 
+
+      How to decide the subset? 
+          We can do: 
+            Let available = [i for i in range(n) if a[i] & (1<<j)]
+            Then we choose the first k where k is the smallest odd number? But k=1 is the smallest.
+
+          But the sample output uses k=3 for bit0.
+
+      Why use k=3? 
+          Because we have three numbers: a0, a1, a2 that have bit0? 
+          a0=3: has bit0 -> yes
+          a1=7: has bit0 -> yes
+          a2=1: has bit0 -> yes
+
+          So we can choose any odd subset: {a0}, {a1}, {a2}, {a0,a1,a2}, {a0,a1} (but that's even) -> so we can choose one or three.
+
+      How to achieve the sample output? 
+          We want to set bit0 in a0, a1, and a2.
+
+          Then for bit1: 
+              available: a0=3 (has bit1), a1=7 (has bit1), a2=1 (does not have bit1) -> so we can choose one or three? 
+              But we want to set bit1 only in a0? 
+          For bit2: 
+              available: a1=7 (has bit2) -> so we set bit2 in a1.
+
+          Then the numbers:
+             a0: bit0 and bit1 -> 3
+             a1: bit0 and bit2 -> 5
+             a2: bit0 -> 1
+
+          So to do that, we need to set:
+             bit0: set in a0, a1, a2 -> three (odd)
+             bit1: set in a0 -> one (odd)
+             bit2: set in a1 -> one (odd)
+
+      How to implement this? 
+          We can precompute for each bit j the list of indices that have the bit.
+
+          Then we do:
+
+             x = [0]*n
+             for j in range(61):
+                 if T & (1<<j):
+                     # list L = [i for i in range(n) if a[i] & (1<<j)]
+                     # We want to pick an odd number of indices from L.
+
+                     # But note: we are free to pick any. We can always pick one? 
+                     # However, we might want to minimize the numbers we set? 
+
+                     # But the sample output uses three for bit0. 
+
+          However, the problem does not require any particular assignment. 
+
+          But if we set three for bit0, then we have to set three bits. 
+
+          How about performance? 
+              We have 61 bits, and n<=100, so we can do:
+
+                 for j in range(61):
+                     if T & (1<<j):
+                         L = [i for i in range(n) if a[i] & (1<<j)]
+                         # We can choose the first element? 
+                         #   x[L[0]] |= (1<<j)   -> then we set one.
+
+                         # Or we can set all? 
+                         #   for i in L:
+                         #       x[i] |= (1<<j)
+                         #   Then we set all, and the count is |L|, which might be even? 
+
+          We must set an odd number. 
+
+          How about: 
+             We set the first one, and then skip the next one, then set the next, ... until we have set an odd number? 
+             But we can simply set one.
+
+          But the sample output uses three. 
+
+      Why use three? 
+          Because if we set only one for bit0, then we cannot use bit0 in the other numbers for higher bits? 
+          But wait, the bits are independent. 
+
+          Actually, we can set the bits arbitrarily per bit.
+
+          However, note: if we set bit0 in only one number, then that number will be at least 1. 
+          If we set it in three, then three numbers will be at least 1.
+
+          But we are allowed to use any number in [0,a_i]. 
+
+      Therefore, we can choose any odd-sized subset. 
+
+      But to match the sample output, we would have to know the sample's choice. 
+
+      Alternatively, we can always choose one. 
+
+      The problem does not require a specific assignment.
+
+  Therefore, we can choose one per bit and output that.
+
+  However, the sample output provided in the problem is [3,5,1]. 
+
+  How can we generate that? 
+      We note that the sample output uses:
+          a0: 3 -> has bits0 and 1.
+          a1: 5 -> has bits0 and 2.
+          a2: 1 -> has bit0.
+
+      For bit0: we need to set it in a0, a1, a2 -> three numbers.
+      For bit1: set in a0 -> one number.
+      For bit2: set in a1 -> one number.
+
+      We can do:
+
+          For bit0: choose three numbers: a0, a1, a2.
+          For bit1: choose one: a0.
+          For bit2: choose one: a1.
+
+      Then:
+          x0 = bit0 | bit1 = 1+2 = 3.
+          x1 = bit0 | bit2 = 1+4 = 5.
+          x2 = bit0 = 1.
+
+      How to implement choosing an odd-sized subset? 
+          We can do:
+
+            for j in range(61):
+                if T & (1<<j):
+                    L = [i for i in range(n) if a[i] & (1<<j)]
+                    # We choose the entire list if the size is odd, or the entire list minus the last if the size is even? 
+                    # But we want an odd number.
+
+                    # We can choose the first one and then skip the rest? -> then we get one, which is odd.
+                    # Or we can choose the entire list if the size is odd? 
+                    #   But we don't care, as long as it is odd.
+
+                    # However, if we choose the entire list, then we set the bit in every number that has it. 
+                    # But then we might exceed the a_i? 
+                    #   No, because we are only adding a bit that is in a_i, and the number we are building is the OR of the bits we assign. 
+                    #   But if we assign multiple bits, then the number is the OR of those bits -> which is the sum of distinct powers of two. 
+                    #   And since the bit j is in a_i, and the other bits we assign are also in a_i, then the entire OR is a subset of the bits of a_i -> so <= a_i.
+
+                    # But the catch: we have to do it for every bit. 
+
+                    # How about we choose the minimal odd number: 1. 
+
+                    # But the sample output uses 3 for bit0.
+
+          Therefore, to match the sample output, we would have to know that for bit0 we want to set it in three numbers. 
+
+      We can do a simple trick: 
+          For each bit j, we will set the bit in the first number that has it, and then if there are more, we don't break immediately but continue to see if we can use more? 
+
+          But then how to decide the parity? 
+
+      Alternatively, we can do:
+
+          We want the XOR to be T. We can use Gaussian elimination? But the sets are intervals.
+
+      But note: the problem constraints are small: n<=100, but we are only doing 61 bits. We can do:
+
+          We'll create an array x[0..n-1] = 0.
+
+          Let's iterate j from high to low? 
+          But the bits are independent.
+
+      Another idea: 
+          We can set the bit j in an arbitrary odd number of the available numbers. 
+          We can always choose exactly one. 
+
+      However, the sample output for the first sample is [3,5,1] and for the second is [3,0,3,3]. 
+
+      How to achieve [3,0,3,3] for the second sample? 
+          The second sample: [3,2,3,3] -> T=3 (binary 11).
+          We need to set bit0 and bit1.
+
+          For bit0: 
+              available: a0=3, a2=3, a3=3 -> we can set in one or three.
+          For bit1: 
+              available: a0=3, a2=3, a3=3 -> we can set in one or three.
+
+          The sample output: 
+              a0=3, a1=0, a2=3, a3=3.
+
+          Then:
+              a0: 3 -> bits0 and 1.
+              a1: 0.
+              a2: 3 -> bits0 and 1.
+              a3: 3 -> bits0 and 1.
+
+          XOR: 
+              bit0: 1^0^1^1 = (1^1)=0, then 0^1=1 -> 1.
+              bit1: 1^0^1^1 = 1.
+
+          So overall 11=3.
+
+          How to achieve that? 
+             For bit0: set in a0, a2, a3 -> three (odd) -> so set in indices 0,2,3.
+             For bit1: set in a0, a2, a3 -> three (odd).
+
+          Then:
+             x0 = bit0|bit1 = 3.
+             x1 = 0.
+             x2 = 3.
+             x3 = 3.
+
+          So we can do:
+
+              for j in range(61):
+                  if T & (1<<j):
+                      L = [i for i in range(n) if a[i] & (1<<j)]
+                      # We will choose the whole list if the size is odd, or the whole list except the last one if the size is even? 
+                      # But we want an odd number.
+
+                      if len(L) % 2 == 1:
+                          for i in L:
+                              x[i] |= (1<<j)
+                      else:
+                          # if even, remove the last element to make it odd? 
+                          for i in L[:-1]:
+                              x[i] |= (1<<j)
+
+          But is that valid? 
+             For the first sample, bit0: L = [0,1,2] -> size=3, odd -> set in all: 
+                 x0=1, x1=1, x2=1.
+             bit1: L = [0,1] -> size=2, even -> set in [0] (i.e., only a0) -> x0=1|2=3, x1=1, x2=1.
+             bit2: L=[1] -> odd -> set in a1: x1=1|4=5.
+             Then x0=3, x1=5, x2=1 -> matches.
+
+          Second sample: 
+             [3,2,3,3] for bit0: L = [0,2,3] (size=3, odd) -> set in all: x0=1, x2=1, x3=1.
+             bit1: L = [0,2,3] (size=3, odd) -> set in all: x0=1|2=3, x2=1|2=3, x3=1|2=3.
+             Then x = [3,0,3,3] -> matches.
+
+          But what if we have only one element and it's even? 
+             Actually, one is odd.
+
+          What if we have even and nonempty? 
+             We remove the last to make it odd? 
+             But we can remove any element.
+
+          However, we must ensure that the numbers we build do not exceed a_i. 
+             We are setting a bit j in a number i only if a_i has the bit j. 
+             And we are ORing bits that are in a_i, so x_i is a subset of the bits of a_i -> x_i <= a_i.
+
+          Therefore, it is valid.
+
+      But what if L is empty? 
+          But T has the bit j, so L should not be empty.
+
+      Therefore, we can implement:
+
+          for j in range(61):
+              bit = 1<<j
+              if T & bit:
+                  L = []
+                  for i in range(n):
+                      if a[i] & bit:
+                          L.append(i)
+                  if len(L) % 2 == 0:
+                      # remove the last element
+                      if L:
+                          L.pop()
+                  for i in L:
+                      x[i] |= bit
+
+      This will give an odd-sized subset of L (if L is nonempty, and we remove one if even) and then set the bit in those indices.
+
+      Then for the first sample we get the sample output.
+
+      But the problem says: "if there are multiple, output any", so both the one-element method and this method are valid.
+
+      However, the sample outputs provided in the problem are generated by this method? 
+
+      Therefore, we choose this method to match the sample output.
+
+  Let's test with the first sample using this method:
+
+      a = [3,7,1] 
+      T = 7.
+
+      j=0: bit=1, L = [0,1,2] -> size=3 (odd) -> set x0,x1,x2: x0=1, x1=1, x2=1.
+      j=1: bit=2, L = [0,1] -> size=2 (even) -> remove last -> then L = [0] -> set x0 = 1|2=3.
+      j=2: bit=4, L=[1] -> set x1 = 1|4=5.
+      j>=3: skip.
+
+      Then x0=3, x1=5, x2=1 -> [3,5,1] -> matches.
+
+  Second sample: 
+      a = [3,2,3,3]
+      T=3.
+      j=0: L=[0,2,3] -> odd -> set x0=1, x2=1, x3=1.
+      j=1: L=[0,2,3] -> odd -> set x0=1|2=3, x2=1|2=3, x3=1|2=3.
+      Then x = [3,0,3,3] -> matches.
+
+  Therefore, we'll use:
+
+      for each test case:
+          T = OR(a_i)
+          x = [0]*n
+          for j in range(61):
+              bit = 1 << j
+              if T & bit:
+                  L = []
+                  for i in range(n):
+                      if a[i] & bit:
+                          L.append(i)
+                  if len(L) % 2 == 0 and L:   # if even and non-empty, remove last
+                      L.pop()
+                  for i in L:
+                      x[i] |= bit
+
+          print(T)
+          print(" ".join(map(str, x)))
+
+  But note: what if L is empty? 
+      But T has the bit, so there must be at least one a_i that has the bit. So L should not be empty.
+
+  Therefore, we can skip the check for L being non-empty? 
+
+  Time complexity: 
+      For each j, we iterate over n (100) -> 61 * 100 = 6100 per test case, and 100 test cases -> 610000, which is acceptable.
+
+  This matches the sample outputs.
+
+  Therefore, we output this solution.
+
+  But wait, what if the entire list L is even and we remove the last, but what if the last element is the only one that has a_i exactly the bit j? 
+      Actually, we are only setting the bit j, and we are allowed to set it in any subset as long as the size is odd. 
+      And we are setting it in the first len(L)-1 elements. 
+      And since we remove one, the size becomes odd.
+
+  It is valid.
+
+  We'll run the code for the provided samples.
+
+  Therefore, the final solution is:
+
+      C = int(input().strip())
+      for _ in range(C):
+          n = int(input().strip())
+          a = list(map(int, input().split()))
+          T = 0
+          for num in a:
+              T |= num
+
+          x = [0] * n
+          # Iterate over bits 0 to 60
+          for j in range(61):
+              bit = 1 << j
+              if T & bit:
+                  # Build list L of indices i such that a[i] has the j-th bit.
+                  L = []
+                  for i in range(n):
+                      if a[i] & bit:
+                          L.append(i)
+                  # If the number of indices is even, remove the last one to make it odd.
+                  if len(L) % 2 == 0:
+                      if L:   # should always be nonempty, but to be safe
+                          L.pop()
+                  # Set the bit for every index in L.
+                  for i in L:
+                      x[i] |= bit
+
+          print(T)
+          print(" ".join(map(str, x)))
+
+  This should pass.
+
+  Why is the maximum damage T? 
+      As argued: 
+          - The XOR cannot have a bit that is not in any a_i, so the maximum is at most the OR of the a_i.
+          - And we can achieve T by the assignment we built: 
+                 For each bit j in T, we set it in an odd number of numbers (so the XOR has the bit set) and in the other bits, we don't set anything (so the XOR has 0).
+                 And the assignment ensures that the number chosen for each member is at most a_i.
+
+  Therefore, the solution is correct.
+
+  We'll output the editorial accordingly.

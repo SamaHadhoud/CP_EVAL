@@ -1,0 +1,228 @@
+### Approach
+The problem involves handling queries on a connected undirected graph where each city has an economic value. The queries are of two types: updating the economic value of a city and querying the minimum absolute difference in economic values achievable by two businessmen after moving for the same number of days starting from two given cities.
+
+#### Key Insights:
+1. **Graph Bipartiteness Check**: The graph's bipartiteness determines the solution approach. 
+   - If the graph is non-bipartite (contains an odd-length cycle), the businessmen can meet at the same city after some days, making the minimum difference zero.
+   - If the graph is bipartite, the solution depends on the bipartite coloring of the cities.
+
+2. **Bipartite Graph Handling**:
+   - **Delta Calculation**: For a query, compute `delta` as the parity difference between the starting cities' colors. If `delta` is zero, the answer is zero because the businessmen can meet at the same city. If `delta` is one, the answer is the minimum absolute difference between economic values of cities in opposite bipartite sets.
+   - **Efficient Query Handling**: Maintain a sorted set of economic values and a multiset of gaps between consecutive values of differently colored cities. For updates, adjust these structures to efficiently compute the minimum gap.
+
+#### Algorithm Selection:
+- **Bipartite Check**: Use BFS to color the graph and detect odd cycles.
+- **Handling Queries**:
+  - **Non-bipartite Graphs**: Answer zero for all type-1 queries.
+  - **Bipartite Graphs**:
+    - For type-0 queries (updates), adjust the sorted set and gap multiset.
+    - For type-1 queries, if `delta` is zero, answer zero; otherwise, the smallest gap in the multiset.
+
+#### Complexity Analysis:
+- **Bipartite Check**: O(N + M) time.
+- **Initial Setup**: O(N log N) for sorting.
+- **Updates**: O(log N) per update for modifying the sorted set and gap multiset.
+- **Queries**: O(1) per query for non-bipartite graphs; O(1) for bipartite graphs (using the precomputed minimum gap).
+- **Overall Complexity**: O((N + Q) log N), efficient for given constraints.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <set>
+#include <queue>
+#include <algorithm>
+#include <climits>
+using namespace std;
+
+typedef long long ll;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int N, M;
+    cin >> N >> M;
+    vector<ll> S(N+1);
+    for (int i = 1; i <= N; i++) {
+        cin >> S[i];
+    }
+
+    vector<vector<int>> graph(N+1);
+    for (int i = 0; i < M; i++) {
+        int u, v;
+        cin >> u >> v;
+        graph[u].push_back(v);
+        graph[v].push_back(u);
+    }
+
+    vector<int> color(N+1, -1);
+    vector<bool> visited(N+1, false);
+    bool is_bipartite = true;
+    queue<int> q;
+    color[1] = 0;
+    visited[1] = true;
+    q.push(1);
+    while (!q.empty()) {
+        int u = q.front(); q.pop();
+        for (int v : graph[u]) {
+            if (!visited[v]) {
+                visited[v] = true;
+                color[v] = color[u] ^ 1;
+                q.push(v);
+            } else {
+                if (color[v] == color[u]) {
+                    is_bipartite = false;
+                }
+            }
+        }
+    }
+
+    if (!is_bipartite) {
+        int Q;
+        cin >> Q;
+        while (Q--) {
+            int A_i, B_i, C_i;
+            cin >> A_i >> B_i >> C_i;
+            if (A_i == 1) {
+                cout << 0 << '\n';
+            } else {
+                S[B_i] = C_i;
+            }
+        }
+    } else {
+        set<pair<ll, int>> sorted_set;
+        vector<ll> current_value(N+1);
+        for (int i = 1; i <= N; i++) {
+            current_value[i] = S[i];
+            sorted_set.insert({S[i], i});
+        }
+
+        multiset<ll> gap_set;
+        auto compute_gap = [](pair<ll, int> a, pair<ll, int> b) {
+            return b.first - a.first;
+        };
+
+        auto it = sorted_set.begin();
+        auto next_it = it;
+        if (it != sorted_set.end()) {
+            next_it++;
+        }
+        while (next_it != sorted_set.end()) {
+            ll gap_val = compute_gap(*it, *next_it);
+            if (color[it->second] != color[next_it->second]) {
+                gap_set.insert(gap_val);
+            }
+            it++;
+            next_it++;
+        }
+
+        int Q;
+        cin >> Q;
+        while (Q--) {
+            int A_i, B_i, C_i;
+            cin >> A_i >> B_i >> C_i;
+            if (A_i == 0) {
+                ll old_val = current_value[B_i];
+                auto it_old = sorted_set.find({old_val, B_i});
+                vector<ll> gaps_to_remove;
+                vector<ll> gaps_to_add;
+
+                auto prev_it = (it_old != sorted_set.begin()) ? prev(it_old) : sorted_set.end();
+                auto next_it = next(it_old);
+                if (next_it == sorted_set.end()) next_it = sorted_set.end();
+
+                if (prev_it != sorted_set.end()) {
+                    ll gap_val = compute_gap(*prev_it, *it_old);
+                    if (color[prev_it->second] != color[B_i]) {
+                        gaps_to_remove.push_back(gap_val);
+                    }
+                }
+                if (next_it != sorted_set.end()) {
+                    ll gap_val = compute_gap(*it_old, *next_it);
+                    if (color[B_i] != color[next_it->second]) {
+                        gaps_to_remove.push_back(gap_val);
+                    }
+                }
+                if (prev_it != sorted_set.end() && next_it != sorted_set.end()) {
+                    ll gap_val = compute_gap(*prev_it, *next_it);
+                    if (color[prev_it->second] != color[next_it->second]) {
+                        gaps_to_add.push_back(gap_val);
+                    }
+                }
+
+                sorted_set.erase(it_old);
+                for (ll gap : gaps_to_remove) {
+                    auto it_gap = gap_set.find(gap);
+                    if (it_gap != gap_set.end()) {
+                        gap_set.erase(it_gap);
+                    }
+                }
+                for (ll gap : gaps_to_add) {
+                    gap_set.insert(gap);
+                }
+
+                current_value[B_i] = C_i;
+                auto it_new = sorted_set.insert({C_i, B_i}).first;
+
+                gaps_to_remove.clear();
+                gaps_to_add.clear();
+
+                prev_it = (it_new != sorted_set.begin()) ? prev(it_new) : sorted_set.end();
+                next_it = next(it_new);
+                if (next_it == sorted_set.end()) next_it = sorted_set.end();
+
+                if (prev_it != sorted_set.end() && next_it != sorted_set.end()) {
+                    ll gap_val = compute_gap(*prev_it, *next_it);
+                    if (color[prev_it->second] != color[next_it->second]) {
+                        gaps_to_remove.push_back(gap_val);
+                    }
+                }
+                if (prev_it != sorted_set.end()) {
+                    ll gap_val = compute_gap(*prev_it, *it_new);
+                    if (color[prev_it->second] != color[B_i]) {
+                        gaps_to_add.push_back(gap_val);
+                    }
+                }
+                if (next_it != sorted_set.end()) {
+                    ll gap_val = compute_gap(*it_new, *next_it);
+                    if (color[B_i] != color[next_it->second]) {
+                        gaps_to_add.push_back(gap_val);
+                    }
+                }
+
+                for (ll gap : gaps_to_remove) {
+                    auto it_gap = gap_set.find(gap);
+                    if (it_gap != gap_set.end()) {
+                        gap_set.erase(it_gap);
+                    }
+                }
+                for (ll gap : gaps_to_add) {
+                    gap_set.insert(gap);
+                }
+            } else {
+                if (color[B_i] == color[C_i]) {
+                    cout << 0 << '\n';
+                } else {
+                    if (gap_set.empty()) {
+                        cout << 0 << '\n';
+                    } else {
+                        cout << *gap_set.begin() << '\n';
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Bipartite Check**: The graph is checked for bipartiteness using BFS. If an odd cycle is found, the graph is non-bipartite.
+2. **Non-bipartite Handling**: For non-bipartite graphs, the answer to any type-1 query is zero because the businessmen can always meet at the same city.
+3. **Bipartite Handling**:
+   - **Initial Setup**: Economic values are stored in a sorted set, and gaps between consecutive values of differently colored cities are stored in a multiset.
+   - **Updates**: When updating a city's value, the sorted set and gap multiset are adjusted to reflect changes.
+   - **Queries**: For type-1 queries, if the starting cities have the same color (`delta = 0`), the answer is zero. Otherwise, the smallest gap in the multiset is the answer.
+4. **Efficiency**: The use of sets and multisets ensures efficient updates and queries, adhering to the problem constraints. The overall complexity is O((N + Q) log N), suitable for large inputs.

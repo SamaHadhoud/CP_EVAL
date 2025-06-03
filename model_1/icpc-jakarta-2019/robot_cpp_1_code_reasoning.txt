@@ -1,0 +1,1507 @@
+ We are representing each character as a 2x2 matrix. For 'A': [[1,0],[1,1]], for 'B': [[1,1],[0,1]].
+ The transformation for a sequence of characters is the product of the matrices from left to right.
+ Toggling a character (swapping 'A' and 'B') is equivalent to swapping the two rows and then swapping the two columns? 
+ Actually, note: 
+   Original 'A': 
+        [1 0]
+        [1 1]
+   After toggle (which becomes 'B'), we want the matrix for 'B': 
+        [1 1]
+        [0 1]
+
+ But observe: if we have a matrix M, then toggling it can be achieved by: J * M * J, where J = [[0,1],[1,0]] (the swap matrix).
+ Let's check:
+   For M_A: 
+        J * M_A = [[0,1],[1,0]] * [[1,0],[1,1]] = [[1,1],[1,0]]
+        Then (J * M_A) * J = [[1,1],[1,0]] * [[0,1],[1,0]] = [[1*0+1*1, 1*1+1*0], [1*0+0*1, 1*1+0*0]] = [[1,1],[0,1]] -> which is M_B.
+
+   Similarly, for M_B: 
+        J * M_B = [[0,1],[1,0]] * [[1,1],[0,1]] = [[0,1],[1,1]]
+        Then (J * M_B) * J = [[0,1],[1,1]] * [[0,1],[1,0]] = [[1,0],[1,1]] -> which is M_A.
+
+ However, note that the transformation for the entire segment is the product of matrices from left to right. 
+ But when we toggle the entire segment, we are effectively replacing each matrix M by J*M*J. Then the product for the segment [M1, M2, ..., Mk] becomes:
+        (J * M1 * J) * (J * M2 * J) * ... * (J * Mk * J)
+
+ Notice that between consecutive matrices we have J*J = I (the identity) because J^2 = I. 
+        = J * M1 * (J*J) * M2 * (J*J) * ... * J * Mk * J
+        = J * (M1 * M2 * ... * Mk) * J   [because the inner J*J become identity, and the last J remains]
+
+ Therefore, toggling the entire segment is equivalent to left-multiplying by J and right-multiplying by J on the entire product.
+
+ But note: we cannot simply do that at the segment tree node? However, we can design the lazy propagation so that if a node is toggled an odd number of times, we apply the transformation: M -> J * M * J.
+
+ How to compute J * M * J?
+        M = [[a, b],
+             [c, d]]
+
+        J * M = [[0,1],[1,0]] * [[a,b],[c,d]] = [[c,d],[a,b]]
+        Then (J * M) * J = [[c,d],[a,b]] * [[0,1],[1,0]] = [[d, c],[b, a]]
+
+        So: 
+          new_a = d
+          new_b = c
+          new_c = b
+          new_d = a
+
+        That is, we swap a and d, and swap b and c.
+
+ Therefore, toggling a matrix (whether leaf or internal) is done by swapping the elements: (a <-> d) and (b <-> c).
+
+ We build a segment tree that stores the matrix for each segment. We also maintain a lazy flag for each node that indicates whether the segment has been toggled an odd number of times (so we need to toggle the matrix and propagate to children).
+
+ Steps:
+   - Build the tree: for a leaf, if the character is 'A', then store Matrix(1,0,1,1); if 'B', then store Matrix(1,1,0,1).
+   - For an internal node: tree[node] = tree[left] * tree[right] (matrix multiplication, note: we are doing left to right, so the left child's matrix is applied first, then the right. Therefore, we multiply as: left * right? But note: 
+        The segment [l, mid] and [mid+1, r]: the entire transformation is the product of the matrices from l to r. So we do: M(l,mid) * M(mid+1, r) -> but actually, the left part comes first so the transformation for the entire segment is M(l,mid) * M(mid+1, r). However, when we do the multiplication, we have:
+          state = (A, B)
+          first we apply M(l,mid): state becomes M(l,mid) * [A, B]^T
+          then we apply M(mid+1, r): state becomes M(mid+1, r) * (M(l,mid)*[A,B]^T) = (M(mid+1, r) * M(l,mid)) * [A,B]^T.
+
+        But note: matrix multiplication is not commutative. However, we are traversing the string from left to right, so the first character is the leftmost. Therefore, the entire transformation is the product: M_r * ... * M_{mid+1} * M_{mid} * ... * M_l? Actually, no: we start at the left. So the transformation is: 
+          M_l * M_{l+1} * ... * M_r.
+
+        How to combine: 
+          [l, r] = [l, mid] and [mid+1, r]. Then the transformation is: 
+             M(l,mid) * M(mid+1, r) ??? 
+          But note: the transformation for [l,mid] is the product from l to mid: M_l * M_{l+1} * ... * M_mid.
+          The transformation for [mid+1, r] is M_{mid+1} * ... * M_r.
+
+          Then the entire transformation is: 
+             (M_l * ... * M_mid) * (M_{mid+1} * ... * M_r)
+
+        So we do: left matrix * right matrix? Actually, when we apply the left segment first and then the right segment, the overall matrix is: left_matrix * right_matrix? 
+          But consider: 
+            state = v0
+            after left segment: v1 = left_matrix * v0
+            after right segment: v2 = right_matrix * v1 = right_matrix * (left_matrix * v0) = (right_matrix * left_matrix) * v0? 
+          This would be true if we wrote the transformation as right_matrix applied after left_matrix. However, in standard matrix multiplication, we write the transformation as the left matrix multiplied on the left: M_total = right_matrix * left_matrix? That would be if we wrote the state as a column vector and the transformation as multiplying on the left.
+
+        But note: we have defined the transformation for a single character as:
+            For 'A': 
+                [A_new]   = [1 0] [A]
+                [B_new]     [1 1] [B]
+            So the entire string from left to right: 
+                v_final = M_r * ( ... * (M2 * (M1 * v0)) ...) 
+                = (M_r * ... * M1) * v0   [if we multiply from left?] 
+
+        However, the matrix multiplication is associative but the order of multiplication must be from the first (leftmost) to the last (rightmost). Therefore, the entire product is: M1 * M2 * ... * Mr? Actually, no: 
+          Let v0 = [A0, B0]^T.
+          After first character: v1 = M1 * v0.
+          After second character: v2 = M2 * v1 = M2 * (M1 * v0) = (M2 * M1) * v0? -> but that would be M2 then M1? which is not the order.
+
+        We must have: 
+          v_final = Mr * ... * M2 * M1 * v0   [if we multiply on the left each time].
+
+        So the entire transformation is: 
+          M = Mr * ... * M2 * M1.
+
+        Therefore, when we break the segment [l, r] into [l, mid] and [mid+1, r], the transformation for [l, mid] is: M_mid * ... * M_l (because l is the first, then l+1, then ... mid). Similarly, [mid+1, r] is: M_r * ... * M_{mid+1}. Then the entire transformation is: 
+          M = M_r * ... * M_{mid+1} * M_mid * ... * M_l.
+
+        So the product for the entire segment is: right_segment * left_segment? 
+
+        But wait: the left segment [l, mid] is applied first, then the right segment [mid+1, r]. Therefore, the overall transformation is: 
+          (M_r * ... * M_{mid+1}) * (M_mid * ... * M_l)
+
+        So we must combine: 
+          tree[node] = tree[right_child] * tree[left_child]   ??? 
+
+        However, in the segment tree we store the product for the entire segment [l, r] as the product of the matrices from l to r (in the natural order: l first, then l+1, ... r). And the natural order is: 
+          M_total = M_r * ... * M_{l+1} * M_l   [because we start at l: M_l is applied first, then M_{l+1}, then ... until M_r]
+
+        But note: that is the same as: 
+          M_total = (M_r * ... * M_{mid+1}) * (M_mid * ... * M_l)
+
+        So we can build the segment tree such that:
+          tree[node] = tree[right_child] * tree[left_child]   [if the node covers [l, r] and left_child covers [l, mid] and right_child covers [mid+1, r]].
+
+        But that would be: 
+          [mid+1, r] * [l, mid] = M_r * ... * M_{mid+1} * M_mid * ... * M_l.
+
+        And that is the transformation: first l, then l+1, ... mid, then mid+1, ... r.
+
+        So we must combine: right_child's matrix * left_child's matrix.
+
+        Therefore, when building the tree, we do:
+          tree[idx] = multiply(tree[2*idx+2] (right), tree[2*idx+1] (left))
+
+        However, in the sample: 
+          "ABAAA": 
+          The transformation should be: 
+            M1 (for 'A') * M2 (for 'B') * M3 (for 'A') * M4 (for 'A') * M5 (for 'A')
+
+          But if we break the array as [0:4] (5 elements) and we break into [0,2] and [3,4]? 
+
+        Alternatively, we can store the matrices in the leaves and then combine in the natural order (left to right) by doing: 
+          tree[idx] = multiply(tree[2*idx+1], tree[2*idx+2])
+
+        Why? Because the left child covers [l, mid] and the right child covers [mid+1, r]. The entire transformation is: 
+          [l, mid] then [mid+1, r] -> so we do the left child first and then the right child. But the transformation matrix for the entire segment is: 
+            M_total = M_{mid+1->r} * M_{l->mid}   ??? -> wait, no: we apply the left child transformation first: 
+          v1 = M_{l->mid} * v0
+          v2 = M_{mid+1->r} * v1 = M_{mid+1->r} * M_{l->mid} * v0.
+
+          So M_total = M_{mid+1->r} * M_{l->mid}.
+
+          But that is: right_child * left_child.
+
+        However, if we break the segment [0,4] (5 elements) as:
+          left = [0,2] (three elements: indices 0,1,2) -> transformation: M0 * M1 * M2? 
+          But note: we break the array: 
+            [0,2] -> left child: [0,1] and [2,2] -> then we combine: right * left? 
+
+        Alternatively, we can store the transformation in the node as the product from the leftmost to the rightmost. Then the entire segment [l, r] is the product: M_l * M_{l+1} * ... * M_r? 
+          But then the multiplication is not associative in the sense of combining two segments? 
+
+        Actually, we have to be careful: 
+          For two segments: [l, mid] and [mid+1, r]:
+            The transformation for [l, mid] is: T1 = M_l * M_{l+1} * ... * M_{mid}   (if we do left-to-right and multiply on the left? then the order is reversed: the first matrix M_l is the rightmost in the product? because we do: 
+                v = M_{mid} * ... * M_{l+1} * M_l * v0? 
+
+        Let me clarify with two characters: 
+          [0,1]: 
+            Step0: state = v0
+            Step1 (index0): v1 = M0 * v0
+            Step2 (index1): v2 = M1 * v1 = M1 * M0 * v0
+
+          So the transformation is M1 * M0? Then for the entire segment [0,1] we have M1 * M0.
+
+          Now, if we break [0,1] into [0] and [1]:
+            left child [0]: M0
+            right child [1]: M1
+            Then the entire transformation is: M1 * M0 -> which is: right_child * left_child.
+
+        Therefore, the segment tree node for [l, r] = right_child (which covers [mid+1, r]) * left_child (which covers [l, mid]).
+
+        So we combine: 
+          tree[node] = multiply(tree[right_child], tree[left_child])
+
+        But note: our segment tree building: 
+          We have an array of matrices at the leaves: 
+            index0: M0, index1: M1, index2: M2, ... index4: M4.
+
+          Then for the root [0,4]:
+            left child = [0,2] -> which is: M2 * M1 * M0? 
+            right child = [3,4] -> which is: M4 * M3? 
+            then root = right_child * left_child = (M4*M3) * (M2*M1*M0) = M4*M3*M2*M1*M0? 
+          But the desired transformation for [0,4] is: M4*M3*M2*M1*M0? -> which is the same as: 
+            step0: M0, step1: M1, ... step4: M4 -> so the entire transformation is: M4 * (M3 * (M2 * (M1 * M0 * v0))) = M4*M3*M2*M1*M0 * v0.
+
+          So it matches.
+
+        Therefore, we build the segment tree such that the node for a segment [l, r] is the product of the matrices from the last (r) to the first (l) in reverse order? Actually, we are storing the product as: 
+          [l, r] = M_r * M_{r-1} * ... * M_{l}   [if we break the segment into two, then we do: (right child [mid+1, r]) * (left child [l, mid])].
+
+        But note: the leaves are stored in the natural order: the leaf at position i stores the matrix for S[i]. Then when building the segment tree, we combine the left segment and the right segment by: 
+          tree[node] = multiply(tree[right_child], tree[left_child])
+
+        However, in the segment tree, the left child covers [l, mid] and the right child covers [mid+1, r]. Then the entire segment [l, r] is: 
+          [l, mid] (which we have stored as: M_mid * ... * M_l) and [mid+1, r] (which is M_r * ... * M_{mid+1]). Then the entire transformation is: 
+             M_r * ... * M_{mid+1} * M_mid * ... * M_l = (M_r * ... * M_{mid+1}) * (M_mid * ... * M_l) = tree[right_child] * tree[left_child].
+
+        So we combine by: multiply(right_child, left_child).
+
+        But wait: our base leaf at index i is the matrix for S[i]. Then the transformation for a segment of one element [i] is just the matrix for S[i]. Then for two adjacent elements [i, i+1]:
+          The transformation should be: M_{i+1} * M_i.
+
+        And we have: 
+          left child: [i] -> M_i
+          right child: [i+1] -> M_{i+1}
+          then tree[node] = M_{i+1} * M_i.
+
+        That matches.
+
+        Therefore, we design the segment tree as follows:
+          - The base: for a leaf at position i, we store the matrix for S[i].
+          - The combine operation: 
+                tree[node] = multiply(tree[2*idx+2] (right child, for [mid+1, r]), tree[2*idx+1] (left child, for [l, mid]))
+
+        However, note: our segment tree is built with the left child first and then the right child. But the multiplication order is: right * left.
+
+        Alternatively, we can build the tree so that the left child is applied first? Then we would combine: left * right? But that would be incorrect because the right child is the later part.
+
+        Actually, the transformation for the entire segment is: 
+            first: the left part [l, mid] -> then the right part [mid+1, r]. 
+            So the transformation matrix is: (matrix for the right part) * (matrix for the left part) -> because the right part is applied after the left part.
+
+        Therefore, we do: 
+            tree[node] = multiply(tree_right, tree_left)
+
+        But in our segment tree, the left child is stored at 2*idx+1 and the right child at 2*idx+2.
+
+        So:
+            tree[idx] = multiply(tree[2*idx+2], tree[2*idx+1])
+
+        But note: if the segment [l, r] has only the left child (if the right child is not present) then we use the left child? So we must break the segment so that the left child is [l, mid] and the right child [mid+1, r]. Then the entire transformation is: right_child * left_child.
+
+ Implementation:
+
+        We have a segment tree that for a node covering [l, r] has:
+          if l==r: store the matrix for S[l]
+          else: 
+             mid = (l+r)/2
+             left_child = build(l, mid)
+             right_child = build(mid+1, r)
+             tree[node] = multiply(right_child, left_child)
+
+        Then when updating or querying, we break the segment similarly.
+
+        However, note: the sample "ABAAA" (5 characters) for the entire string: 
+          We want the transformation: M4 * M3 * M2 * M1 * M0.
+
+          In the segment tree: 
+            root: 
+              left child: [0,2] -> which is: M2 * M1 * M0
+              right child: [3,4] -> which is: M4 * M3
+              then root = multiply(right_child, left_child) = (M4*M3) * (M2*M1*M0) = M4*M3*M2*M1*M0.
+
+        Now, the sample input: 
+          "ABAAA" -> positions: 
+            index0: 'A' -> M_A = [[1,0],[1,1]]
+            index1: 'B' -> M_B = [[1,1],[0,1]]
+            index2: 'A' -> M_A = [[1,0],[1,1]]
+            index3: 'A' -> M_A = [[1,0],[1,1]]
+            index4: 'A' -> M_A = [[1,0],[1,1]]
+
+        We want to compute the entire product for [0,4]:
+          M4 * M3 * M2 * M1 * M0.
+
+        How to compute step by step? 
+          M0 = [[1,0],[1,1]]
+          M1 = [[1,1],[0,1]]
+          M2 = [[1,0],[1,1]]
+          M3 = [[1,0],[1,1]]
+          M4 = [[1,0],[1,1]]
+
+        We can compute from right to left? Actually, we can compute the product in the natural order (from left to right) by accumulating the transformation. But note: the multiplication order is from rightmost (last) to leftmost (first) in the product? 
+
+        Actually, we have to compute: 
+          Start with identity. Then multiply by M0, then M1, ... then M4? But that would be: 
+            I * M0 = M0
+            then M0 * M1? -> but that is M0 then M1? 
+          But the transformation is: M4 * M3 * M2 * M1 * M0 * I.
+
+        So we can compute: 
+          T = I
+          T = T * M0
+          T = T * M1
+          ... 
+          T = T * M4
+
+        Then the transformation is: T = M4 * M3 * M2 * M1 * M0.
+
+        So the segment tree structure we built (combining by: right_child * left_child) is consistent.
+
+        Therefore, we design the segment tree as described.
+
+        Lazy propagation for toggle:
+
+          Each node has a lazy flag (0 or 1) meaning that the entire segment has been toggled an odd number of times (so we need to apply the toggle transformation to the matrix and then propagate to children when needed).
+
+          Toggling a node: 
+            We swap the elements of the matrix: 
+                new_a = old_d
+                new_b = old_c
+                new_c = old_b
+                new_d = old_a
+            But note: we can do by swapping (a,d) and (b,c).
+
+          Also, if the node has children, we set the lazy flags for the children (so that when we update or query them, they will be toggled again).
+
+          Steps in push:
+            if lazy[idx] is set:
+                toggle the matrix (swap a,d and swap b,c)
+                if not leaf: 
+                    toggle the left child's lazy flag (lazy[2*idx+1] ^= 1)
+                    toggle the right child's lazy flag (lazy[2*idx+2] ^= 1)
+                set lazy[idx] = 0
+
+        Update (range toggle [ql, qr]):
+          We do a standard segment tree update: 
+            push the current node.
+            if [l, r] is completely inside [ql, qr]:
+                toggle the node (by applying the toggle to the matrix and then setting the lazy flags for children if any) -> actually we set the lazy flag for the node to 1, and then in the push we do the swap? 
+                Actually, we do: 
+                  We toggle the lazy flag for the current node? But we are updating the entire segment, so we set lazy[idx] ^= 1, then we immediately toggle the matrix? 
+                Alternatively, we can do: 
+                  We toggle the matrix and then set the lazy flags for children (if any) to be toggled? But then we are done for this node.
+
+          However, the update procedure we use is:
+            We do:
+              push the current node (so that we have the correct matrix and the lazy flag is cleared).
+              Then if the current segment is completely contained, we set the lazy flag to 1 (meaning we are toggling it) and then we push it? 
+            Actually, we don't want to push immediately because then we would push the lazy to the children and then clear? 
+
+          Instead, we do:
+            In the update function, we first push the current node so that we have the updated matrix and then we can break if the segment is outside.
+
+            Then, if the current segment is contained in [ql, qr]:
+                We toggle the lazy flag for the current node (mark it as toggled) and then we push it? -> but note: pushing will then toggle the matrix and propagate to children. But we don't want to propagate to children until we need to update them? 
+
+          Alternatively, we can do without an immediate push? 
+
+          Standard lazy propagation for range updates (like flipping a range) is:
+
+            update(node, l, r, ql, qr):
+              push(node);   // clear the lazy of the current node by applying and propagating to children (if any) and then reset lazy[node]=0
+              if no overlap: return
+              if total overlap: 
+                 toggle the current node: we set lazy[node] = 1, and then we do: we toggle the matrix? 
+                 But then we have to push? -> no, we just did push. Then we set lazy[node]=1 and then we do the toggle? 
+
+          Actually, we can do:
+
+            We push the node (so the matrix is updated and lazy is cleared).
+
+            Then if the segment is contained, we:
+                 toggle the matrix (swap a,d and b,c)
+                 and then set the lazy flags of the children (if not leaf) to be toggled? -> but we don't set the children's lazy flags directly. Instead, we mark the children as needing to be toggled? 
+
+          How about: 
+            We set the lazy flag for the current node to 1? Then we immediately apply the toggle? But then we have to push the lazy to the children? 
+
+          Instead, we can do:
+
+            We push the node (so lazy is cleared and the matrix is correct).
+
+            Then if the segment is contained in [ql, qr]:
+                We toggle the matrix (so we swap the elements).
+                Then we set the lazy flags for the children (if not leaf) to be flipped? -> but that would be done in the push? 
+
+          Actually, we do not push the current node again. Instead, we mark the children as needing a toggle? 
+
+          But the standard way is to use the lazy array to record the pending toggles. So:
+
+            We update the current node by toggling its matrix and then if it has children, we set the lazy flags for the children (to indicate that they have pending toggles) and then we clear the current node's lazy flag? -> that is not the standard.
+
+          Standard: 
+            When updating a segment that is completely contained, we:
+                - Toggle the current node's matrix (by swapping the elements as described).
+                - Then set the lazy flags for the children (if any) to be toggled (by flipping their lazy flag: lazy[child] ^= 1). 
+                - And we do not set the current node's lazy flag? -> actually we set it to 0 because we just applied the toggle.
+
+          But then if we get multiple toggles, we have to do it again.
+
+          Alternatively, we can store the lazy flag as the number of toggles mod 2. Then we do:
+
+            In the update:
+              push the node (so that the current matrix is up-to-date and lazy flag is 0).
+              if contained: 
+                 we toggle the matrix (swap the elements) -> this applies one toggle.
+                 then we set the lazy flags of the two children (if any) to be toggled (by flipping: lazy[child] ^= 1). 
+                 and we return.
+
+          Why set the children's lazy flag? Actually, we do not. Because the toggle operation on a segment is independent: if we toggle the entire segment, then we also need to toggle the children? -> no, because we are storing the entire segment as a product. But the toggle operation is applied to the entire segment. However, the lazy propagation for range updates typically marks the children as having pending updates. 
+
+          But note: the toggle operation is idempotent (toggling twice is identity). And we are storing the lazy flag as 0/1. So when we update the entire node, we toggle the matrix and then we mark the children as having a pending toggle? 
+
+          Actually, we do:
+
+            We have a node that covers [l, r]. We are toggling the entire segment [l, r]. Then the matrix for the node becomes the toggled matrix. But the children's data has not been toggled? 
+
+          However, the children are still storing their original matrices. But we are storing the entire segment as a product of the children's matrices (after toggling the children's entire segments). 
+
+          But note: the toggle operation for the entire segment [l, r] is equivalent to toggling every element in [l, r]. Therefore, we must also toggle the children's segments. 
+
+          So the lazy propagation: 
+            When we update a node (and we are going to update its children later only when necessary) we mark the children as needing to be toggled. 
+
+          Therefore, in the update:
+
+            We push the current node (so that we have an up-to-date matrix and lazy flag cleared).
+
+            Then, if the current segment is contained in the update range:
+                We apply the toggle to the current node: swap the matrix elements (a<->d, b<->c).
+                Then we mark the children (if any) by flipping their lazy flags (so we do: lazy[2*idx+1] ^= 1, lazy[2*idx+2] ^= 1). 
+                And we return.
+
+          But wait: we are not going to update the children now? So if we never query the children, then they remain un-toggled? 
+
+          Actually, the current node's matrix has been toggled. And the children have been marked so that if we ever need to update or query them, we will push the lazy flag down.
+
+          Then, when we update a node that is contained, we do not need to update the children? 
+
+          However, the current node's matrix is now toggled and the children's matrices are not toggled? But the current node's matrix is built from the children's matrices. How do we reconcile?
+
+          Recall: the transformation for the entire segment is the product of the children's matrices (in the order: right * left). But after we toggle the entire segment, the transformation becomes: 
+                J * (current_matrix) * J.
+
+          But we have already toggled the current node's matrix (so we swapped a,d and b,c). And we have also marked the children as toggled? 
+
+          However, the children's matrices are still stored as if they were not toggled. But we have set their lazy flags. So when we next query the children, we will push and then they will be toggled.
+
+          But note: the current node's matrix is now toggled. And the children's matrices are not toggled (but marked as lazy). Then if we update the current node again, we would push the lazy to the children? 
+
+          Actually, we have already updated the current node. The children's lazy flags are set to 1. Then when we update the current node again, we push the current node (which has lazy=0 so nothing happens). Then we break the segment and update the children? 
+
+          The key is: the segment tree node for [l, r] stores the transformation for the segment as if the toggles for the entire segment [l, r] (that have been applied to every element) have been incorporated. 
+
+          And the lazy flag of a node means: the entire segment of this node has been additionally toggled (so we need to apply J*M*J) but this has not been propagated to the children.
+
+          But actually, we have already incorporated the toggle by swapping the matrix? 
+
+          Therefore, the update procedure:
+
+            update(node, l, r, ql, qr):
+              push(node, l, r)   // this ensures the current node's matrix is updated and lazy is cleared, and if not leaf, the children's lazy flags are updated (if the current node had a lazy flag set, we swap the matrix and set the children's lazy and clear the current node's lazy)
+
+              if qr < l || r < ql: return
+
+              if ql<=l && r<=qr:
+                 // we toggle the current node: so we swap the matrix elements
+                 swap(tree[node].a, tree[node].d);
+                 swap(tree[node].b, tree[node].c);
+                 // then mark the children (if any) that they need to be toggled
+                 if (l != r) {
+                    lazy[2*idx+1] ^= 1;
+                    lazy[2*idx+2] ^= 1;
+                 }
+                 return
+
+              // if partial overlap, then recurse
+              mid = (l+r)/2
+              update(left_child, l, mid, ql, qr)
+              update(right_child, mid+1, r, ql, qr)
+              tree[node] = multiply(tree[right_child], tree[left_child])
+
+          However, note: after updating the children, the current node's matrix must be recomputed. But we have toggled parts of the segment? 
+
+          Actually, the children might have been updated (so their matrices are now toggled) and we combine them. But we don't push the children in the update recursion? 
+
+          We do: in the update function, the first thing we do is push the current node. So when we update the left child, we call update on the left child and the first thing it does is push. Similarly for the right child.
+
+          Then after updating the children, we combine: 
+             tree[node] = multiply(tree[right_child], tree[left_child])
+
+          So the current node is updated correctly.
+
+        Query:
+
+          Similarly, we start by pushing the current node. Then we break the segment.
+
+        Important: The identity matrix for multiplication is the identity matrix: [[1,0],[0,1]] (mod mod). 
+
+        For the query: 
+          We are asked: 
+            2 L R A B
+
+          We compute the transformation matrix M = query(L-1, R-1) (the segment [L-1, R-1] in the segment tree).
+
+          Then the result is:
+             A_final = (A * M.a + B * M.c) % mod
+             B_final = (A * M.b + B * M.d) % mod
+
+          Why?
+            We represent the state as a column vector: [A; B]
+            Then the transformation: M * [A; B] = [ M.a * A + M.b * B; M.c * A + M.d * B ]
+
+          But note: our transformation matrices are defined as:
+            For 'A': 
+                [A_new] = [1 0] [A]   = [A; A+B] -> but wait, the definition: 
+                [B_new]   [1 1] [B]
+                Actually: 
+                  A_new = 1*A + 0*B = A
+                  B_new = 1*A + 1*B = A+B -> but the problem says: 
+                      if S[i]=='A': A = A+B, and B remains? -> no, the problem says: 
+                      A = A+B, but then the state becomes (A+B, B). 
+
+                But in the matrix we defined: 
+                  [A_new]   [1 0][A]   = [A, A+B]? -> no, the matrix multiplication: 
+                  [B_new]   [1 1][B]   = [A+B, ...] -> wait, let me write as column vector:
+
+                  [A_new]   = [1 0] * [A]   = [1*A + 0*B] = [A]
+                  [B_new]     [1 1]   [B]     [1*A + 1*B]   [A+B]
+
+                So the state becomes (A, A+B)? -> but the problem says: 
+                    A = A+B, and then we have (A, B) becomes (A+B, B) -> that is: 
+                      A_new = A+B
+                      B_new = B
+
+                But in our matrix we have: 
+                  A_new = A
+                  B_new = A+B
+
+                That is: the state vector we are using is (A, B) and after the transformation we have (A, A+B). But the problem's state is (A, B) and after the transformation the state becomes (A+B, B). 
+
+                So we have a discrepancy: the problem stores the state as (A, B) and we are representing the state as a column vector [A; B]. Then the transformation for 'A' should produce [A+B; B]. 
+
+                How to represent that? 
+                  [A_new]   = [A+B]   = [1*A + 1*B]   -> but note: the first component is A+B and the second is B? 
+                  [B_new]     [B  ]     [0*A + 1*B]
+
+                So the matrix should be:
+                  [[1, 1],
+                   [0, 1]] for 'A'? -> but wait, that is the matrix we assigned to 'B'!
+
+                The problem says: 
+                  if S[i]=='A': 
+                      A = A + B   -> so the new A is the old A + old B, and the new B is the old B.
+                  if S[i]=='B':
+                      B = A + B   -> so the new B is the old A + old B, and the new A is the old A.
+
+                So the state vector: 
+                  For 'A': 
+                      [A_new]   [1 1] [A]   -> no, then [A_new = A+B, B_new = B] -> but that is: 
+                         A_new = 1*A + 1*B
+                         B_new = 0*A + 1*B -> which is B.
+
+                  But the problem says: 
+                      after 'A': (A, B) becomes (A+B, B) -> so we have: 
+                         [A_new]   [1 1] [A]   = [A+B]
+                         [B_new]   [0 1] [B]     [B  ]
+
+                For 'B':
+                         [A_new]   [1 0] [A]   = [A  ]
+                         [B_new]   [1 1] [B]     [A+B]
+
+                Therefore, we should assign:
+                  'A' -> matrix [[1,1],[0,1]]
+                  'B' -> matrix [[1,0],[1,1]]
+
+                But the sample input: 
+                  "ABAAA", with initial (1,1) -> 
+                    i0: 'A' -> (1+1, 1) = (2,1) -> then we use the matrix for 'A': 
+                         [1 1] [1] = [1*1+1*1] = [2]
+                         [0 1] [1]   [0*1+1*1]   [1] -> matches.
+
+                Then i1: 'B' -> (2, 2+1=3) -> so the state becomes (2, 3). 
+                Matrix for 'B': [[1,0],[1,1]] * [2,1]? -> no, we have state (2,1) then apply 'B': 
+                         [1 0] [2] = [2]
+                         [1 1] [1]   [2+1=3] -> matches.
+
+                So we must change the initial assignment:
+                  For 'A': use [[1,1],[0,1]]
+                  For 'B': use [[1,0],[1,1]]
+
+                But note: the entire product is applied from left to right? 
+                  The state: v0 = [1;1]
+                  Then M0 (for 'A') * v0 = [2;1]
+                  Then M1 (for 'B') * (M0*v0) = M1 * [2;1] = [2; 3]
+
+                But the product for the entire segment [0,1] is: M1 * M0? 
+                  M1 * M0 = [[1,0],[1,1]] * [[1,1],[0,1]] = [[1,1],[1,2]]
+                  Then [1,1] * [1,1; 1,2]? -> no, we multiply the matrix by the vector: 
+                         [1 1] [1]   [1*1+1*1] = [2]
+                         [1 2] [1]   [1*1+2*1]   [3] -> but that is (2,3) which matches.
+
+                However, the problem says the state after the first two is (2,3). 
+
+                But the sample output for the entire 5 characters: 
+                  The problem says: (11,3)
+
+                How to compute with the new matrices?
+                  The entire string: 
+                    M0: 'A' -> [[1,1],[0,1]]
+                    M1: 'B' -> [[1,0],[1,1]]
+                    M2: 'A' -> [[1,1],[0,1]]
+                    M3: 'A' -> [[1,1],[0,1]]
+                    M4: 'A' -> [[1,1],[0,1]]
+
+                  The product: M = M4 * M3 * M2 * M1 * M0
+
+                  We compute step by step:
+
+                    M0 = [[1,1],[0,1]]
+                    M1 = [[1,0],[1,1]]
+                    M2 = [[1,1],[0,1]]
+                    M3 = [[1,1],[0,1]]
+                    M4 = [[1,1],[0,1]]
+
+                  Start from the right: 
+                    T0 = M0 = [[1,1],[0,1]]
+                    T1 = M1 * T0 = [[1,0],[1,1]] * [[1,1],[0,1]] = [[1,1],[1,2]]
+                    T2 = M2 * T1 = [[1,1],[0,1]] * [[1,1],[1,2]] = [[1+1, 1+2], [1,2]] = [[2,3],[1,2]]
+                    T3 = M3 * T2 = [[1,1],[0,1]] * [[2,3],[1,2]] = [[2+1, 3+2], [1,2]] = [[3,5],[1,2]]
+                    T4 = M4 * T3 = [[1,1],[0,1]] * [[3,5],[1,2]] = [[3+1,5+2],[1,2]] = [[4,7],[1,2]]
+
+                  Then state: [A_final; B_final] = T4 * [1;1] = [[4,7],[1,2]] * [1;1] = [4+7; 1+2] = [11; 3] -> matches.
+
+                Therefore, we assign:
+                  'A': Matrix(1,1,0,1)
+                  'B': Matrix(1,0,1,1)
+
+        But note: the toggle operation: 
+          For a matrix M = [[a,b],[c,d]]:
+            Toggled matrix = J * M * J = [[d, c],[b, a]] -> so we swap a and d, and swap b and c.
+
+          Check for 'A': [[1,1],[0,1]] -> toggled becomes [[1,0],[1,1]] -> which is the matrix for 'B'. Correct.
+
+        Therefore, we update the initial building of the segment tree.
+
+        Code for Matrix multiplication:
+
+          Matrix multiply(Matrix m1, Matrix m2):
+            a = (m1.a * m2.a + m1.b * m2.c) % mod
+            b = (m1.a * m2.b + m1.b * m2.d) % mod
+            c = (m1.c * m2.a + m1.d * m2.c) % mod
+            d = (m1.c * m2.b + m1.d * m2.d) % mod
+            return Matrix(a, b, c, d)
+
+        Note: we are representing the matrix as:
+          [a, b]
+          [c, d]
+
+        But note: when we multiply two matrices: 
+          M1 = [[a1,b1],[c1,d1]], M2 = [[a2,b2],[c2,d2]]
+          Then M1 * M2 = 
+            [ a1*a2+b1*c2, a1*b2+b1*d2 ]
+            [ c1*a2+d1*c2, c1*b2+d1*d2 ]
+
+        However, in the problem we have: 
+          The entire transformation is: M = M4 * M3 * M2 * M1 * M0   (with M0 being the first and M4 the last).
+
+        And our segment tree: 
+          The leaf at position i stores the matrix for S[i]. Then the segment tree node for a segment [l, r] is the product: M_r * ... * M_{l} (from the last to the first) -> but that is the same as: the product of the matrices from the last character to the first character.
+
+        And when we break the segment, we do: 
+          tree[node] = multiply(tree_right, tree_left)   // because we traverse from the last (right) to the first (left).
+
+        This matches: 
+          [l, r] = [l, mid] and [mid+1, r] -> the product = (M_r * ... * M_{mid+1}) * (M_{mid} * ... * M_l)
+
+        Now, we code accordingly.
+
+        Steps:
+
+          Read N, Q and string S.
+
+          Build a segment tree:
+            Each leaf i: 
+               if S[i]=='A' -> Matrix(1,1,0,1)
+               if S[i]=='B' -> Matrix(1,0,1,1)
+
+            Combine: for an internal node, tree[node] = multiply(tree[2*idx+2], tree[2*idx+1])
+
+          For each query:
+            type 1: update the range [L-1, R-1] by toggling.
+            type 2: 
+                Matrix M = query(L-1, R-1)
+                A_final = (A * M.a + B * M.b) % mod   -> wait, let me check the vector multiplication:
+
+                The state is [A; B] (column vector). Then the transformation is: 
+                  [A_final]   = M * [A]   = [a*A + b*B]
+                  [B_final]       [B]     [c*A + d*B]
+
+                But our matrix M is stored as:
+                  [[a, b],
+                   [c, d]]
+
+                So: 
+                  A_final = (A * a + B * b) % mod
+                  B_final = (A * c + B * d) % mod
+
+                However, in the sample: 
+                  For the entire segment: we had M = [[4,7],[1,2]] -> then 
+                  A_final = 1*4 + 1*7 = 11
+                  B_final = 1*1 + 1*2 = 3
+
+                So we do:
+                  A_final = (A * M.a + B * M.b) % mod
+                  B_final = (A * M.c + B * M.d) % mod
+
+          But note: the problem output: 11 3.
+
+        Therefore, we output: 
+          cout << A_final << " " << B_final << endl;
+
+        However, note: the problem says modulo 1000000007.
+
+        We must do mod arithmetic.
+
+        Let's test the second sample command in the input:
+
+          After update: the string becomes "ABBBB" -> then we do the query: 
+            2 2 5 0 1000000000
+
+          The segment [2,5] (0-indexed: [1,4]): 
+            S[1] to S[4] = "BBBB"
+
+          The matrix for one 'B': [[1,0],[1,1]]
+          The product for 4 'B's: 
+            Start: identity.
+            Then multiply by the first 'B': [[1,0],[1,1]] -> then by the second: 
+              [[1,0],[1,1]] * [[1,0],[1,1]] = [[1,0],[2,1]]
+            Then third: [[1,0],[1,1]] * [[1,0],[2,1]] = [[1,0],[3,1]]
+            Then fourth: [[1,0],[1,1]] * [[1,0],[3,1]] = [[1,0],[4,1]]
+
+          Then the state: 
+            A_final = 0 * 1 + 1000000000 * 0 = 0
+            B_final = 0 * 4 + 1000000000 * 1 = 1000000000
+
+          But the problem expects: (0, 1000000000)
+
+          However, note the modulo: 1000000000 mod 1000000007 is 1000000000.
+
+          So output: "0 1000000000"
+
+        Therefore, the code.
+
+        Implementation note: We use 0-indexed for the segment tree.
+
+        Let me write the segment tree structure:
+
+          We have a SegmentTree class.
+
+          Members:
+            vector<Matrix> tree;
+            vector<int> lazy;
+            int n;
+            string s;
+
+          Methods:
+            build(int idx, int l, int r)
+            update(int idx, int l, int r, int ql, int qr)
+            query(int idx, int l, int r, int ql, int qr)
+
+          We also have a helper: push(idx, l, r)
+
+        In the push function:
+
+          void push(int idx, int l, int r) {
+            if (lazy[idx]) {
+                // toggle the matrix at this node
+                swap(tree[idx].a, tree[idx].d);
+                swap(tree[idx].b, tree[idx].c);
+                if (l != r) {
+                    lazy[2*idx+1] ^= 1;
+                    lazy[2*idx+2] ^= 1;
+                }
+                lazy[idx] = 0;
+            }
+          }
+
+        However, note: the lazy propagation might be called multiple times? But we are clearing the lazy flag. And we are toggling the matrix.
+
+        But what if the node is toggled multiple times? 
+          Toggling twice: 
+            First toggle: swaps (a,d) and (b,c). 
+            Second toggle: swaps again -> back to original.
+
+          So we can use a lazy flag that is 0 or 1. And we flip the matrix once when the lazy flag is 1.
+
+        Therefore, the push function is as above.
+
+        But note: we are pushing at the beginning of update and query. Then we clear the lazy flag.
+
+        Then the update and query functions:
+
+          update(int idx, int l, int r, int ql, int qr):
+            push(idx, l, r);   // clear the lazy and update the matrix
+            if (qr < l || r < ql) return;
+            if (ql <= l && r <= qr) {
+                // toggle the current node: so we swap the matrix elements
+                swap(tree[idx].a, tree[idx].d);
+                swap(tree[idx].b, tree[idx].c);
+                // and then set the lazy flags for the children (if not leaf)
+                if (l != r) {
+                    lazy[2*idx+1] ^= 1;
+                    lazy[2*idx+2] ^= 1;
+                }
+                return;
+            }
+            int mid = (l+r)/2;
+            update(2*idx+1, l, mid, ql, qr);
+            update(2*idx+2, mid+1, r, ql, qr);
+            // after updating children, we need to update the current node: 
+            //   But note: we have to push the children? 
+            //   Actually, in the update of the children we pushed? 
+            //   However, we need to get the updated matrices of the children to combine.
+
+            // We can push the children? or we can do: we don't push here because the children might have lazy flags? 
+            // Instead, we do: we call push on the children? -> not necessary. We can just combine? 
+            // But the children might have pending lazy flags? 
+
+            // Actually, we are not pushing the children in the parent's update. So we must push the children to get the correct matrix? 
+            // How about: we do not push here. Instead, we assume that the update of the children already pushed? 
+
+            // But in the recursion we did: we called update on the children, and the first thing in update is push. So the children are updated and their matrices are correct.
+
+            // Then we combine:
+            //   However, we have not pushed the children? -> we did push in the update call? 
+
+            // Actually, we can do:
+            //   We do not have the updated matrices for the children? because the update call updated the children and then we combine. 
+
+            // But note: the update call for the children updated the tree for the children and then the lazy propagation was done. Then the children's matrices are now toggled? 
+
+            // However, we have to recombine the current node from the children? 
+
+            // We do:
+            tree[idx] = multiply(tree[2*idx+2], tree[2*idx+1]);   // note: right child then left child? 
+
+            // But wait: the children might have been toggled? and we are getting their current matrix. 
+
+            // Actually, we just updated the children and then we combine. The children's matrices are stored correctly (because we pushed in the update call). 
+
+            // However, what if the children have lazy flags from previous operations? Then the update call we just did pushed the lazy flag? 
+
+            // We are safe.
+
+          Similarly, for query:
+
+          Matrix query(int idx, int l, int r, int ql, int qr):
+            push(idx, l, r);
+            if (qr < l || r < ql) {
+                // return identity matrix
+                return Matrix(1,0,0,1);   // identity
+            }
+            if (ql <= l && r <= qr) {
+                return tree[idx];
+            }
+            int mid = (l+r)/2;
+            Matrix left_mat = query(2*idx+1, l, mid, ql, qr);
+            Matrix right_mat = query(2*idx+2, mid+1, r, ql, qr);
+            if (qr <= mid) {
+                return left_mat;
+            }
+            if (ql > mid) {
+                return right_mat;
+            }
+            // Otherwise, we have to combine: 
+            //   The segment [ql, qr] = [ql, mid] (left_mat) and [mid+1, qr] (right_mat)
+            //   Then the transformation for the entire segment is: right_mat * left_mat   (because the right part is applied after the left part)
+            return multiply(right_mat, left_mat);
+
+        However, note: the segment tree structure we built: the entire segment [l, r] is stored as: right_child * left_child. 
+        But in the query we are breaking the segment arbitrarily. 
+
+        Actually, the segment [ql, qr] might cover [l, mid] and [mid+1, r] partially. Then we get:
+          left_mat = the transformation for the part in [l, mid] that overlaps [ql, qr] -> but note: the transformation for that part is the product from the last index in [ql, mid] to the first? 
+
+        Actually, the segment tree is built so that the transformation for a contiguous segment [i, j] is the product of the matrices from j down to i (in reverse order). 
+
+        But in the query, we break the segment [ql, qr] into two parts: 
+          [ql, mid] and [mid+1, qr] (if qr>mid). 
+          Then the transformation for the entire segment is: (transformation for [mid+1, qr]) * (transformation for [ql, mid])
+
+        So we multiply: right_mat * left_mat.
+
+        Therefore, we do: multiply(right_mat, left_mat)
+
+        But note: if the segment [ql, mid] is empty, we return the identity? and then the product with the right_mat is right_mat. Similarly for the left_mat.
+
+        We can write without the conditionals? 
+
+          We have:
+            left_mat = query for [ql, min(qr, mid)] 
+            right_mat = query for [max(mid+1, ql), qr]
+
+          Then the product = right_mat * left_mat.
+
+        But our query function breaks naturally. We do:
+
+          left_mat = query(2*idx+1, l, mid, ql, qr)   -> which returns the transformation for the segment [ql, min(qr, mid)] (if any) and if no overlap, returns identity.
+          right_mat = query(2*idx+2, mid+1, r, ql, qr)   -> similarly.
+
+          Then we combine: multiply(right_mat, left_mat)
+
+        However, if the entire segment is in the left, then right_mat is identity -> and the product = left_mat * identity? -> but note: we do right_mat * left_mat -> identity * left_mat = left_mat.
+
+        Similarly, if the entire segment is in the right, then left_mat is identity -> then product = right_mat * identity = right_mat.
+
+        So we can always do: return multiply(right_mat, left_mat)
+
+        But wait: what if the segment is [ql, qr] that spans both? Then we break into two segments: [ql, mid] and [mid+1, qr]. The transformation is: right_mat * left_mat.
+
+        So we can write:
+
+          return multiply(right_mat, left_mat);
+
+        However, if one of them is identity, then we must return the other? But the identity matrix multiplied by any matrix M is M. So we can do:
+
+          return multiply(right_mat, left_mat);
+
+        But note: our multiply function handles the identity? 
+
+        Alternatively, we can check:
+
+          if (left_mat is identity) -> return right_mat?
+          if (right_mat is identity) -> return left_mat?
+
+        But we don't need to: because the identity matrix multiplied by any matrix M is M. And the segment tree might have many identities? 
+
+        However, we have:
+
+          Matrix multiply(Matrix m1, Matrix m2) {
+            if m1 is identity: 
+                return m2
+            if m2 is identity:
+                return m1
+
+          But we don't have such checks. But the identity matrix: 
+            I = Matrix(1,0,0,1)
+            multiply(I, M) = M
+            multiply(M, I) = M
+
+          So we can just multiply.
+
+        Therefore, we do:
+
+          return multiply(right_mat, left_mat);
+
+        But note: the segment [ql, mid] is stored in the left child and [mid+1, qr] in the right child. And the entire transformation is: right_child_part * left_child_part.
+
+        So we multiply: right_mat * left_mat.
+
+        However, note: the left child part covers the left part of the segment (which comes first) and the right child part covers the right part (which comes later). Therefore, the entire transformation is: 
+          (matrix for the right part) * (matrix for the left part)   -> because the right part is applied after the left part.
+
+        This matches.
+
+        Now, we code accordingly.
+
+        Important: We are using 0-indexed for the segment tree.
+
+        Let me run the sample first query: 
+          S = "ABAAA", initially.
+          Query: 2 1 5 1 1 -> [0,4] (0-indexed indices)
+
+          We build the tree for the entire string: 
+            The product: as we computed: [[4,7],[1,2]]? 
+            But we computed by hand: 
+                M0 = [[1,1],[0,1]]   // for 'A' at index0
+                M1 = [[1,0],[1,1]]   // for 'B' at index1
+                M2 = [[1,1],[0,1]]   // for 'A' at index2
+                M3 = [[1,1],[0,1]]   // for 'A' at index3
+                M4 = [[1,1],[0,1]]   // for 'A' at index4
+
+            Then the product: 
+                Start: M0
+                Then M1 * M0 = [[1,0],[1,1]] * [[1,1],[0,1]] = [[1,1],[1,2]]
+                Then M2 * (M1*M0) = [[1,1],[0,1]] * [[1,1],[1,2]] = [[2,3],[1,2]]
+                Then M3 * ... = [[1,1],[0,1]] * [[2,3],[1,2]] = [[3,5],[1,2]]
+                Then M4 * ... = [[1,1],[0,1]] * [[3,5],[1,2]] = [[4,7],[1,2]]
+
+            Then the state: 
+                A_final = 1*4 + 1*7 = 11
+                B_final = 1*1 + 1*2 = 3
+
+          So we output: 11 3.
+
+        Therefore, the code.
+
+        We'll code accordingly.
+
+        Note: The identity matrix in the query for segments that are not covered.
+
+        We assume the segment tree is built for the entire array.
+
+        Time complexity: 
+          Each update and query: O(log N)
+          With N, Q up to 100,000 -> acceptable.
+
+        Let me write the code accordingly.
+
+        Note: We must use long long and mod.
+
+        We define mod = 1000000007.
+
+        We'll represent a matrix as a struct with four long longs: a, b, c, d.
+
+        Matrix multiplication: 
+          new_a = (m1.a * m2.a % mod + m1.b * m2.c % mod) % mod
+          similarly for the others.
+
+        We'll create a multiply function.
+
+        The identity matrix: Matrix(1,0,0,1)
+
+        For the segment tree: 
+          We use 4*n nodes.
+
+        The main:
+
+          Read N, Q, and S.
+
+          Build the segment tree: 
+            SegmentTree st(S);
+
+          Then process Q commands.
+
+        We'll use iterative and recursive segment tree? -> recursive with 0-indexed.
+
+        However, note: worst-case depth is about 17 (since 100000 -> 2^17 = 131072). 
+
+        We'll do:
+
+          class SegmentTree {
+          public:
+            vector<Matrix> tree;
+            vector<int> lazy;
+            int n;
+            SegmentTree(string &s) {
+                n = s.length();
+                tree.resize(4*n);
+                lazy.assign(4*n, 0);
+                build(0, 0, n-1, s);
+            }
+
+            void build(int idx, int l, int r, string &s) {
+                if (l == r) {
+                    if (s[l]=='A') {
+                        tree[idx] = Matrix(1,1,0,1);
+                    } else {
+                        tree[idx] = Matrix(1,0,1,1);
+                    }
+                    return;
+                }
+                int mid = (l+r)/2;
+                build(2*idx+1, l, mid, s);
+                build(2*idx+2, mid+1, r, s);
+                tree[idx] = multiply(tree[2*idx+2], tree[2*idx+1]);   // right child * left child
+            }
+
+            ... update and query methods ...
+
+          }
+
+        We'll also write the push function.
+
+        Let's code.
+
+        Note: The update function for the segment tree: 
+          void update(int l, int r, int ql, int qr, int idx) 
+          But we write recursively: we pass the current node index and the segment [l, r] it covers.
+
+        We'll write:
+
+          void update(int idx, int l, int r, int ql, int qr) {
+            push(idx, l, r);
+            if (qr < l || r < ql) return;
+            if (ql<=l && r<=qr) {
+                // toggle the current node: swap a,d and b,c
+                swap(tree[idx].a, tree[idx].d);
+                swap(tree[idx].b, tree[idx].c);
+                if (l != r) {
+                    lazy[2*idx+1] ^= 1;
+                    lazy[2*idx+2] ^= 1;
+                }
+                return;
+            }
+            int mid = (l+r)/2;
+            update(2*idx+1, l, mid, ql, qr);
+            update(2*idx+2, mid+1, r, ql, qr);
+            // After updating the children, we need to update the current node by combining the children.
+            // But note: the children might have been updated and we have to get their current matrix? 
+            // However, we did not push the children? -> but we pushed at the beginning of the update call? 
+            // Actually, we have to get the updated matrices? 
+
+            // We can do: 
+            //   We push the children? -> but that is done in the update call? 
+            //   Instead, we can combine the children's matrices as stored? 
+            //   But the update call for the children updated the tree[2*idx+1] and tree[2*idx+2]? 
+
+            // Then we combine:
+            tree[idx] = multiply(tree[2*idx+2], tree[2*idx+1]);
+          }
+
+        However, what if the children have pending lazy flags? Then the stored matrix in the children is not updated? 
+
+        But in the update call for the children, we pushed the node at the beginning. Then updated if the segment is contained, and then updated the node by combining the children? 
+
+        So after the update call, the children are updated and their matrices are correct.
+
+        Therefore, we do the combine.
+
+        But note: the update call for the children might not cover the entire child segment? Then the child's matrix is updated by the update call and then we combine. 
+
+        So we are safe.
+
+        However, what if we don't update the entire child? Then the update call does partial update and then the child updates its own children? and then the child's matrix is updated by combining the updated children? 
+
+        So the update function for the children returns the updated matrix.
+
+        Therefore, we combine.
+
+        Similarly, for query we do:
+
+          Matrix query(int idx, int l, int r, int ql, int qr) {
+            push(idx, l, r);
+            if (qr < l || r < ql) {
+                return Matrix(1,0,0,1); // identity
+            }
+            if (ql<=l && r<=qr) {
+                return tree[idx];
+            }
+            int mid = (l+r)/2;
+            Matrix left_mat = query(2*idx+1, l, mid, ql, qr);
+            Matrix right_mat = query(2*idx+2, mid+1, r, ql, qr);
+            if (qr <= mid) {
+                return left_mat;
+            }
+            if (ql > mid) {
+                return right_mat;
+            }
+            return multiply(right_mat, left_mat);
+          }
+
+        But we can avoid the conditionals by:
+
+          Matrix left_mat = query(2*idx+1, l, mid, ql, qr);
+          Matrix right_mat = query(2*idx+2, mid+1, r, ql, qr);
+          if (left_mat is identity) return right_mat;
+          if (right_mat is identity) return left_mat;
+          return multiply(right_mat, left_mat);
+
+        However, we can check by: if the segment for the left_mat is empty, we returned identity. Similarly for the right_mat. Then the multiply of identity and a matrix M is M. So we can simply:
+
+          return multiply(right_mat, left_mat);
+
+        Because if one is identity, then the product is the other.
+
+        So we can write:
+
+          return multiply(right_mat, left_mat);
+
+        This is simpler.
+
+        Let me change the query to:
+
+          Matrix query(int idx, int l, int r, int ql, int qr) {
+            push(idx, l, r);
+            if (qr < l || r < ql) {
+                return Matrix(1,0,0,1);
+            }
+            if (ql<=l && r<=qr) {
+                return tree[idx];
+            }
+            int mid = (l+r)/2;
+            Matrix left_mat = query(2*idx+1, l, mid, ql, qr);
+            Matrix right_mat = query(2*idx+2, mid+1, r, ql, qr);
+            if (left_mat.a == 1 && left_mat.b == 0 && left_mat.c == 0 && left_mat.d == 1) {
+                return right_mat;
+            }
+            if (right_mat.a == 1 && right_mat.b == 0 && right_mat.c == 0 && right_mat.d == 1) {
+                return left_mat;
+            }
+            return multiply(right_mat, left_mat);
+          }
+
+        But that is an optimization. We can do without? 
+
+        Alternatively, we can do:
+
+          if (ql > mid) {
+              return right_mat;
+          } else if (qr <= mid) {
+              return left_mat;
+          } else {
+              return multiply(right_mat, left_mat);
+          }
+
+        But the above conditionals are already in the code? 
+
+        Actually, we can avoid the conditionals by:
+
+          return multiply(right_mat, left_mat);
+
+        Because if the left_mat is identity (because the query range is entirely in the right) then the right_mat is the entire segment and left_mat is identity -> then the product is right_mat.
+
+        Similarly, if the right_mat is identity, then the product is left_mat.
+
+        So we can write without conditionals.
+
+        We'll do:
+
+          return multiply(right_mat, left_mat);
+
+        Now, we code the entire program.
+
+        Note: We use recursion and the recursion depth might be high for 100000? But the depth is about 17, so it's safe.
+
+        We run the sample.
+
+        However, note: the update in the sample: 
+          After the first command: 
+            type 1: 1 3 5 -> toggling indices 3 to 5 (1-indexed) -> 0-indexed: 2 to 4.
+
+          Then the string becomes "ABBBB".
+
+          Then the second query: 
+            type 2: 2 2 5 0 1000000000 -> 0-indexed: [1,4] (characters at indices 1,2,3,4: "BBBB")
+
+          We computed: the transformation matrix = [[1,0],[4,1]]? 
+          Then: 
+            A_final = 0 * 1 + 1000000000 * 0 = 0
+            B_final = 0 * 4 + 1000000000 * 1 = 1000000000
+
+          Output: 0 1000000000
+
+        So the sample output is as expected.
+
+        We output the code accordingly.
+
+        Let me write the Matrix struct and the multiply function.
+
+        Note: We must use long long for the matrix elements.
+
+        We'll do:
+
+          struct Matrix {
+            long long a, b, c, d;
+            Matrix() : a(1), b(0), c(0), d(1) {}   // identity by default
+            Matrix(long long a0, long long b0, long long c0, long long d0) 
+                : a(a0 % mod), b(b0 % mod), c(c0 % mod), d(d0 % mod) {}
+          };
+
+        But note: the mod is applied in the constructor? 
+
+        However, the inputs A,B in the query can be up to 10^9, but the matrix elements? 
+          The matrix elements are built from products and sums. They can be as large as (10^9 * 10^9) -> 10^18, which fits in long long (which is 64-bit). Then we mod when storing? 
+
+        But we do mod in the constructor? Then we mod the initial values. 
+
+        Actually, we do mod at every multiplication and at the constructor? 
+
+        We'll do mod in the multiply function.
+
+        Alternatively, we can do:
+
+          Matrix multiply(Matrix m1, Matrix m2) {
+            return Matrix(
+                (m1.a * m2.a + m1.b * m2.c) % mod,
+                (m1.a * m2.b + m1.b * m2.d) % mod,
+                (m1.c * m2.a + m1.d * m2.c) % mod,
+                (m1.c * m2.b + m1.d * m2.d) % mod
+            );
+          }
+
+        And then we don't mod in the constructor? 
+
+        Actually, the initial matrices have entries 0,1 -> so mod is the same.
+
+        So we remove the mod in the constructor? 
+
+        We can define the Matrix without mod in the constructor? 
+
+          Matrix(long long a0, long long b0, long long c0, long long d0) : a(a0), b(b0), c(c0), d(d0) {}
+
+        But then we do mod in the multiply.
+
+        However, the numbers can be huge. We do mod at every operation.
+
+        We'll do:
+
+          struct Matrix {
+            long long a, b, c, d;
+            Matrix() : a(1), b(0), c(0), d(1) {}
+            Matrix(long long a0, long long b0, long long c0, long long d0) 
+                : a(a0), b(b0), c(c0), d(d0) {}
+          };
+
+        Then in multiply:
+
+          long long a_new = (m1.a * m2.a % mod + m1.b * m2.c % mod) % mod;
+          ... 
+
+        But we must do: 
+
+          a_new = ( (m1.a * m2.a) % mod + (m1.b * m2.c) % mod ) % mod;
+
+        However, to avoid overflow in intermediate products: we do:
+
+          a_new = ( (m1.a * m2.a) % mod + (m1.b * m2.c) % mod ) % mod;
+
+        But note: the products might be up to 10^18, and we are modding by 10^9+7 -> we can do:
+
+          a_new = ( (m1.a * m2.a) % mod + (m1.b * m2.c) % mod ) % mod;
+
+        This is safe.
+
+        We'll code accordingly.
+
+        Finally, the main:
+
+          for (int i=0; i<Q; i++) {
+            int type;
+            cin >> type;
+            if (type == 1) {
+                int L, R;
+                cin >> L >> R;
+                st.update(0, 0, st.n-1, L-1, R-1);
+            } else {
+                int L, R;
+                long long A_val, B_val;
+                cin >> L >> R >> A_val >> B_val;
+                Matrix M = st.query(0, 0, st.n-1, L-1, R-1);
+                long long A_final = (A_val * M.a % mod + B_val * M.b % mod) % mod;
+                long long B_final = (A_val * M.c % mod + B_val * M.d % mod) % mod;
+                cout << A_final << " " << B_final << "\n";
+            }
+          }
+
+        We'll run the sample.
+
+        But note: the first query: 
+          M = [[4,7],[1,2]] -> 
+          A_final = (1*4 + 1*7) % mod = 11
+          B_final = (1*1 + 1*2) % mod = 3
+
+        Output: "11 3"
+
+        The second query: 
+          After update: the segment [2,4] (0-indexed [1,4]) is toggled: 
+            The string: 
+                index0: 'A' -> remains
+                index1: 'B' -> toggled to 'A'? 
+                index2: 'A' -> toggled to 'B'
+                index3: 'A' -> toggled to 'B'
+                index4: 'A' -> toggled to 'B'
+            So the string becomes "AABBB" -> no, wait: 
+                The update: 1 3 5 -> 1-indexed: from 3 to 5 -> 0-indexed: 2 to 4.
+
+            So we toggle indices 2,3,4: 
+                index2: 'A' -> 'B'
+                index3: 'A' -> 'B'
+                index4: 'A' -> 'B'
+            Then the string: "ABBBB"
+
+          Then the query: 2 2 5 -> 1-indexed: from 2 to 5 -> 0-indexed: 1 to 4 -> characters: S[1]='B', S[2]='B', S[3]='B', S[4]='B'
+
+          Then the transformation matrix: 
+            We have 4 'B' matrices: 
+              M = [[1,0],[4,1]]
+
+          Then: 
+            A_final = 0 * 1 + 1000000000 * 0 = 0
+            B_final = 0 * 4 + 1000000000 * 1 = 1000000000
+
+        So output: "0 1000000000"
+
+        Therefore, the code.
+
+        We'll write the entire code.
+
+        Note: We use recursive segment tree. The constraints: 100000 nodes -> 400000 nodes for the tree. 
+
+        We'll test with the sample.
+
+        However, we must be cautious: the multiplication order in the segment tree: 
+          tree[idx] = multiply(tree[2*idx+2], tree[2*idx+1])   // right child * left child
+
+        And the query: 
+          return multiply(right_mat, left_mat)
+
+        This is consistent.
+
+        Let's code.
+
+        Important: We use ios_base::sync_with_stdio(false); cin.tie(NULL); for speed.
+
+        We assume the input and output are large.
+
+        Code:
+
+          #include <bits/stdc++.h>
+          ... 
+
+        But we'll write the necessary headers.
+
+        We'll run the sample.
+
+        I hope it passes.
+
+        Note: The identity matrix is used for non-overlapping segments.
+
+        We'll write the identity matrix as: Matrix(1,0,0,1)
+
+        And the push function: 
+          void push(int idx, int l, int r) {
+            if (lazy[idx]) {
+                swap(tree[idx].a, tree[idx].d);
+                swap(tree[idx].b, tree[idx].c);
+                if (l != r) {
+                    lazy[2*idx+1] ^= 1;
+                    lazy[2*idx+2] ^= 1;
+                }
+                lazy[idx] = 0;
+            }
+          }
+
+        We'll do.
+
+        Let me test the push: 
+          For a leaf: l==r, so we don't set children.
+
+        Now, we write the entire code.
+
+        Due to the constraints, we hope it runs in O(n log n).
+
+        We'll submit.
+
+        Note: The problem has 100,000 commands -> 100,000 * (log2(100000) ~ 100000 * 17 = 1.7e6 operations, which is acceptable.
+
+        We write the code accordingly.
+
+        Note: The update function: 
+          After updating the children, we combine: 
+            tree[idx] = multiply(tree[2*idx+2], tree[2*idx+1])
+
+        But what if the children have been toggled? We pushed the current node at the beginning. Then we updated the children by calling update, which pushes the children? 
+
+        Therefore, the children's matrices are updated and stored correctly.
+
+        We combine the updated children.
+
+        So we are safe.
+
+        Code:
+
+          (see below)
+
+        We hope it passes.
+
+        Note: We must be cautious: the segment tree is built for the entire string.
+
+        We'll run the sample in the code.
+
+        If there are any performance issues, we might need to avoid recursion? But 100000 nodes and depth 17 -> 100000*17 = 1.7e6, which is acceptable in C++.
+
+        Let me run the sample with the code.
+
+        We'll simulate the first query: 
+          Query: 2 1 5 1 1 -> [0,4] in the segment tree.
+
+          The root: 
+            We push the root: lazy[0] is 0 -> no change.
+            Then we see [0,4] is the entire segment -> we return tree[0] = the product of the entire segment.
+
+          How do we build the entire segment? 
+            We break the array [0,4] into [0,2] and [3,4]. 
+            Then the root = multiply( tree[2] (for [3,4]), tree[1] (for [0,2]) )
+
+          How to build [0,2]:
+            [0,2] is broken into [0,1] and [2,2]. 
+            Then [0,2] = multiply( tree[? for [2,2]), tree[? for [0,1]) )
+
+          Actually, the indexing: 
+            root: index0 -> [0,4]
+            left child: index1 -> [0,2]
+            right child: index2 -> [3,4]
+
+          For the leaf at index0: 
+            node index: we build recursively.
+
+          We don't need to simulate by hand.
+
+        We trust the segment tree.
+
+        We output the code.
+
+        Note: We must use 0-indexed for the segment tree array.
+
+        We'll use:
+
+          tree: vector<Matrix> tree(4*n);
+          lazy: vector<int> lazy(4*n,0);
+
+        And we use the standard indexing: 
+          left child: 2*idx+1
+          right child: 2*idx+2
+
+        We write the code accordingly.
+
+        Let me write.
+
+        Due to the length, we write the entire code as below.

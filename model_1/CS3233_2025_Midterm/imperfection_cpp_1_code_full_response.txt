@@ -1,0 +1,186 @@
+To solve this problem, we need to delete some elements from an array such that the resulting array is "perfect." A perfect array is defined as one where the maximum element is also the majority element, meaning its frequency is strictly greater than the sum of the frequencies of all other elements in the array. The goal is to achieve this with the minimum total deletion cost.
+
+### Approach
+1. **Problem Analysis**: The problem requires us to transform the given array into a perfect array by deleting elements with minimal cost. The key insight is that for any candidate value \( x \) (potential maximum in the resulting array), we must:
+   - Delete all elements greater than \( x \) (to ensure \( x \) is the maximum).
+   - Adjust the remaining elements (elements \( \leq x \)) so that the frequency of \( x \) is strictly greater than the combined frequency of all other elements. This involves deleting some non-\( x \) elements (values less than \( x \)) and possibly some \( x \) elements.
+
+2. **Precomputation**:
+   - **Frequency and Cost Arrays**: For each value \( x \), store its frequency and the list of deletion costs for its occurrences.
+   - **Suffix Sum Array**: Compute the cumulative cost of deleting all elements greater than any given value \( x \).
+   - **Prefix Count Array**: Compute the cumulative count of elements less than any given value \( x \).
+   - **Sorted Cost Lists**: For each value \( x \), sort its deletion costs and compute prefix sums for quick access to the cost of deleting a certain number of \( x \) elements.
+
+3. **Processing Candidates**:
+   - Iterate over each candidate value \( x \) from 1 to the maximum value in the array.
+   - For each \( x \):
+     - **Fixed Cost**: Retrieve the cost of deleting elements greater than \( x \).
+     - **Variable Cost**: If the initial frequency of \( x \) does not satisfy the majority condition, compute the minimal cost to delete enough non-\( x \) and \( x \) elements to meet the condition. This involves:
+       - Using Fenwick Trees (Binary Indexed Trees) to dynamically track and query the smallest deletion costs for non-\( x \) elements (values less than \( x \)).
+       - For each possible number of \( x \) elements to delete, compute the required deletions of non-\( x \) elements and use the Fenwick Trees to find the minimal cost for these deletions.
+
+4. **Result Extraction**: Track the minimal total cost (fixed cost + variable cost) across all candidate values \( x \).
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <climits>
+using namespace std;
+
+const int MAX_V = 300000;
+const int MAX_C = 300000;
+
+class Fenw {
+public:
+    int n;
+    vector<long long> tree;
+
+    Fenw(int size) : n(size) {
+        tree.assign(n+1, 0);
+    }
+
+    void update(int index, long long delta) {
+        while (index <= n) {
+            tree[index] += delta;
+            index += index & -index;
+        }
+    }
+
+    long long query(int index) {
+        if (index <= 0) return 0;
+        if (index > n) index = n;
+        long long s = 0;
+        while (index) {
+            s += tree[index];
+            index -= index & -index;
+        }
+        return s;
+    }
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n;
+    cin >> n;
+    vector<int> A(n), B(n);
+    for (int i = 0; i < n; i++) cin >> A[i];
+    for (int i = 0; i < n; i++) cin >> B[i];
+
+    vector<int> F(MAX_V+2, 0);
+    vector<long long> sum_cost(MAX_V+2, 0);
+    vector<vector<int>> costs_by_value(MAX_V+2);
+
+    for (int i = 0; i < n; i++) {
+        if (A[i] > MAX_V) continue;
+        F[A[i]]++;
+        sum_cost[A[i]] += B[i];
+        costs_by_value[A[i]].push_back(B[i]);
+    }
+
+    vector<long long> suffix_sum(MAX_V+3, 0);
+    for (int i = MAX_V; i >= 1; i--) {
+        suffix_sum[i] = suffix_sum[i+1] + sum_cost[i];
+    }
+
+    vector<int> total_count_below(MAX_V+2, 0);
+    for (int x = 1; x <= MAX_V; x++) {
+        total_count_below[x] = total_count_below[x-1] + F[x-1];
+    }
+
+    vector<vector<long long>> prefix_x_arr(MAX_V+2);
+    for (int v = 1; v <= MAX_V; v++) {
+        if (F[v] > 0) {
+            sort(costs_by_value[v].begin(), costs_by_value[v].end());
+            vector<long long> arr(F[v]+1);
+            arr[0] = 0;
+            for (int i = 1; i <= F[v]; i++) {
+                arr[i] = arr[i-1] + costs_by_value[v][i-1];
+            }
+            prefix_x_arr[v] = arr;
+        }
+    }
+
+    Fenw cnt_tree(MAX_C);
+    Fenw sum_tree(MAX_C);
+
+    long long candidate_ans = LLONG_MAX;
+
+    for (int x = 1; x <= MAX_V; x++) {
+        if (x >= 2) {
+            for (int c : costs_by_value[x-1]) {
+                cnt_tree.update(c, 1);
+                sum_tree.update(c, c);
+            }
+        }
+
+        if (F[x] == 0) continue;
+
+        long long fixed_cost = suffix_sum[x+1];
+        int k0 = F[x];
+        int t0 = total_count_below[x];
+        int D0 = max(0, t0 - k0 + 1);
+
+        if (D0 == 0) {
+            if (fixed_cost < candidate_ans) {
+                candidate_ans = fixed_cost;
+            }
+        } else {
+            long long best_step2 = LLONG_MAX;
+            for (int b = 0; b < k0; b++) {
+                long long a = (long long)D0 + b;
+
+                int low = 1, high = MAX_C;
+                int T = MAX_C;
+                while (low <= high) {
+                    int mid = (low + high) >> 1;
+                    long long cnt_here = cnt_tree.query(mid);
+                    if (cnt_here >= a) {
+                        T = mid;
+                        high = mid - 1;
+                    } else {
+                        low = mid + 1;
+                    }
+                }
+
+                long long cnt1 = cnt_tree.query(T-1);
+                long long sum1 = sum_tree.query(T-1);
+                long long s_nonx = sum1 + (a - cnt1) * T;
+
+                long long s_x = prefix_x_arr[x][b];
+                long long total_var = s_nonx + s_x;
+                if (total_var < best_step2) {
+                    best_step2 = total_var;
+                }
+            }
+            long long total_cost = fixed_cost + best_step2;
+            if (total_cost < candidate_ans) {
+                candidate_ans = total_cost;
+            }
+        }
+    }
+
+    cout << candidate_ans << endl;
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Initialization and Input Handling**: The code reads the input values for the array size, elements, and deletion costs.
+2. **Frequency and Cost Processing**: It calculates the frequency of each value and the total deletion cost per value, storing these in arrays.
+3. **Suffix Sum Array**: Computes the cumulative cost of deleting all elements greater than any value \( x \), enabling quick lookup during candidate processing.
+4. **Prefix Count Array**: Tracks the cumulative count of elements less than each candidate \( x \), used to determine initial conditions for the majority check.
+5. **Sorted Cost Lists**: For each value, the deletion costs are sorted, and prefix sums are precomputed to efficiently calculate the cost of deleting a certain number of elements.
+6. **Fenwick Trees for Dynamic Tracking**: These trees maintain the count and sum of deletion costs for elements less than the current candidate \( x \), allowing efficient range queries and updates.
+7. **Candidate Processing**: For each candidate \( x \):
+   - Elements with value \( x-1 \) are added to the Fenwick Trees.
+   - The fixed cost of deleting elements greater than \( x \) is retrieved.
+   - If the initial frequency of \( x \) meets the majority condition, the variable cost is zero.
+   - Otherwise, the code iterates over possible deletions of \( x \) elements, computes the required deletions of non-\( x \) elements, and uses the Fenwick Trees to find the minimal cost for these deletions.
+8. **Result Extraction**: The minimal total cost across all candidates is printed as the solution.
+
+This approach efficiently handles the constraints by leveraging precomputation and dynamic data structures to minimize both time and space complexity. The algorithm ensures optimal performance even for large input sizes.

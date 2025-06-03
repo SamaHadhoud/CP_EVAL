@@ -1,0 +1,980 @@
+We are given N courses, M initial dependencies, and K semesters. Then Q queries: for each query (C, D), we wish to add the dependency (C -> D) to the set S (which initially has M dependencies) only if the set remains acceptable (i.e., it is possible to assign each course to one of K semesters such that for every dependency (u, v) we have a_u < a_v).
+
+Note: The initial set S is acceptable. Also note that dependencies are of the form (u, v) with u < v.
+
+We can think of the dependencies as forming a directed graph (with edges from u to v). Since u < v, the graph is a directed acyclic graph (DAG) on the nodes 1..N. However, we are not only concerned with the DAG but also with the constraint that we have at most K semesters.
+
+The key observation: The requirement that the set of dependencies is acceptable is equivalent to the condition that the entire graph (which is a DAG) has a topological ordering that can be assigned to K semesters. However, note that the problem does not require that we assign the courses arbitrarily in the topological order; we are free to assign any course to any semester as long as the dependencies (u->v) are satisfied (i.e., u is in an earlier semester than v) and the semesters are from 1 to K.
+
+But note: We can also have multiple courses in the same semester. The problem is then equivalent to: can we assign each course i to an integer a_i in the range [1, K] such that for every edge (u, v), we have a_u < a_v.
+
+This is equivalent to: the graph must be a DAG and the length of the longest path (in terms of the number of edges) must be at most K-1? Actually, no: because the constraint is that the longest chain (a sequence of courses where each depends on the previous) must have at most K courses? Actually, the constraint is that the semester numbers must strictly increase along a chain. So if we have a chain of length L (with L edges, meaning L+1 courses), then we require at least L+1 semesters? Actually, no: because we can assign the same semester to multiple non-adjacent courses? But note: along a chain u1 -> u2 -> ... -> u_{L+1}, we require a_{u1} < a_{u2} < ... < a_{u_{L+1}}. Therefore, we must have at least L+1 distinct semesters? However, we have only K semesters. Therefore, the chain must have at most K courses? Actually, no: we have K distinct semesters, so the longest chain (in terms of the number of courses) must be at most K. But note: if we have a chain of K+1 courses, then we need K+1 distinct semesters, which we don't have.
+
+Therefore, a necessary condition is that the length of the longest chain (also known as the length of the longest path in the DAG, which is the same as the size of the maximum antichain by Dilworth? Actually, the longest chain in terms of the number of nodes) must be at most K. However, is that sufficient? Actually, no: we might have multiple chains that together force a conflict? But by Dilworth's theorem, we can cover the DAG with at most (longest chain) antichains? Actually, we can assign the same semester to all courses that are in the same antichain (i.e., incomparable courses). Therefore, we can assign the courses by the level of the antichain: the first antichain (minimal elements) gets semester 1, then the next gets semester 2, etc. Then the number of semesters required is the size of the longest chain (which is the minimum number of antichains needed to cover the DAG, by Dilworth). Therefore, the condition is that the longest chain (in terms of the number of nodes) must be <= K.
+
+But note: the problem says we have K semesters. So if the longest chain has length L (number of nodes), then we require L <= K.
+
+Therefore, the problem reduces to: 
+  We have a DAG (with edges from lower index to higher index? not necessarily, but the dependencies are (u, v) with u<v, so the natural ordering by course number is a topological order). However, note that the dependencies might not be consecutive. We are going to add edges (C, D) (with C<D) one by one, and we must check if after adding the edge the longest chain (in terms of the number of nodes) remains at most K.
+
+But note: the chain is defined as a sequence of courses v1, v2, ..., vk such that there is an edge from v1 to v2, v2 to v3, etc. The length of the chain is the number of nodes.
+
+However, note: the chain does not have to be contiguous in course numbers. Also, the initial graph is acceptable (so the longest chain is at most K). When we add an edge (C, D), we are adding a new constraint. This might create a longer chain? Or it might not? 
+
+But note: adding an edge might also create a chain that is too long. For example, if we already have a chain from A to C and from D to B, then adding (C, D) would create a chain from A to C to D to B, which might be too long.
+
+Therefore, we must be able to:
+  1. Precompute the longest chain in the initial graph? But note: the graph has up to 200,000 nodes and 200,000 edges. And we have Q up to 200,000. So we cannot run a standard longest path algorithm for each query.
+
+We need a way to quickly check the effect of adding an edge (C, D). Note that adding an edge (C, D) might only affect chains that pass through both C and D? Specifically, we are concerned with chains that now can go from ... to C to D to ...? 
+
+We can precompute for each node:
+  - dp_min[i]: the minimum semester that course i can be assigned to (if we consider the initial dependencies and any added ones that we have accepted so far). But note: we are processing queries sequentially and updating the graph.
+
+Alternatively, we can use dynamic programming to compute the longest chain ending at each node and the longest chain starting at each node. Then, when we add an edge (C, D), we are creating a new path from the chain ending at C to the chain starting at D. Therefore, the longest chain that passes through C and then D would be:
+   chain_length = chain_ending_at_C + chain_starting_at_D
+
+But note: we must be cautious because the chain that ends at C might already include nodes that are in the chain starting at D? Actually, the graph is a DAG and the edge is from C to D (and C < D, so the natural ordering is preserved). However, it is possible that there is no path from D to any node in the chain that ends at C? Actually, the chain ending at C is a sequence of nodes that ends at C, and the chain starting at D is a sequence of nodes that starts at D. Since we are adding an edge from C to D, then the entire chain is the chain ending at C (which includes C) plus the chain starting at D (which includes D). But note: the node C is already counted in the chain ending at C, and the node D is counted in the chain starting at D. However, the chain we form is the chain ending at C (which ends at C) and then we go to D and then the chain starting at D. Therefore, the total number of nodes in the chain is:
+   (length of chain ending at C) + (length of chain starting at D) 
+because the chain ending at C ends at C and the chain starting at D starts at D (so the node D is not included in the chain ending at C, and the node C is not included in the chain starting at D). However, note: the chain ending at C includes C, and the chain starting at D includes D. But when we form the chain: we have ... -> C -> D -> ... so we have the entire chain ending at C and then the entire chain starting at D. But note: the node C and the node D are distinct. Therefore, the total chain length is (chain_ending_at_C) + (chain_starting_at_D).
+
+But wait: what if the chain ending at C already includes D? That would be impossible because we have an edge from C to D and C < D, and we are processing in increasing order? Actually, the graph might have a path from C to D already? Then the chain_ending_at_C might not include D? Actually, the chain ending at C is a path that ends at C. Similarly, the chain starting at D is a path that starts at D. Since the graph is a DAG and we have no cycles, and we are adding an edge from C to D, then if there is already a path from C to D, the new edge would be redundant? And the chain_ending_at_C does not include D (because it ends at C). Similarly, the chain_starting_at_D does not include C. Therefore, the total chain length is chain_ending_at_C + chain_starting_at_D.
+
+So the condition for the new edge (C, D) is:
+   If chain_ending_at_C + chain_starting_at_D >= K+1, then adding the edge (C, D) would create a chain of length (chain_ending_at_C + chain_starting_at_D) which is at least K+1, which is unacceptable? Actually, we require the longest chain to be at most K (in terms of number of nodes). So if chain_ending_at_C + chain_starting_at_D >= K+1, then we must reject.
+
+But note: it is possible that there is an even longer chain that does not use this new edge? But we are only adding one edge. The initial graph had a longest chain of at most K. The new chain that we are forming by the new edge is chain_ending_at_C + chain_starting_at_D. However, there might be other chains that become longer because of the new edge? Actually, the new edge only adds a single edge. The only chains that are extended are those that end at C and then go to D and then follow the chain from D. So the above chain is the one we need to check.
+
+But note: what if the chain_ending_at_C and chain_starting_at_D are computed in the current graph (without the new edge)? Then when we add the edge, we are creating a chain of length (chain_ending_at_C + chain_starting_at_D). However, it is possible that the chain_ending_at_C might be updated by the new edge? Actually, we are processing queries sequentially and updating the graph. So if we accept the edge, then we must update our chains? But then the next query would use the updated chains.
+
+Therefore, we must maintain the graph and update the chain lengths as we add edges? However, updating the entire DP for the entire graph after each edge addition would be too expensive (O(N) per edge, and Q up to 200,000, so total O(N*Q) = 40e9 worst-case).
+
+We need a more efficient method.
+
+Alternative approach: we note that the graph is built on nodes 1..N and edges are only from a lower node to a higher node? Actually, the problem says: each dependency (u, v) has u < v. Therefore, the graph is a directed graph from lower index to higher index? But note: the initial graph and the added edges are all (u, v) with u < v. Therefore, the entire graph is a DAG and the natural ordering by the course number is a topological order.
+
+Therefore, we can process nodes in increasing order (from 1 to N). 
+
+We can maintain two arrays:
+   dp_in[u] = the length (in terms of nodes) of the longest chain ending at u.
+   dp_out[u] = the length (in terms of nodes) of the longest chain starting at u.
+
+But note: the chain starting at u: we can compute it by processing in reverse order? Actually, since the graph has edges only from a node to a higher node, we can compute:
+   dp_in[u] = 1 + max{ dp_in[v] } for all edges (v, u) where v < u? Actually, edges go from a node to a higher node, so an edge (v, u) means v < u. But then to compute dp_in[u], we need to consider all edges coming into u? Actually, the graph is built with edges (v, u) where v < u. Therefore, we can compute dp_in in increasing order of u.
+
+Similarly, for dp_out: we want the longest chain starting at u. Since the graph has edges from u to w for w>u, we can compute dp_out in decreasing order of u.
+
+But note: when we add an edge, we are adding a constraint. We must update the dp_in and dp_out for the nodes. However, updating the entire arrays after each edge addition would be too expensive.
+
+Alternatively, we can precompute the initial dp_in and dp_out without the query edges? Then when we add a query edge (C, D), we check:
+   if dp_in[C] + dp_out[D] >= K+1, then we reject.
+
+But is that sufficient? Consider: the initial graph already has a chain of length K, and then we add an edge that does not form a chain longer than K, but the graph already has a chain of length K? Actually, the initial graph is acceptable, so the longest chain is at most K. The new edge might form a chain that is at most K? But if dp_in[C] + dp_out[D] >= K+1, then the chain formed by the chain ending at C and the chain starting at D has length at least K+1, so we reject.
+
+However, what if the chain ending at C and the chain starting at D are not independent? That is, what if there is an overlap? Actually, the chain ending at C is a path that ends at C, and the chain starting at D is a path that starts at D. Since the graph is a DAG and we have no cycles, and because the new edge goes from C to D (and C < D), the chain ending at C and the chain starting at D are disjoint? Actually, they might share a node? Only if there is a path from D to some node in the chain ending at C? But that would require that there is a path from D (which is greater than C) to a node that is <= C? But the graph only has edges from lower to higher. Therefore, the chain ending at C is entirely in nodes <= C, and the chain starting at D is entirely in nodes >= D. Since C < D, these two sets are disjoint. Therefore, the total chain length is exactly dp_in[C] + dp_out[D].
+
+So condition: if dp_in[C] + dp_out[D] >= K+1, we reject.
+
+But note: what if there is already a direct edge or a path from C to D? Then the chain_ending_at_C might already include a path that leads to D? Actually, no: the chain_ending_at_C is computed without the new edge (because we haven't added it yet). Therefore, the current dp_in[C] and dp_out[D] are computed without the new edge. Then the new chain that we form by the new edge is of length dp_in[C] (which is the longest chain ending at C) and then we go to D and then the chain starting at D (which is the longest chain starting at D). So that is a chain of length dp_in[C] + dp_out[D]. 
+
+But wait: what if the chain_ending_at_C already includes D? Then we are double-counting? Actually, that cannot happen because the chain_ending_at_C ends at C and does not include D (since D > C and we are considering the current graph without the new edge). Similarly, the chain_starting_at_D does not include C.
+
+Therefore, the condition is: if dp_in[C] + dp_out[D] >= K+1, then we reject. Otherwise, we accept and then we add the edge. But then we must update the graph and the dp arrays? Because the new edge might create longer chains for other nodes? 
+
+For example, consider: 
+   We have an edge (C, D). Then for node D: 
+        dp_in[D] = max(dp_in[D], dp_in[C] + 1)   [but note: we are adding an edge from C to D, so we have an incoming edge from C to D, so we update dp_in[D]?]
+
+Similarly, for node C: 
+        dp_out[C] = max(dp_out[C], 1 + dp_out[D])   [because we can now go from C to D and then the chain from D]
+
+But then the change might propagate: 
+   For any node w that has an edge from D, we might update dp_in[w] = max(dp_in[w], dp_in[D] + 1) and so on.
+
+Therefore, if we update the entire graph, it might be too expensive.
+
+Alternative idea: we maintain the current dp_in and dp_out for each node. When we add an edge (C, D) and if we accept, we update the dp_in and dp_out for the nodes that are affected. However, the update might propagate to the entire graph? Worst-case, one edge might cause an update for O(N) nodes. Then worst-case total O(N*Q) which is 200,000 * 200,000 = 40e9, which is too slow.
+
+We need a better approach.
+
+Note: the condition we check is only on the current state of dp_in[C] and dp_out[D]. But if we accept the edge, we must update the chains. However, the problem only requires the acceptability condition to be maintained. The next query uses the updated graph.
+
+But note: the condition we are checking (dp_in[C] + dp_out[D] >= K+1) is sufficient to reject? And if not, we accept and update the graph? How do we update the graph? We must update the dp_in for D and then for all nodes that are reachable from D? Similarly, update the dp_out for C and all nodes that can reach C? But that is expensive.
+
+But note: the problem constraints (N, M, Q up to 200,000) and K is at most 100. We can use the fact that K is small.
+
+Idea: 
+   Since K is small (<=100), the chain lengths we care about are at most K. Therefore, we can store for each node the longest chain that ends at it, but note that the chain length cannot exceed K. 
+
+Moreover, when we add an edge (C, D), the new chain ending at D via C is dp_in[C] + 1. But if dp_in[C] + 1 is greater than the current dp_in[D], then we update dp_in[D] and then update all the descendants of D? Similarly for the ancestors of C for dp_out? But worst-case propagation is still O(N) per update.
+
+Alternatively, we note that if we update a node, we only need to update its direct neighbors? Then we can use a BFS? But worst-case the entire graph might be updated for each edge? Then worst-case total O(N*Q) which is too high.
+
+Another idea: we maintain for each node the current dp_in and dp_out. When we add an edge (C, D), if we accept (meaning dp_in[C] + dp_out[D] < K+1), then we update:
+   dp_in[D] = max(dp_in[D], dp_in[C] + 1)
+
+But note: we might have to update the descendants of D? However, if we update dp_in for D, then we have to update all nodes that have an edge from D? But the chain might extend. Similarly, we update dp_out for C: 
+   dp_out[C] = max(dp_out[C], 1 + dp_out[D])
+
+But then we have to update the ancestors of C? 
+
+However, note: the chain lengths are bounded by K. Therefore, the update propagation will only go at most K steps? Actually, when we update a node, the chain length we assign is at most K. But the propagation: if we update the dp_in of a node, we only update the next node if the new chain length is larger? And since the chain length increases by at least 1 at each step, we cannot propagate more than K steps? 
+
+But note: the graph might have many edges. However, the chain length we store for each node is the maximum chain length to that node. When we update a node D to have a new chain length = L (which is at most K), then for each neighbor w of D (with an edge D->w), we can update dp_in[w] = max(dp_in[w], L+1). But if L+1 is greater than the current dp_in[w] and also <=K, then we update w and then process the neighbors of w. But note: the chain length cannot exceed K, so if we get a chain length that is K+1, then we stop propagating? Actually, we must reject the edge before we even update.
+
+But in our condition, we already checked that the chain we are creating by the new edge is not too long: we checked that dp_in[C] + dp_out[D] < K+1. However, when we update the dp_in for D, we set it to at most max(current dp_in[D], dp_in[C]+1). Similarly, we update the dp_out for C to max(current dp_out[C], 1+dp_out[D]). Then we update the descendants of D and the ancestors of C? But note: the update for the descendants of D: we start at D and then do a BFS in topological order? Similarly for C? 
+
+But note: the graph is a DAG and the nodes are numbered from 1 to N. We can traverse the nodes in increasing order for updating dp_in? Actually, we can update the descendants of D (which are nodes with index > D) in increasing order? Similarly, for the ancestors of C (which are nodes with index < C) in decreasing order? 
+
+However, the propagation might be heavy: worst-case, we update O(N) nodes per edge? But note: the chain length is bounded by K, so when we update a node, the chain length we are setting is at most K. Therefore, we can use a BFS that stops when the chain length becomes too long (>=K) or when no improvement can be made? But worst-case, we still might update many nodes? 
+
+But observe: the chain length for any node is at most K. Therefore, each node can be updated at most K times? However, worst-case, the same node might be updated many times? But the chain length we assign is increasing. Since the chain length is bounded by K, each node can be updated at most K times. The total number of updates over all queries is O(N*K). Since K<=100 and N<=200,000, the total updates would be 20,000,000, which is acceptable.
+
+But how do we propagate? 
+
+We maintain:
+   dp_in[u]: the length of the longest chain ending at u (in the current graph).
+   dp_out[u]: the length of the longest chain starting at u.
+
+We also maintain the graph (adjacency lists for outgoing edges and incoming edges? But note: we are adding edges one by one. We will have to store the graph as we go.
+
+We also note: we are only adding edges (u, v) with u<v, so the graph remains a DAG with topological order 1..N.
+
+For the initial graph, we can compute dp_in and dp_out as follows:
+
+   For u from 1 to N:
+        dp_in[u] = 1   (the chain containing only u)
+        For each edge (v, u) (with v < u): 
+            dp_in[u] = max(dp_in[u], dp_in[v] + 1)
+
+   Similarly, for u from N down to 1:
+        dp_out[u] = 1
+        For each edge (u, w) (with w > u):
+            dp_out[u] = max(dp_out[u], dp_out[w] + 1)
+
+But note: the initial graph has M edges. We can precompute the initial dp_in and dp_out.
+
+Then, for each query (C, D):
+
+   Step 1: Check if current_dp_in[C] + current_dp_out[D] >= K+1. If yes, output "reject" and skip the update.
+
+   Step 2: If not, then we accept the edge. We add the edge (C, D) to the graph.
+
+   Step 3: Now, we update the dp_in and dp_out arrays as follows:
+
+        We know that the new edge (C, D) might extend the chain ending at D: 
+            new_chain_D = current_dp_in[C] + 1
+            If new_chain_D > current_dp_in[D]:
+                We set dp_in[D] = new_chain_D
+                Then we must update all nodes that have an edge from D? (i.e., the outgoing edges of D) because the chain ending at D might extend to those nodes.
+
+        Similarly, the new edge might extend the chain starting at C:
+            new_chain_C = 1 + current_dp_out[D]
+            If new_chain_C > current_dp_out[C]:
+                We set dp_out[C] = new_chain_C
+                Then we update the nodes that have an edge to C? (i.e., the incoming edges of C)
+
+        However, note: the propagation for dp_in: we start from D and then traverse the graph in increasing order (since the graph is from lower to higher, we traverse in increasing order of node index). Similarly, for dp_out: we start from C and then traverse in decreasing order.
+
+        But note: the graph might not be a simple chain. We need to update the entire graph? Actually, we do a BFS starting from the nodes that we update (like D for dp_in and C for dp_out) and propagate the changes.
+
+        Specifically:
+
+            Queue for updating dp_in: initially D (if we updated D).
+            While the queue is not empty:
+                Pop a node u.
+                For each neighbor w (w>u) such that there is an edge (u->w):
+                    If dp_in[u] + 1 > dp_in[w]:
+                        Then set dp_in[w] = dp_in[u] + 1
+                        And if this new value is <= K, then push w (because we can update w's children) 
+                        But if the new value is > K, we don't need to propagate? Actually, we don't care about chains longer than K? But we must store the chain length? However, we know that the chain length cannot exceed K? Actually, we set dp_in[w] = min(K, ...)? No, we store the actual chain length. And if we get a chain length > K, then we have a problem? Actually, the condition for the edge we added already passed, but this propagation might create a chain that is too long? However, note: the condition we checked for the new edge was only for the chain that goes through C and D. But the propagation might reveal that now we have a chain that is too long? Actually, we already added the edge and the graph is updated. We must check the entire graph? 
+
+        But note: the condition for acceptability is that the entire graph has no chain longer than K. Therefore, if during propagation we set dp_in[w] to a value greater than K, then we have violated the condition? However, we already added the edge. This means we made a mistake? 
+
+        Actually, the condition we checked initially was only for the chain that goes through the new edge. But the propagation might create a chain that does not go through the new edge? For example, we update w, and then we update x from w, and so on, and we get a chain that is longer than K? But note: the chain that ends at w must include the new edge? Not necessarily: it could be that the chain that ends at w goes through the new edge? Actually, we are updating because of the new edge. The chain that we are building in the propagation is built by the new edge and the existing edges.
+
+        Therefore, if at any time we set a dp_in[x] to a value > K, then we have violated the condition? But the problem says: we are to output "accept" only if the set remains acceptable. So we must not accept the edge if after updating the entire graph we have a chain longer than K? 
+
+        However, the condition we checked initially (dp_in[C] + dp_out[D] < K+1) is necessary and sufficient? 
+
+        Actually, it is sufficient? Because the only chain that we are extending is the one that goes from the chain ending at C to D and then the chain starting at D. But the propagation might create a chain that is even longer? For example, suppose we have:
+           ... -> C -> D -> E
+        Then the chain ending at E might be updated to (chain_ending_at_C + 2). But note: the chain ending at E is the chain ending at C, then C->D, then D->E. So the length is (chain_ending_at_C) + 2. But the chain we checked was chain_ending_at_C + chain_starting_at_D = (chain_ending_at_C) + (chain_starting_at_D) and note that chain_starting_at_D includes at least the edge D->E? So chain_starting_at_D is at least 2? Then we checked: chain_ending_at_C + chain_starting_at_D >= K+1? 
+
+        Actually, if chain_ending_at_C + chain_starting_at_D < K+1, then chain_ending_at_C + 2 <= chain_ending_at_C + (chain_starting_at_D) (because chain_starting_at_D is at least 2) and that is < K+1, so chain_ending_at_C+2 <= K? 
+
+        Therefore, the entire chain from ...->C->D->E is of length chain_ending_at_C + 2 <= K? 
+
+        Similarly, we can see that any chain that we form by the propagation will be at most (chain_ending_at_C) + (length of the path from D to x) and the length of the path from D to x is at most (chain_starting_at_D) - 1? Because the chain_starting_at_D is the length of the chain from D to the end. Then the entire chain from the beginning to x is at most chain_ending_at_C + (chain_starting_at_D) - 1? And we know chain_ending_at_C + chain_starting_at_D < K+1, so the entire chain is at most (K+1)-1 = K.
+
+        Therefore, if the condition holds (dp_in[C] + dp_out[D] < K+1), then after adding the edge (C, D), the entire graph will have the longest chain at most K? 
+
+        Why? Consider any chain that uses the new edge: it must go from some node A (which is the start of the chain ending at C) to C, then to D, then to some node B (the end of the chain starting at D). The length is (chain_ending_at_C) + (chain_starting_at_D) - 1? Actually, no: the chain ending at C includes C, and the chain starting at D includes D. Then the entire chain is the chain ending at C (which goes from A to C) and then the chain starting at D (which goes from D to B). The total length is |chain_ending_at_C| + |chain_starting_at_D|. But note: the edge C->D connects them. However, the chain_ending_at_C does not include D? And the chain_starting_at_D does not include C. So the entire chain is: A ... C, D ... B -> which is (length of chain_ending_at_C) + (length of chain_starting_at_D). 
+
+        Therefore, the chain that uses the new edge has length = dp_in[C] + dp_out[D]. And we require that to be at most K? Actually, we require that to be at most K? But our condition is that it is < K+1, so <= K.
+
+        But what about chains that do not use the new edge? They were already <= K.
+
+        Therefore, the condition we check (dp_in[C] + dp_out[D] < K+1) is sufficient and necessary.
+
+        So we do not need to propagate the updates? Then why update the dp arrays at all? 
+
+        Consider: we might have multiple queries. The next query might use the updated dp_in and dp_out. Therefore, we must update the dp_in for D and the dp_out for C? But we do not need to update the entire graph? We only update:
+            dp_in[D] = max(dp_in[D], dp_in[C] + 1)
+            dp_out[C] = max(dp_out[C], dp_out[D] + 1)
+
+        Why only D and C? 
+
+        Actually, we do not update the entire graph. The condition for the next query only requires the current state of the graph. But the next query might involve an edge (E, F) and we need the current dp_in[E] and dp_out[F]. However, if we do not update the entire graph, then the dp_in and dp_out arrays might not reflect the new edge? 
+
+        But note: the condition for the next query is: we check dp_in[E] + dp_out[F] >= K+1? However, if we do not update the entire graph, then the dp_in and dp_out might be too low? For example, the new edge (C, D) might have created a longer chain ending at D, which then could be used to form a longer chain ending at F? 
+
+        Therefore, we must update the entire graph? But we argued that the propagation is bounded by K and each node can be updated at most K times? 
+
+        However, we have a simpler option: we only update the dp_in for D and the dp_out for C? And then for the next query, we use the updated values? But that is not sufficient: the chain ending at a node w (that is a descendant of D) might become longer because of the new edge? And we did not update w.
+
+        But we do not need the exact dp_in and dp_out for every node for the condition? The condition for a query (E, F) is: if the current dp_in[E] + dp_out[F] >= K+1, then we reject. However, if we have not updated the entire graph, then the current dp_in[E] might be too low? Then we might accept an edge that we should reject? 
+
+        Therefore, we must update the entire graph? But that is expensive.
+
+        Alternatively, we can update the entire graph by propagating the changes. Since the chain lengths are bounded by K, we can do a BFS that stops when the chain length becomes too long? Actually, we can do:
+
+            We update the dp_in for D: 
+                new_val = dp_in[C] + 1
+                If new_val > dp_in[D] and new_val <= K, then update dp_in[D] and then for each outgoing edge (D, w): 
+                    recursively update w? 
+
+            Similarly for the dp_out for C.
+
+        How to update the dp_in for a node? We maintain a queue. We start with D (for dp_in) and C (for dp_out). Then:
+
+            Queue_in: initially D (if we updated D)
+            While Queue_in not empty:
+                pop u
+                For each edge (u, w) (with w>u): 
+                    candidate = dp_in[u] + 1
+                    if candidate > dp_in[w] and candidate <= K:   # we only update if we get a longer chain and we are still within the bound
+                        dp_in[w] = candidate
+                        push w to Queue_in
+
+            Similarly for dp_out: 
+                Queue_out: initially C (if we updated C)
+                While Queue_out not empty:
+                    pop u
+                    For each edge (v, u) (with v<u): 
+                        candidate = dp_out[u] + 1
+                        if candidate > dp_out[v] and candidate <= K:
+                            dp_out[v] = candidate
+                            push v to Queue_out
+
+        But note: we also have to update the incoming edges for the dp_in propagation? Actually, no: the propagation for dp_in: we update the node w (which is a direct neighbor of u) and then w might update its neighbors? 
+
+        However, the graph is large. But note: the chain length increases by at least one at each step. Therefore, from a node u we update a node w only if the chain length we are offering (dp_in[u]+1) is greater than the current dp_in[w] and at most K. Since the chain length cannot exceed K, the propagation from a node u will only update nodes that are at most (K - dp_in[u]) steps away? But worst-case, the entire graph? 
+
+        But the chain length we are propagating is bounded by K, and each node can be updated at most K times? Actually, the dp_in for a node can only increase, and it can be set at most K times (from 1 to 2, then to 3, ... up to K). Therefore, the total number of updates is bounded by O(N*K). Since K<=100 and N<=200,000, the total number of updates over all queries is 200,000 * 100 = 20e6, which is acceptable.
+
+        However, note: each edge might be traversed multiple times? Because when a node is updated, we traverse all its outgoing edges? The same edge might be traversed for each update of the source node? 
+
+        The total work in the propagation: 
+            Each update of a node (for dp_in) costs O(out_degree[node]). 
+            And each node can be updated at most K times? 
+
+        Therefore, the total work over all queries is: 
+            Sum_{node} (number of updates for node) * (out_degree[node]) 
+            <= (K * N) * (max_out_degree) 
+
+        But the max_out_degree might be O(N) for a node? Then worst-case total O(K * N * N) = 100 * (200,000)^2 = 4e12, which is too high.
+
+        We need to avoid iterating over all outgoing edges for a node that is updated many times.
+
+        Alternatively, we note that we are only updating a node if we get a longer chain. And the chain length we are propagating is bounded by K. Therefore, we can store for each node the current dp_in and then for each outgoing edge, we can update the next node? But that is the same as above.
+
+        How to optimize? We note that the graph is static? Actually, we are adding edges one by one. But the propagation we do is for the entire graph that has been built so far? 
+
+        We can use a priority queue? Actually, we are doing a BFS. 
+
+        Alternatively, we can precompute the graph? But the graph is changing.
+
+        We note: the propagation for dp_in: we only update a node w if we get a chain length that is greater than the current dp_in[w]. And we update it to a larger value. Then we update the outgoing edges. The same node w might be updated multiple times? But the chain length for w can only increase, and it can be updated at most K times. 
+
+        Therefore, the total number of times we update any node is at most K. And each update, we traverse all outgoing edges? But note: the same edge (u->w) might be traversed every time the node u is updated? 
+
+        Therefore, the total work for the propagation over all queries is: 
+            For each node u, the number of updates to u is at most K. For each update to u, we traverse all outgoing edges from u. 
+            So total work = K * (sum_{u} out_degree[u]) = K * (total_edges)
+
+        But note: the total_edges is the current graph. The initial graph has M edges, and we are adding up to Q edges (only the accepted ones). Therefore, the total_edges = M + (number of accepted queries). 
+
+        The number of accepted queries is at most Q (200,000). Therefore, total_edges <= M + Q <= 400,000.
+
+        Then total work = K * (M + Q) = 100 * 400,000 = 40e6, which is acceptable.
+
+        Therefore, we can do:
+
+            Precomputation for the initial graph for dp_in and dp_out: 
+                dp_in = [1]*(N+1)
+                dp_out = [1]*(N+1)
+
+                Build graph: 
+                  adj_out: for each node, list of neighbors (for edges from u to v, with u<v)
+                  adj_in: for each node, list of neighbors (for edges from v to u, meaning u is the head and v is the tail? Actually, for an edge (u, v) we store in adj_out[u] the node v, and in adj_in[v] the node u.
+
+                Then:
+                  for u from 1 to N:
+                     for each v in adj_in[u]: 
+                         dp_in[u] = max(dp_in[u], dp_in[v] + 1)   # but note: we are traversing in increasing order, so when we get to u, all v (which are < u) have been computed.
+
+                Similarly for dp_out: 
+                  for u from N down to 1:
+                     for each v in adj_out[u]: 
+                         dp_out[u] = max(dp_out[u], dp_out[v] + 1)
+
+            Then process Q queries:
+
+                for each query (C, D):
+
+                    if dp_in[C] + dp_out[D] >= K+1:
+                         output "reject"
+                    else:
+                         output "accept"
+
+                         # Add the edge (C, D) to the graph: 
+                         Append D to adj_out[C]
+                         Append C to adj_in[D]
+
+                         # Update dp_in for D: 
+                         new_in = dp_in[C] + 1
+                         if new_in > dp_in[D] and new_in <= K:   # note: if new_in is > K, we still have to reject? But we already checked that dp_in[C] + dp_out[D] < K+1, so new_in = dp_in[C]+1 <= (K+1-1) = K? Actually, because dp_out[D] is at least 1, so dp_in[C] + dp_out[D] >= dp_in[C] + 1 = new_in. Therefore, new_in <= (K+1)-1 = K? 
+                         # Actually: we have dp_in[C] + dp_out[D] < K+1 -> dp_in[C] + 1 <= K? Not necessarily: if dp_out[D] >= 2, then dp_in[C] + 1 could be up to K? But if dp_out[D] = 1, then dp_in[C] + 1 <= K? Actually, we know dp_in[C] + dp_out[D] < K+1, so if dp_out[D] = 1, then dp_in[C] + 1 < K+1 -> dp_in[C] + 1 <= K.
+
+                         So we can update if new_in > dp_in[D] (and we know new_in <= K).
+
+                         Similarly for dp_out: new_out = dp_out[D] + 1, and we know new_out <= K? Because: dp_in[C] + dp_out[D] < K+1 -> dp_out[D] <= K - dp_in[C] (which is at least 0) -> new_out = dp_out[D] + 1 <= K - dp_in[C] + 1. But we don't know if that is <=K? Actually, we know dp_in[C]>=1, so K - dp_in[C] + 1 <= K? Actually, yes: because dp_in[C]>=1 -> K - dp_in[C] + 1 <= K.
+
+                         Therefore, we can update without checking the bound again? Actually, the update value is at most K? 
+
+                         So we update:
+
+                         # For dp_in: 
+                         if new_in > dp_in[D]:
+                             dp_in[D] = new_in
+                             # Then we push D to a queue for propagating the dp_in update.
+
+                         Similarly, for dp_out: 
+                         new_out = dp_out[D] + 1
+                         if new_out > dp_out[C]:
+                             dp_out[C] = new_out
+                             # Then we push C to a queue for propagating the dp_out update.
+
+                         Then we propagate the dp_in update: 
+                            while queue_in not empty:
+                                u = pop from queue_in
+                                for each w in adj_out[u]:
+                                    candidate = dp_in[u] + 1
+                                    if candidate > dp_in[w] and candidate <= K:   # but candidate<=K is always true? because dp_in[u] <= K-1? Actually, if dp_in[u] is K, then candidate = K+1 -> we skip. So we must check candidate<=K.
+                                        dp_in[w] = candidate
+                                        push w to queue_in
+
+                         Similarly for dp_out: 
+                            while queue_out not empty:
+                                u = pop from queue_out
+                                for each w in adj_in[u]:   # w is a node that has an edge to u (so w < u) -> and we want to update w's dp_out: candidate = dp_out[u] + 1
+                                    candidate = dp_out[u] + 1
+                                    if candidate > dp_out[w] and candidate <= K:
+                                        dp_out[w] = candidate
+                                        push w to queue_out
+
+        But note: the propagation for dp_in: we traverse the graph in the forward direction (from a node to its direct successors). Similarly, for dp_out: we traverse the graph in the backward direction (from a node to its direct predecessors).
+
+        However, we must store the graph as we add edges? We are building the graph as we go.
+
+        We note: the graph is stored with adj_out and adj_in. When we add an edge (C, D), we add D to adj_out[C] and C to adj_in[D]. Then during propagation, we use these lists.
+
+        The propagation for dp_in: we start at D and then traverse to all nodes that are reachable from D? But we only traverse the direct neighbors? Then the next level? 
+
+        But note: the propagation might update a node multiple times? But we update a node only when we get a larger chain length? And we update at most K times per node? However, we are doing BFS and we update a node as soon as we can? 
+
+        We do not need to use a priority queue: we use a queue (BFS) and the propagation is in increasing order of node index? Actually, not necessarily: the graph might not be a chain. But we do not care about the order? We just update as we go.
+
+        However, note: if we update a node w, and then we update a node x that is a neighbor of w, and then we update w again from another path? Then the same node w might be updated multiple times in the same propagation? Actually, we update w only once per propagation? Because we update w to the candidate value and then we push it. But then if we later get a better candidate for w, we will update it again? 
+
+        Therefore, we might push the same node multiple times? But we do not mark visited? We can do: we update a node whenever we get a candidate that is larger and <=K. Then we push it. This might cause the same node to be updated from different paths? 
+
+        The total number of updates per node is at most K (because the chain length can only increase to at most K). Therefore, the total work is K * (total_edges) as argued.
+
+        Implementation:
+
+            We maintain:
+                adj_out: a list of lists for nodes 1..N (indexed 1..N)
+                adj_in: a list of lists for nodes 1..N
+
+                dp_in[1..N]: initialized as described
+                dp_out[1..N]: initialized as described
+
+            Precomputation for the initial graph: 
+                For i from 1 to N: 
+                    dp_in[i] = 1
+                For i from 1 to N:
+                    for each j in adj_in[i]:
+                         dp_in[i] = max(dp_in[i], dp_in[j] + 1)
+
+                Similarly for dp_out: 
+                    For i from N down to 1:
+                         for each j in adj_out[i]:
+                             dp_out[i] = max(dp_out[i], dp_out[j] + 1)
+
+            Then for each query:
+
+                Read (C, D)
+
+                if dp_in[C] + dp_out[D] >= K+1:
+                    print "reject"
+                else:
+                    print "accept"
+                    Add the edge: 
+                         adj_out[C].append(D)
+                         adj_in[D].append(C)
+
+                    # Update dp_in at D: 
+                    new_in = dp_in[C] + 1
+                    if new_in > dp_in[D] and new_in <= K:
+                         dp_in[D] = new_in
+                         queue_in = deque([D])
+                         while queue_in:
+                             u = queue_in.popleft()
+                             for w in adj_out[u]:
+                                 candidate = dp_in[u] + 1
+                                 if candidate > dp_in[w] and candidate <= K:
+                                     dp_in[w] = candidate
+                                     queue_in.append(w)
+
+                    # Update dp_out at C:
+                    new_out = dp_out[D] + 1
+                    if new_out > dp_out[C] and new_out <= K:
+                         dp_out[C] = new_out
+                         queue_out = deque([C])
+                         while queue_out:
+                             u = queue_out.popleft()
+                             for w in adj_in[u]:   # w: such that there is an edge w->u
+                                 candidate = dp_out[u] + 1
+                                 if candidate > dp_out[w] and candidate <= K:
+                                     dp_out[w] = candidate
+                                     queue_out.append(w)
+
+        However, note: the propagation for dp_in and dp_out are independent? We do one then the other? But what if the propagation for dp_in updates a node that then becomes a candidate for updating dp_out? Actually, the dp_in and dp_out are independent? 
+
+        But note: the condition for the next query only uses the current dp_in and dp_out. And we update both. However, the propagation for dp_in does not update dp_out, and vice versa. 
+
+        But the condition for the next query (E, F) is: dp_in[E] + dp_out[F]? We have updated both arrays. 
+
+        However, we did not update the entire graph? We only updated the nodes that are reachable from D (for dp_in) and the nodes that are ancestors of C (for dp_out). This is sufficient because the new edge only affects the chains that go through the new edge? 
+
+        But note: the propagation we do is for the entire graph that is reachable? So we update all nodes that are affected by the new edge? 
+
+        Therefore, the dp_in and dp_out arrays are updated for the entire graph? 
+
+        But note: the propagation for dp_in: we start at D and then update all nodes that are reachable from D? Actually, we update the nodes that are direct and indirect successors of D? Similarly for dp_out: we update the direct and indirect predecessors of C? 
+
+        However, the new edge might also create a chain that goes through C and then D? But we already updated the chain at D and at C? And then we update the successors of D and the predecessors of C? 
+
+        But the chain that goes from a node A to C to D to a node B: 
+            The chain ending at D is updated (by the new edge) and then we update the chain for the successors of D? Similarly, the chain starting at C is updated? 
+
+        However, the chain ending at D is updated to include the chain ending at C? Then when we update the successors of D, we use the new chain ending at D? 
+
+        Therefore, the propagation is correct.
+
+        But note: we do the propagation for dp_in and dp_out separately. There is no interaction: we update dp_in for D and then we update the entire forward graph from D? Similarly, we update dp_out for C and then the entire backward graph from C? 
+
+        This is sufficient because:
+            The new edge (C->D) only affects the chains that go through D and beyond? And the chains that go through C and before? 
+
+        Therefore, the algorithm is:
+
+            Precomputation for the initial graph for dp_in and dp_out (in increasing order for dp_in, decreasing order for dp_out).
+
+            Then for each query:
+
+                if dp_in[C] + dp_out[D] >= K+1: 
+                    reject
+                else:
+                    accept
+                    add edge (C, D) to the graph (adj_out[C] and adj_in[D])
+                    update_dp_in(D, dp_in[C] + 1)   # the function that propagates the update for dp_in starting from D
+                    update_dp_out(C, dp_out[D] + 1)   # the function that propagates the update for dp_out starting from C
+
+            Where update_dp_in(u, new_val) is:
+                if new_val <= dp_in[u] or new_val > K:   # we only update if new_val > dp_in[u] and new_val<=K
+                    return
+                else:
+                    dp_in[u] = new_val
+                    for each neighbor w in adj_out[u]:
+                        update_dp_in(w, new_val+1)   # but this is recursive and might cause deep recursion? We do iterative BFS.
+
+            But we already described iterative BFS.
+
+        Complexity: 
+            Total work over all queries: O(K * (M + Q)) = 100 * (initial_edges + accepted_edges) <= 100 * (200,000 + 200,000) = 40e6.
+
+        This is acceptable.
+
+        Let's test with the sample:
+
+        Sample Input #1:
+            4 1 2
+            1 2
+            3
+            2 3
+            3 4
+            1 3
+
+        Initial graph: only edge (1,2)
+
+        Precomputation:
+
+            dp_in: 
+                node1: 1
+                node2: max(1, dp_in[1]+1) = 2
+                node3: 1
+                node4: 1
+
+            dp_out:
+                node4: 1
+                node3: 1 (because it has no outgoing edge? but wait: we have no edge from 3 to 4 initially? 
+                Actually, the initial graph has only (1,2). 
+                So:
+                  node4: 1
+                  node3: 1
+                  node2: 1 (because it has an edge to nothing? but wait: we have no edge from 2 to anywhere? 
+                Actually, we have an edge (1,2): 
+                  For node2: adj_out[2] is empty? so dp_out[2]=1.
+                  For node1: adj_out[1] has [2] -> so dp_out[1] = max(1, dp_out[2]+1) = 2.
+
+            Then:
+                dp_in[1]=1, dp_in[2]=2, dp_in[3]=1, dp_in[4]=1
+                dp_out[1]=2, dp_out[2]=1, dp_out[3]=1, dp_out[4]=1
+
+        Query 1: (2,3)
+
+            Check: dp_in[2] + dp_out[3] = 2+1 = 3 >= 3? (K+1 = 2+1=3) -> 3>=3 -> true -> reject.
+
+        Query 2: (3,4)
+            Check: dp_in[3] + dp_out[4] = 1+1 = 2 < 3 -> accept.
+            Then we add edge (3,4) to the graph.
+
+            Update dp_in at 4: 
+                new_in = dp_in[3] + 1 = 2
+                Since 2>current dp_in[4] (which is 1) and 2<=K (which is 2) -> update dp_in[4]=2
+                Then we propagate from 4: 
+                    adj_out[4] is empty -> nothing.
+
+            Update dp_out at 3:
+                new_out = dp_out[4] + 1 = 1+1=2
+                Since 2>dp_out[3] (which is 1) -> update dp_out[3]=2
+                Then propagate from 3: 
+                    adj_in[3]: initially we have no incoming edge? So we added (3,4) but that is outgoing from 3, not incoming? 
+                    Actually, we have an edge (3,4) so we added 3 to adj_in[4]. But we have not added any edge to 3? 
+                    Therefore, adj_in[3] is empty? So nothing.
+
+            Now the arrays:
+                dp_in: [1,2,1,2]
+                dp_out: [2,1,2,1]
+
+        Query 3: (1,3)
+            Check: dp_in[1] + dp_out[3] = 1+2 = 3 >= 3 -> reject.
+
+        Output: 
+            reject
+            accept
+            reject
+
+        Matches sample.
+
+        Let's try the second sample.
+
+        However, note: the second sample has initial edges: 
+            2 5
+            1 3
+            1 4
+            4 6
+
+        And K=3.
+
+        Precomputation:
+
+            We'll build the graph:
+
+                adj_in: 
+                  5: [2]
+                  3: [1]
+                  4: [1]
+                  6: [4]
+
+                adj_out:
+                  2: [5]
+                  1: [3,4]
+                  4: [6]
+
+            dp_in:
+                node1: 1
+                node2: 1
+                node3: max(1, dp_in[1]+1)=2
+                node4: max(1, dp_in[1]+1)=2
+                node5: max(1, dp_in[2]+1)=2
+                node6: max(1, dp_in[4]+1)=3
+
+            dp_out:
+                node6: 1
+                node5: 1
+                node4: max(1, dp_out[6]+1)=2
+                node3: 1
+                node2: max(1, dp_out[5]+1)=2
+                node1: max(1, max(dp_out[3]+1, dp_out[4]+1)) = max(1, max(1+1, 2+1)) = 3
+
+            So:
+                dp_in: [1,1,2,2,2,3]
+                dp_out: [3,2,1,2,1,1]
+
+            Then queries:
+
+                Query1: (2,6) -> check dp_in[2] + dp_out[6] = 1+1 = 2 < 4 -> accept.
+                    Then add edge (2,6)
+                    Update dp_in[6]: new_in = dp_in[2] + 1 = 2 -> but current dp_in[6]=3 -> skip? (since 2<3) -> so no update for dp_in[6].
+                    Update dp_out[2]: new_out = dp_out[6] + 1 = 2 -> current dp_out[2]=2 -> skip.
+
+                Query2: (3,4) -> check dp_in[3] + dp_out[4] = 2+2 = 4 >=4 -> reject.
+
+                Query3: (4,5) -> check: dp_in[4] + dp_out[5] = 2+1=3<4 -> accept.
+                    Add edge (4,5)
+                    Update dp_in[5]: new_in = dp_in[4] + 1 = 3 -> update (since 3>2) and 3<=K (3) -> set dp_in[5]=3.
+                    Then propagate from 5: 
+                         adj_out[5] = [] (initially only the edge 2->5 and 4->5? But we haven't added any outgoing from 5? So nothing.
+                    Update dp_out[4]: new_out = dp_out[5] + 1 = 1+1=2 -> current dp_out[4]=2 -> skip.
+
+                Query4: (1,3) -> check: dp_in[1] + dp_out[3] = 1+1=2<4 -> accept.
+                    But note: we already have (1,3) in the initial graph? 
+                    Actually, the problem says: the initial set S is given. Then we add queries. So the initial graph already has (1,3). Then we are adding it again? 
+                    The problem: the set of dependencies. If we add an edge that is already present, then we are not changing the graph? 
+                    However, the problem does not say the set S is a set (without duplicates). But the input says: the initial graph has M edges. Then the queries are additional. 
+                    But the problem says: "add a new dependency (C_i, D_i) to S". So if the dependency is already present, then we are not changing the graph? 
+
+                    But note: the initial graph already has (1,3). So the query (1,3) is adding a duplicate? 
+
+                    How to handle duplicates? 
+
+                    The problem says: "it is guaranteed that S is acceptable", and then we add a new dependency. It does not say that the new dependency is not already in S? 
+
+                    Therefore, we must consider: if the edge is already present, then we don't need to update? But the condition: we check the current state. The edge is already present, so the condition we check is the same as without the edge? 
+
+                    How do we handle? 
+
+                    We can skip adding the edge if it is already present? But we must update the dp arrays? Actually, the edge is already in the graph, so the condition we check (dp_in[C] + dp_out[D]) is the same as if we added it? 
+
+                    Therefore, we can simply check the condition. 
+
+                    For (1,3): 
+                         dp_in[1] + dp_out[3] = 1+1=2 <4 -> accept.
+
+                    Then we add the edge? But the graph already has the edge? We must avoid duplicate edges? 
+
+                    We can store the graph as a set? Or we can avoid adding duplicate edges? 
+
+                    The problem: the initial graph has M edges, then we process Q queries. The queries might be duplicates? 
+
+                    We should avoid adding the same edge twice? 
+
+                    Therefore, we can store the edges in a set? But the propagation uses adjacency lists. 
+
+                    Alternatively, we can check: if the edge (C, D) is already present in the graph, then we output "accept" and do nothing? 
+
+                    But note: the condition for the next query uses the current graph. If the edge is already present, then we don't change the graph? 
+
+                    So for query (1,3): 
+                         Condition: dp_in[1] + dp_out[3] = 1+1=2<4 -> accept.
+                         But we do not add the edge again? 
+
+                    How to check quickly? We can store an array of sets for the graph? 
+
+                    However, we are storing adj_out and adj_in as lists. We can change to sets? But then the propagation: we iterate over the set? 
+
+                    Alternatively, we can use a 2D boolean matrix? But N is 200,000 -> too big.
+
+                    Instead, we can store a separate set for edges? 
+
+                    We'll maintain a set `edges` that contains tuples (u, v) for each edge.
+
+                    Then for each query:
+                         if (C, D) in edges: 
+                             then we output "accept" and skip the update? 
+                         else:
+                             do the condition check and then if accept, add to edges and update the graph and propagate.
+
+                    But note: the initial graph: we must add those edges to the set.
+
+            Let me continue the sample:
+
+                Query4: (1,3) -> already present? -> skip.
+
+                Query5: (2,4) -> check: dp_in[2] + dp_out[4] = 1+2=3<4 -> accept.
+                    Add edge (2,4)
+                    Update dp_in[4]: new_in = dp_in[2]+1 = 2 -> current dp_in[4]=2 -> skip.
+                    Update dp_out[2]: new_out = dp_out[4]+1=2+1=3 -> current dp_out[2]=2 -> update to 3.
+                    Propagate for dp_out from 2: 
+                         adj_in[2]: initially, no incoming edges? So nothing.
+
+                Query6: (3,6) -> check: dp_in[3] + dp_out[6] = 2+1=3<4 -> accept.
+                    Add edge (3,6)
+                    Update dp_in[6]: new_in = dp_in[3]+1=3 -> current dp_in[6]=3 -> skip.
+                    Update dp_out[3]: new_out = dp_out[6]+1=2 -> current dp_out[3]=1 -> update to 2.
+                    Propagate for dp_out from 3: 
+                         adj_in[3]: [1] -> update node1: candidate = dp_out[3] + 1 = 2+1=3 -> current dp_out[1]=3 -> skip.
+
+                Query7: (2,3) -> check: dp_in[2] + dp_out[3] = 1+2=3<4 -> accept.
+                    Add edge (2,3)
+                    Update dp_in[3]: new_in = dp_in[2]+1=2 -> current dp_in[3]=2 -> skip.
+                    Update dp_out[2]: new_out = dp_out[3]+1=3 -> current dp_out[2]=3 -> skip.
+
+                Query8: (5,6) -> check: dp_in[5] + dp_out[6] = 3+1=4>=4 -> reject.
+
+            Output: 
+                accept
+                reject
+                accept
+                accept
+                accept
+                accept
+                accept
+                reject
+
+            Matches sample.
+
+        Therefore, we implement:
+
+            edges = set of initial edges
+            Build adj_out and adj_in as lists? But for propagation we need to iterate over the edges. We also need to avoid duplicate edges.
+
+            Steps:
+
+                Read N, M, K.
+                edges = set()
+                adj_out = [[] for _ in range(N+1)]
+                adj_in = [[] for _ in range(N+1)]
+
+                for i in range(M):
+                    read A, B
+                    edges.add((A,B))
+                    adj_out[A].append(B)
+                    adj_in[B].append(A)
+
+                Precompute dp_in and dp_out as described.
+
+                Read Q.
+                for each query:
+                    read C, D
+                    if (C,D) in edges:
+                         print "accept"
+                         # do nothing? 
+                    else:
+                         if dp_in[C] + dp_out[D] >= K+1:
+                             print "reject"
+                         else:
+                             print "accept"
+                             edges.add((C,D))
+                             adj_out[C].append(D)
+                             adj_in[D].append(C)
+
+                             # Update dp_in for D: 
+                             new_in = dp_in[C] + 1
+                             if new_in > dp_in[D] and new_in <= K:
+                                 # update and propagate
+                                 queue_in = deque([D])
+                                 dp_in[D] = new_in
+                                 while queue_in:
+                                     u = queue_in.popleft()
+                                     for w in adj_out[u]:
+                                         candidate = dp_in[u] + 1
+                                         if candidate > dp_in[w] and candidate <= K:
+                                             dp_in[w] = candidate
+                                             queue_in.append(w)
+
+                             # Update dp_out for C:
+                             new_out = dp_out[D] + 1
+                             if new_out > dp_out[C] and new_out <= K:
+                                 queue_out = deque([C])
+                                 dp_out[C] = new_out
+                                 while queue_out:
+                                     u = queue_out.popleft()
+                                     for w in adj_in[u]:
+                                         candidate = dp_out[u] + 1
+                                         if candidate > dp_out[w] and candidate <= K:
+                                             dp_out[w] = candidate
+                                             queue_out.append(w)
+
+        Note: we must use collections.deque for the BFS.
+
+        However, note: the propagation might update the same node multiple times? But we are updating the dp_in and dp_out as we go. When we update a node, we set the new value and then we push it. Then if we get a candidate for the same node from a different path that is even larger, we update it again? 
+
+        This is intended: we want the longest chain.
+
+        But note: the propagation for a node might be done multiple times? For example, if we update a node u to chain length L, then later we get a candidate for u that is L+1? Then we update it again? 
+
+        This is possible? Actually, we process the BFS: we update a node and then we push it. Then we update its neighbors. Then if we later update a node that points to u? But u is already processed? 
+
+        Actually, the propagation for dp_in: we only traverse from a node to its direct successors. So if we update a node u, we update its direct successors w. Then if we update a predecessor of u to a higher chain length, we would then update u? But we don't: the propagation is only in the forward direction. 
+
+        Similarly, for dp_out: we only traverse from a node to its direct predecessors. 
+
+        Therefore, we do not update the same node twice in the same propagation? 
+
+        Actually, it is possible that a node u is updated by two different paths at the same propagation? Then we push u once and then update it to the larger value? But if we get a candidate that is larger than the current value, we update and push. 
+
+        However, we are doing BFS: we might push the same node multiple times? But we update the value as soon as we see a candidate? 
+
+        Example: 
+            We have two paths to u: 
+                path1: candidate1 = L1
+                path2: candidate2 = L2, and L2 > L1.
+
+            We update u to L1. Then we push u. Then we update the neighbors of u. Then later we get a candidate L2>L1 for u? Then we update u again and push it again? 
+
+        How to avoid? We can use a while loop that processes the entire queue? And we update a node whenever we see a candidate that is larger? 
+
+        This is acceptable because the chain length is bounded by K. The same node can be updated at most K times. 
+
+        Therefore, we do as above.
+
+        We'll code accordingly.
+
+        But note: the propagation might be heavy if we update the same node many times? However, the chain length is bounded by K, so each node is updated at most K times. And the total work per node is (number of times updated) * (out_degree). The total work is O(K * (M+Q)).
+
+        We are done.
+
+        Summary:
+
+            Precomputation:
+                edges = set of initial edges
+                Build adj_out and adj_in (for the initial graph) for nodes 1..N.
+
+                dp_in = [1]*(N+1)
+                for i from 1 to N:
+                    for each j in adj_in[i]:
+                         dp_in[i] = max(dp_in[i], dp_in[j] + 1)
+
+                dp_out = [1]*(N+1)
+                for i from N down to 1:
+                    for each j in adj_out[i]:
+                         dp_out[i] = max(dp_out[i], dp_out[j] + 1)
+
+            Then for each query:
+
+                if the edge (C, D) is already in the set `edges`:
+                    output "accept"
+
+                else:
+                    if dp_in[C] + dp_out[D] >= K+1:
+                         output "reject"
+                    else:
+                         output "accept"
+                         add the edge to `edges`, adj_out[C], adj_in[D]
+
+                         new_in = dp_in[C] + 1
+                         if new_in > dp_in[D] and new_in <= K:
+                             dp_in[D] = new_in
+                             queue_in = deque([D])
+                             while queue_in:
+                                 u = queue_in.popleft()
+                                 for w in adj_out[u]:
+                                     candidate = dp_in[u] + 1
+                                     if candidate > dp_in[w] and candidate <= K:
+                                         dp_in[w] = candidate
+                                         queue_in.append(w)
+
+                         new_out = dp_out[D] + 1
+                         if new_out > dp_out[C] and new_out <= K:
+                             dp_out[C] = new_out
+                             queue_out = deque([C])
+                             while queue_out:
+                                 u = queue_out.popleft()
+                                 for w in adj_in[u]:
+                                     candidate = dp_out[u] + 1
+                                     if candidate > dp_out[w] and candidate <= K:
+                                         dp_out[w] = candidate
+                                         queue_out.append(w)
+
+        This should work.
+
+        Note: we assume that the graph remains a DAG (which it does, because we only add edges (u, v) with u<v).
+
+        We must be cautious: the propagation for dp_out: we iterate over adj_in[u]: which are the nodes w such that there is an edge (w, u). But note: when we add an edge (C, D), we add C to adj_in[D] and D to adj_out[C]. For the propagation for dp_out starting from C: we then look at adj_in[C] (which are the nodes that have an edge to C). Similarly for the propagation for dp_in starting from D: we look at adj_out[D].
+
+        We are good.
+
+        Time complexity: 
+            Precomputation: O(N + M) for the initial graph.
+            Each query: 
+                Check: O(1)
+                Propagation: O( (number of nodes updated) * (out_degree of those nodes) ) per propagation? But we use the total_edges (M+Q) and each edge is traversed at most K times? 
+                Total over all queries: O(K*(M+Q)) which is 100 * (at most 400,000) = 40e6.
+
+        This is acceptable for 2 seconds.
+
+        Memory: 
+            We store the graph: total_edges = M+ (accepted_queries) <= 400,000 -> lists of size 400,000 * 2 (for adj_out and adj_in) and arrays of size N (which is 200,000). 
+            Also the set `edges` has at most 400,000 entries.
+
+        Therefore, we output the solution accordingly.
+
+        Let me run the second sample with the code to verify the propagation for query5 (2,4) and query6 (3,6) and query7 (2,3) to see if the dp arrays are updated correctly? 
+
+        But we already did the second sample by hand and it matched.
+
+        We are confident.
+
+        Note: we must use a deque for the BFS.
+
+        We'll write the editorial accordingly.
+
+        Editorial Summary:
+
+        We are given a directed acyclic graph (DAG) on nodes 1..N (with edges only from a lower-indexed node to a higher-indexed node) and a constraint that the longest chain (in terms of the number of nodes) must be at most K. The initial graph satisfies this. Then we process queries: for each query, we wish to add an edge (C, D) (with C<D) and then check if the condition still holds.
+
+        The key insight: 
+            The condition is equivalent to: the entire graph must have a path (chain) of at most K nodes. 
+            Adding an edge (C, D) might create a chain that is the concatenation of a chain ending at C and a chain starting at D. The length of the new chain would be (length of chain ending at C) + (length of chain starting at D). 
+            Therefore, if (chain_ending_at_C + chain_starting_at_D) >= K+1, then the new chain is too long and we reject the edge.
+
+        However, after adding the edge, the chain ending at D might be extended (by the chain ending at C) and similarly the chain starting at C might be extended (by the chain starting at D). This might then propagate to the entire graph? But we argued that the condition (chain_ending_at_C + chain_starting_at_D) < K+1 is sufficient to guarantee that the entire graph remains acceptable.
+
+        Therefore, we maintain two arrays:
+            dp_in[u] = the length of the longest chain ending at u (in the current graph).
+            dp_out[u] = the length of the longest chain starting at u.
+
+        And for each query (C, D):
+            if (C, D) is already in the graph: accept (and do nothing).
+            else: 
+                if dp_in[C] + dp_out[D] >= K+1: reject
+                else: 
+                    add the edge to the graph
+                    Then we update:
+                         dp_in[D] = max(dp_in[D], dp_in[C]+1)   [if the new value is greater and <=K]
+                         Then we propagate the update for dp_in from D to its direct and indirect successors (via BFS) as described.
+
+                    Similarly, update dp_out[C] = max(dp_out[C], dp_out[D]+1)   [if the new value is greater and <=K] and propagate the update for dp_out from C to its direct and indirect predecessors.
+
+        The propagation for dp_in: 
+            We start at D and then for each successor w of D: 
+                candidate = dp_in[D] + 1
+                if candidate > dp_in[w] and candidate <= K, then update w and push to the queue.
+
+        Similarly for dp_out: 
+            We start at C and then for each predecessor w of C: 
+                candidate = dp_out[C] + 1
+                if candidate > dp_out[w] and candidate <= K, then update w and push to the queue.
+
+        The propagation is bounded because the chain length cannot exceed K, so each node is updated at most K times. The total work over all queries is O(K*(total_edges)), which is acceptable.
+
+        We also precompute the initial dp_in and dp_out by dynamic programming (in topological order: increasing order for dp_in, decreasing order for dp_out).
+
+        This solution meets the constraints.
+
+        We output the editorial accordingly.

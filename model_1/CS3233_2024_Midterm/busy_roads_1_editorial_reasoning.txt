@@ -1,0 +1,471 @@
+Okay, I need to solve this problem about Robert traveling through cities in ERPLand. Let me restate the problem to make sure I understand. 
+
+We have N cities, M roads, and each day has C seconds. Robert starts at city 1 at time 0 of some day. He wants to get to city N. Each road has a travel time T_i and can only be entered during a specific time window [L_i, R_i] each day. He can wait in any city as long as he wants. The goal is to find the minimum total seconds (across possibly multiple days) to reach city N.
+
+Constraints: N up to 100,000, M up to 200,000, C up to 10^9. So we need an efficient solution.
+
+First, I think this is a shortest path problem with time constraints. But because he can wait arbitrarily in cities, and the time windows repeat every day, we have to consider that he might wait for the next day to use a road. However, since we're minimizing total time, waiting might be necessary.
+
+The challenge is the time windows for entering the roads. The total time can span multiple days, but we can model time modulo C? But the total time is absolute, not modulo. So we need to keep track of the absolute time when arriving at a city.
+
+But absolute time can be very large because C is up to 10^9 and T_i up to 10^9, and we might traverse many roads. We can't store absolute times directly because they might be huge.
+
+Alternative idea: use Dijkstra-like algorithm where the state is (city, time mod C) or something. But time mod C alone isn't enough because the absolute time matters for the total. However, note that the time windows repeat every day. So if we know the absolute time, we can compute the current second in the day as (absolute time mod C). But the state (city, mod_time) would have C states per city, which is 100,000 * 10^9 states — way too much.
+
+That won't work. We need a smarter approach.
+
+I recall that in problems with periodic time windows, we can use the concept of "timed" graphs. But how to handle the total time minimization?
+
+Another idea: we can use Dijkstra where the state is the city and the absolute time. But absolute time can be huge, and we can't store that. So we need to avoid storing absolute times.
+
+But note that when Robert waits in a city, he's essentially shifting his time to a point where a road becomes available. The key is to compute the earliest arrival time at each city.
+
+So let d[u] be the earliest absolute time that Robert can be at city u. We want d[N].
+
+How do we update d[u] from other cities?
+
+For a road from u to v: if at time d[u], we are at u. To use the road (u, v) with parameters T_i, L_i, R_i, we need to enter the road at time t such that t is in [L_i, R_i] and t >= d[u] (modulo day). But since we can wait, we can wait until the next available entry time.
+
+So the earliest time we can start traversing the road is the smallest t >= d[u] such that t mod C is in [L_i, R_i]. Then the arrival time at v would be t + T_i.
+
+But t is absolute time? Actually, we have to express t in terms of the current day.
+
+Let current time at u be d[u]. Let t_mod = d[u] mod C.
+
+Now, we have two cases:
+
+1. If t_mod <= R_i, then we might be able to use the current day's window if t_mod is within [L_i, R_i] or if it's before L_i, we can wait until L_i in the same day? Wait no: if t_mod < L_i, we can wait until L_i in the same day? But only if L_i >= t_mod? Yes. But also, if t_mod is after R_i, we have to wait until the next day.
+
+Actually, we can combine: the next time the window is available is:
+
+- If d[u] mod C <= R_i: then we can use the window that starts in the same day? But if d[u] mod C is less than L_i, we have to wait until L_i (same day). If d[u] mod C is in [L_i, R_i], we can leave immediately? But we can leave at d[u] only if d[u] mod C is in [L_i, R_i]. If it's less than L_i, we wait until L_i (same day). If it's greater than R_i, then we have to wait until the window of the next day.
+
+So the waiting time is:
+
+Let rem = d[u] mod C.
+
+Case 1: if rem <= R_i:
+    If rem >= L_i: then we can leave at d[u] (so no waiting beyond d[u]).
+    Else: we have to wait until (d[u] + (L_i - rem)), which is the same day.
+
+Case 2: if rem > R_i:
+    Then we have to wait until the next day's window. The next available time is: d[u] + (C - rem) + L_i.
+
+So the absolute time when we start traversing the road is:
+
+If rem <= R_i:
+    start_time = d[u] + max(0, L_i - rem)
+Else:
+    start_time = d[u] + (C - rem) + L_i
+
+Then, the arrival time at v is start_time + T_i.
+
+So we can use this to update d[v] = min(d[v], start_time + T_i)
+
+But note: the road is bidirectional. So we have to consider both directions? The problem says bi-directional. So the road (u, v) can be used from u to v and v to u.
+
+So in the algorithm, we have to update both directions.
+
+But in Dijkstra, we start from the source and relax edges. The source is city 1 at time 0. So d[1] = 0.
+
+Then, we use a priority queue to process nodes in order of increasing d[u]. When we process a node u, we relax all edges incident to u.
+
+But the graph is large: up to 200,000 edges. Dijkstra with a priority queue should be O((N+M) log N), which is acceptable for N=100,000 and M=200,000.
+
+But wait: the computation for each edge is O(1), so the total time is O(M log N). That should be acceptable.
+
+But let me check with the sample.
+
+Sample Input #1:
+3 3 10
+1 2 3 0 5
+1 3 1 7 8
+3 2 4 3 3
+
+Start at city 1 at time 0.
+
+d[1] = 0.
+
+Now, look at edges from 1:
+
+Edge 1: 1-2: T=3, L=0, R=5.
+rem = 0 mod 10 = 0.
+0 <= 5 and 0 >= 0 -> so start_time = 0 + max(0,0-0)=0.
+Arrival at 2: 0+3=3. So d[2] = 3.
+
+Edge 2: 1-3: T=1, L=7, R=8.
+rem=0, which is <=8? yes. But 0 <7, so start_time = 0 + (7-0)=7.
+Arrival at 3: 7+1=8. So d[3]=8.
+
+Now, from city 2: we have edge to 1 and 3? The third edge is 3-2: T=4, L=3, R=3.
+
+But we are at city 2 with time 3.
+
+From 2 to 3: the edge is 2-3? Actually, the third road is 3-2. So from 2 to 3, we use the same road? The road is bidirectional. So from 2 to 3: same parameters: T=4, L=3, R=3.
+
+At city 2, time 3. rem = 3 mod10=3.
+
+Check: 3 is in [3,3]? yes. So start_time=3. Then arrival at 3: 3+4=7.
+
+So we can update d[3] = min(8,7)=7.
+
+Then from city 3, we can go to 2? But we already have d[2]=3, which is less than what we would get from 3 to 2: 7+4? But that would be 11, which is worse.
+
+And we go to N=3? So output d[3]=7. Matches sample output.
+
+Another sample: Input #2.
+
+5 5 10
+1 2: T=1, [6,8]
+1 3: T=4, [3,5]
+2 4: T=4, [1,5]
+3 4: T=2, [2,6]
+4 5: T=6, [3,7]
+
+d[1]=0.
+
+From 1:
+Edge to 2: rem=0. 0<=8 -> but 0<6 -> wait until 6: start_time=6, arrive 2 at 6+1=7.
+Edge to 3: rem=0 -> 0<3 -> wait until 3: start_time=3, arrive 3 at 3+4=7.
+
+So d[2]=7, d[3]=7.
+
+Now, from 2: time 7. Edge to 4: T=4, [1,5]. 
+rem = 7 mod10=7. 7>5 -> so we have to wait until next day: start_time = 7 + (10-7) + 1 = 7+3+1=11? Then arrive at 4: 11+4=15.
+
+From 3: time 7. Edge to 4: T=2, [2,6]. 
+rem=7 mod10=7. 7>6? yes. So wait: 7 + (10-7) + 2 = 7+3+2=12? Then arrive at 4: 12+2=14.
+
+So d[4] = min(15,14)=14.
+
+Then from 4: edge to 5: T=6, [3,7]. 
+At 4 time 14. rem=14 mod10=4. 4 is in [3,7]? yes. So start_time=14, arrive at 5: 14+6=20.
+
+Is there a better way? From 1 to 3 at 7, then to 4 at 14, then to 5 at 20.
+
+But what about from 1 to 2 at 7, then to 4 at 15, then to 5: 15 + ? 
+At 4 at 15: rem=15 mod10=5, which is in [3,7], so leave immediately: 15+6=21. Worse.
+
+Or from 1 to 3, then to 4 at 14, then to 5 at 20.
+
+But is there a way to get to 5 faster? Maybe through other paths?
+
+We have another edge: 1 to 3 at 7, then 3 to 4 at 14, then 4 to 5 at 20.
+
+But what about 1 to 2 at 7, then 2 to 4 at 15, then 4 to 5 at 21? Worse.
+
+Or 1 to 3 at 7, then 3 to 4 at 14, then 4 to 5 at 20.
+
+Is there a direct way? Or via other nodes? The graph only has these edges.
+
+But wait, we have an edge from 1 to 3 and 1 to 2, and then 2 to 4 and 3 to 4, and 4 to 5. So no other paths.
+
+But let me check the times again.
+
+From 1 to 2: at 7. Then from 2 to 4: as above, 15. But from 2, is there another edge? Only to 1 and 4.
+
+Similarly for 3: only to 1 and 4.
+
+So d[5]=20. Matches sample.
+
+So the algorithm seems correct.
+
+But wait: when we update d[v], we set it to the arrival time. Then we use that to relax other nodes. Since we use Dijkstra (which is a greedy algorithm) with a min-priority queue, we always process the earliest arrival time first.
+
+But the complication is that the same node might be updated multiple times? But that's standard in Dijkstra.
+
+However, note that the time d[u] for a city u might not be the only time we can be at u; but it's the earliest. And when we relax an edge from u, we compute the next possible departure. Since we can wait arbitrarily, we only care about the earliest arrival time at each city. So once we set d[u], we don't need to update it again because any later arrival at u would lead to a later or equal departure on any edge.
+
+Therefore, we can use standard Dijkstra: we maintain an array d[1..N] of the earliest arrival time, initially infinity except d[1]=0. Then a priority queue of (time, city). For each city we extract, we relax all adjacent edges.
+
+But how to handle bidirectional edges? When we are at u, we consider each edge (u, v). Then we update v. Similarly, when we are at v, we might update u? But in this algorithm, we start from 1 and propagate to others. Since the graph is undirected, we should be able to reach all cities.
+
+But note: the edge from u to v and from v to u are the same? In the input, each road is bidirectional. So in the graph representation, for each road (A_i, B_i, T_i, L_i, R_i), we add two directed edges: A_i -> B_i and B_i -> A_i.
+
+But the parameters are the same for both directions? The problem says: "road i connects cities A_i, B_i, ... and can only be entered between L_i and R_i". Entering the road: so if we are going from A_i to B_i, we enter at A_i during [L_i, R_i]. Similarly, from B_i to A_i, we enter at B_i during [L_i, R_i]. So the same window applies for both directions? The problem says "can only be entered between", so yes, regardless of direction, the entry time must be in [L_i, R_i].
+
+So we can model the graph as an undirected graph. For each undirected edge, we have two directed edges with the same parameters.
+
+So the algorithm:
+
+Initialize:
+  d[1] = 0, and for i from 2 to N: d[i] = infinity (a very large number)
+  Priority queue (min-heap) pq: push (0, 1)
+
+While pq not empty:
+  Pop the smallest element (time, u)
+  If d[u] != time, skip (already processed with a better time)
+  For each edge incident to u: let the edge be (u, v, T, L, R)
+      Let rem = d[u] mod C
+      If rem <= R:
+          wait_time = max(0, L - rem)   # if rem < L, we wait until L; if rem>=L, wait_time=0
+          start_time = d[u] + wait_time
+      Else: # rem > R
+          wait_time = (C - rem) + L
+          start_time = d[u] + wait_time
+      arrival_time = start_time + T
+      If arrival_time < d[v]:
+          d[v] = arrival_time
+          push (arrival_time, v) into pq
+
+After processing, output d[N]
+
+But is this correct? Let me test with the samples.
+
+Sample 1: 
+From 1 to 2: 
+  rem=0, rem<=5 -> wait_time = max(0,0-0)=0, start=0, arrival=3 -> d[2]=3
+From 1 to 3:
+  rem=0, wait_time = max(0,7-0)=7, start=7, arrival=8 -> d[3]=8
+Then from 2: 
+  Edge to 3: (road 3: which is 3-2, but same for 2-3: T=4, L=3, R=3)
+  At 2: time=3, rem=3. 3<=3 -> wait_time = max(0, 3-3)=0, start=3, arrival=3+4=7 -> update d[3]=7
+Then from 3: we might update 1 and 2? But d[1] is 0, d[2] is 3, and 7+? for 3->1: 
+  Edge 1-3: same as above? Actually, for the edge 1-3: when going from 3 to 1, we have T=1, L=7, R=8.
+  At 3: time=7, rem=7 mod10=7. 7 is in [7,8] -> wait_time=0, start=7, arrival at 1=8. Worse than 0.
+  Similarly, edge 3-2: we just came from there? And we got 7, which is better than 3? No, 7>3. So no update.
+
+So d[3]=7. Output 7. Correct.
+
+Sample 2: 
+d[1]=0
+From 1: 
+  to 2: rem=0, 0<=8 -> but 0<6 -> wait_time=6, start=6, arrival=7 -> d[2]=7
+  to 3: rem=0, 0<3 -> wait_time=3, start=3, arrival=7 -> d[3]=7
+From 2: 
+  to 1: skip? because we have d[1]=0 and 7+? would be more.
+  to 4: at time 7, rem=7. 7>5? yes -> wait_time = (10-7)+1 = 3+1=4, start=7+4=11, arrival=11+4=15 -> d[4]=15
+From 3:
+  to 1: skip
+  to 4: at time 7, rem=7. 7>6? no, wait: 7>6? yes, because R_i=6. So wait_time = (10-7)+2 = 3+2=5, start=7+5=12, arrival=12+2=14 -> d[4]=14
+Then from 4: 
+  to 5: at time 14, rem=14 mod10=4. 4 in [3,7] -> wait_time=0, start=14, arrival=14+6=20 -> d[5]=20
+  Also, 4 has edges to 2 and 3: 
+      to 2: at 14, rem=4. For edge 2-4: same as above? The edge 2-4: L=1, R=5. 4 is in [1,5]? yes. So start=14, arrival=14+4=18 -> but d[2] is 7, so no update.
+      to 3: edge 3-4: L=2,R=6. 4 in [2,6] -> start=14, arrival=14+2=16 -> d[3]=7, so no update.
+Then we output d[5]=20.
+
+But wait: in the sample input, the edge from 2 to 4 is given as (2,4,4,1,5). So from 4 to 2: same parameters? But when we are at 4 at time 14, going to 2: 
+  rem=14 mod10=4. 4 is in [1,5]? yes. So start=14, arrival=14+4=18. Which is worse than d[2]=7, so we don't update.
+
+Similarly, for 3: the edge from 3 to 4 is (3,4,2,2,6). From 4 to 3: same? Then at 4 time 14: rem=4 in [2,6]? yes, so arrival at 3: 14+2=16. Worse than 7.
+
+So the algorithm works for the samples.
+
+But is there a flaw? Consider if the waiting time computation might be inefficient? It's O(1) per edge.
+
+But what about the modulo operation? Modulo for numbers up to 10^18? But in C++, we can do modulo for integers, which is O(1). Similarly in other languages.
+
+But what if the absolute time is huge? The d[u] can be very large, but modulo operation is still O(1). So no problem.
+
+But one more corner case: what if the window [L_i, R_i] wraps around? But the problem states that 0<=L_i<=R_i<C, so it doesn't wrap. So it's a contiguous interval.
+
+Another corner: what if we have to wait multiple days? The formula accounts for only the next day. But if we miss the window, we wait until the next day. But what if we have to wait more than one day? Actually, the next available window is the next day. Because the window repeats every day. So the formula:
+
+If rem <= R_i: then we can use the current day (if rem>=L_i, we go immediately; if rem<L_i, we wait until L_i in the same day).
+
+If rem > R_i: then we have to wait until the next day: so we add (C - rem) to get to the start of the next day? Actually, no: we add (C - rem) to get to the next day's start (time 0), and then we add L_i to get to the start of the window. So total wait is (C - rem) + L_i.
+
+This gives the very next occurrence of the window. Since windows are daily, that's the earliest.
+
+But what if we wait k days? Then the waiting time would be k*C + (L_i - rem) if we are in the same day? But if rem > R_i, then the next window is the next day, so k=1. And if we wait more days, say k days, then the start time would be d[u] + k*C + (C-rem) + L_i? But that's the same as (k+1)*C + L_i - rem. But we want the minimum, so k=0 is not possible (because rem>R_i) and k=1 is the next. So we don't need to consider k>1 because it would be later. So the formula is correct.
+
+Therefore, the algorithm should be:
+
+- Use Dijkstra to compute the earliest arrival time at each city.
+- For each edge from u to v, given the current time d[u], compute the earliest time to start traversing the edge (by waiting if necessary), then add T_i to get the arrival time at v.
+
+But note: the graph has up to 200,000 edges, and we process each edge once per relaxation? Actually, each edge is relaxed twice: once from each end? But in Dijkstra, we relax edges from a node when we process it. Since we have two directed edges per road, we will consider each road twice? But in the algorithm, when we are at u, we look at all edges incident to u (which include the edge to v). Similarly, when we are at v, we look at the edge to u. But that's necessary because the graph is undirected.
+
+So the total number of relaxations is 2*M. And each relaxation is O(1) computation. Then the total time is O(M log N), which is acceptable for M=200,000.
+
+But what about the initial time? d[1]=0. Then we process.
+
+But in the worst-case, the times might be very large (like 10^18) but that's okay because we are storing as integers.
+
+One more issue: when computing rem = d[u] mod C. How do we compute modulo for large numbers? In programming, if d[u] is huge, modulo is still constant time? Yes.
+
+But in C++ we can do: rem = d[u] % C. But note: the modulo operation for negative? But d[u] is nonnegative. So no problem.
+
+So I think the solution is correct.
+
+But let me write the pseudocode:
+
+d[1..N] = {0, inf, inf, ...}
+pq: min-heap of (time, node)
+push (0, 1)
+
+while pq not empty:
+    (t, u) = pq.pop()
+    if t != d[u]: continue
+    for each edge (u, v, T, L, R) incident to u:
+        rem = t % C
+        if rem <= R:
+            if rem >= L:
+                start = t
+            else: 
+                start = t + (L - rem)
+        else: 
+            start = t + (C - rem) + L
+        new_time = start + T
+        if new_time < d[v]:
+            d[v] = new_time
+            pq.push( (new_time, v) )
+
+print(d[N])
+
+But wait: in the else branch, when rem <= R, we can combine the two cases:
+
+if rem <= R:
+    start = t + max(0, L - rem)
+
+Yes, that's better.
+
+So:
+
+rem = t % C
+if rem <= R:
+    start = t + max(0, L - rem)
+else:
+    start = t + (C - rem) + L
+
+Then new_time = start + T.
+
+Yes.
+
+But is there a possibility of integer overflow? t can be huge, and we are adding C which is up to 10^9, and T up to 10^9, and we do this M times, so worst-case total time might be around 10^9 * 200000 = 2e17, which in C++ with long long (64-bit) is okay because 2e17 is about 1e18 which is within 64-bit signed integers (about 9e18). So we should use 64-bit integers.
+
+In the problem, the output is a single integer, and we are told that the constraints are large, so we use 64-bit integers.
+
+Therefore, the solution is as above.
+
+But one more corner: what if L - rem is negative? Then max(0, L-rem) is 0. But if rem>=L, we don't need to wait. So that's covered.
+
+Also, when rem>R, then we add (C-rem)+L. Since rem is in [0, C-1], C-rem is at least 1 and at most C. Then adding L: so the waiting time is at least 1 (if rem=C-1 and L=0? Then (C-rem)=1, plus L=0 -> 1). But that's correct: if we are at time t with rem=C-1 (last second of day), and the window starts at 0 of the next day, we have to wait 1 second to get to the next day's 0? Actually, no: the next day starts at time t + 1? Because at time t, which is rem=C-1, the next second is t+1 which is the next day's second 0. So if L=0, we can enter at the next day's second 0. So the time we start is t+1. But according to the formula: start = t + (C - rem) + L = t + (C - (C-1)) + 0 = t+1. Correct.
+
+Another corner: if rem is exactly R+1? But R_i < C, and rem in [0, C-1]. So rem>R_i is possible.
+
+Example: C=10, rem=6, R=5, L=0. Then we add (10-6)+0=4, so start at t+4. That is, we wait 4 seconds to get to the next day's 0? But actually, at t (which is 6 mod10), we wait 4 seconds to reach t+4, which is the next day's 0? But the window is [0,5] of the next day. So at t+4 (which is 0 mod10), we can enter. So that's correct.
+
+But if L is not 0? Say L=3: then we add (10-6)+3=7, so we start at t+7, which is (6+7)=13, mod10=3, which is in [0,5]? 3 is in [0,5]? Actually, [L,R]=[3,5]? Then 3 is in. Correct.
+
+So the formula is solid.
+
+Therefore, we can implement this algorithm.
+
+But note: the graph representation. We have to store the graph as an adjacency list.
+
+For each node u, we store a list of edges. Each edge record: {v, T, L, R}
+
+But also, since the road is bidirectional, for each input road (A_i, B_i, T_i, L_i, R_i), we add two edges: one from A_i to B_i and one from B_i to A_i, both with the same T_i, L_i, R_i.
+
+So the total edges in the graph: 2*M.
+
+In code, we need to avoid duplicates? But the input might have multiple roads between same pair? But that's okay: we add each as a separate edge. Then in the adjacency list of a node, we might have multiple edges to the same neighbor? But that's handled naturally: we process each edge independently.
+
+So no problem.
+
+Time complexity: O(M log N) for Dijkstra.
+
+Memory: O(N+M) for the graph.
+
+This should be within the limits: N=100000, M=200000. Memory: about 200000*2 edges, each storing 3 integers? Actually, for each edge we store: neighbor, T, L, R -> 4 integers. So total memory: 2 * M * 4 integers. 2*200000=400000 edges. 400000 * 4 * 4 bytes? 1.6 million integers? About 6.4 MB? Plus the arrays for d and the priority queue: the priority queue has O(N) nodes at a time? Actually, O(M) because we might push each node multiple times? But in Dijkstra, we only push a node when we update it, and each node might be updated multiple times? But worst-case, each edge might update the node? But in standard Dijkstra, we only push once per update. However, the number of updates per node is at most the in-degree? Actually, we can update a node multiple times if we find a better arrival time. But worst-case, the number of times we push a node is the number of times we update it, which might be up to the in-degree? But that's acceptable.
+
+But worst-case total pushes: O(M) because each edge might cause one update? Actually, each edge might cause an update if it improves the time. So worst-case we have O(M) pushes. And each push is O(log size) of the heap. The heap size is O(M). So total O(M log M) which is O(M log N) since M=O(N).
+
+So it's acceptable.
+
+Therefore, the solution is to use Dijkstra with the waiting time calculation as above.
+
+Now, to write the editorial:
+
+# Editorial for "Robert's Journey in ERPLand"
+
+## Problem Analysis
+Robert starts at city 1 at time 0 and must reach city N. The country has N cities and M bidirectional roads. Each day has C seconds. Each road has a travel time T, and can only be entered during a time window [L, R] (each day). Robert can wait indefinitely in any city. The goal is to compute the minimum total time (in seconds) to reach city N.
+
+The key challenge is to determine when Robert can use a road from a city: if he arrives at a city at time t, he may have to wait until the road's next available entry window. The waiting time depends on the current time modulo C and the window [L, R].
+
+## Intuition
+This is a shortest path problem where the cost is the total time (including waiting). We can use Dijkstra's algorithm to compute the earliest arrival time at each city. The state is the city and the earliest known arrival time at that city. For each outgoing road from a city, we compute the earliest time Robert can start traversing the road (which may involve waiting) and then the arrival time at the neighboring city.
+
+The critical insight is how to compute the waiting time for a road given the current time t at a city:
+- Let `rem = t % C`.
+- If `rem` is within the window [L, R] of the road, Robert can start traversing immediately (waiting time 0).
+- If `rem < L`, Robert must wait until time `t + (L - rem)` to start.
+- If `rem > R`, Robert must wait until the next day's window: specifically, until `t + (C - rem) + L`.
+
+After waiting, the traversal takes T seconds. Hence, the arrival time at the next city is `start_time + T`.
+
+## Algorithm Selection
+We use Dijkstra's algorithm with a min-heap (priority queue) to always expand the earliest arrival time. The priority queue stores pairs `(time, city)`. For each city we extract, we relax all its outgoing roads by computing the arrival time at the neighboring city as described.
+
+## Complexity Analysis
+- **Graph Construction**: We build an adjacency list for the graph. Each road is stored twice (for both directions). Hence, the graph has O(M) edges.
+- **Dijkstra's Algorithm**: The priority queue performs O(M) push and pop operations. Each operation takes O(log M) time. The relaxation of each edge is O(1) (constant-time computation). Therefore, the total time complexity is O(M log M) = O(M log N) (since M ≤ 200,000 and N ≤ 100,000).
+- **Memory**: The adjacency list uses O(M) space. The distance array uses O(N) space. The priority queue uses O(M) space. Thus, the total memory is O(N + M), which is acceptable for the given constraints.
+
+## Solution Code
+```python
+# Note: The following is pseudocode for illustration.
+
+import heapq
+
+def main():
+    import sys
+    data = sys.stdin.read().split()
+    # Parse first three integers: N, M, C
+    it = iter(data)
+    n = int(next(it)); m = int(next(it)); C_day = int(next(it))
+    
+    graph = [[] for _ in range(n+1)]
+    for _ in range(m):
+        a = int(next(it)); b = int(next(it)); T = int(next(it)); L = int(next(it)); R = int(next(it))
+        graph[a].append((b, T, L, R))
+        graph[b].append((a, T, L, R))
+    
+    INF = 10**18
+    dist = [INF] * (n+1)
+    dist[1] = 0
+    heap = [(0, 1)]
+    
+    while heap:
+        t, u = heapq.heappop(heap)
+        if t != dist[u]:
+            continue
+        for edge in graph[u]:
+            v, T, L, R = edge
+            rem = t % C_day
+            if rem <= R:
+                wait = max(0, L - rem)
+                start_time = t + wait
+            else:
+                wait = (C_day - rem) + L
+                start_time = t + wait
+            arrival_time = start_time + T
+            if arrival_time < dist[v]:
+                dist[v] = arrival_time
+                heapq.heappush(heap, (arrival_time, v))
+                
+    print(dist[n])
+
+if __name__ == '__main__':
+    main()
+```
+
+## Explanation
+1. **Graph Construction**: The input is read and the graph is stored as an adjacency list. Each road is added in both directions.
+2. **Initialization**: The distance array `dist` is initialized to infinity, except for the starting city 1 (time 0). A min-heap is initialized with `(0, 1)`.
+3. **Dijkstra's Loop**: While the heap is not empty:
+   - Extract the city `u` with the smallest current time `t`.
+   - If this time is not the latest known time for `u`, skip it.
+   - For each road from `u` to a neighbor `v`:
+     - Compute the current second within the day: `rem = t % C`.
+     - Determine the waiting time and the start time for the road:
+        - If `rem <= R`, the start time is `t + max(0, L - rem)`.
+        - Else, the start time is `t + (C - rem) + L`.
+     - The arrival time at `v` is `start_time + T`.
+     - If this arrival time improves the known time for `v`, update `dist[v]` and push `(arrival_time, v)` into the heap.
+4. **Output**: After processing, the earliest arrival time at city `N` is printed.
+
+This approach efficiently handles the time window constraints by computing the next possible start time for each road and uses Dijkstra's algorithm to ensure the earliest arrival times are found.

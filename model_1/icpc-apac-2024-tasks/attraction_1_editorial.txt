@@ -1,0 +1,149 @@
+### Problem Analysis
+The problem involves selecting a subset of cities in the fictional country of Manteiv to maximize an attraction score. The score is computed as the sum of attraction points from highways connecting pairs of cities in the subset, minus a penalty based on the number of pairs of cities in the subset that are not connected by a highway. The penalty is a large constant (10^6) multiplied by the square of the number of such missing edges. Given that the graph of cities and highways is planar (no two highways intersect except at cities, and no highway passes through a non-endpoint city), we leverage planarity properties to efficiently find the optimal subset.
+
+#### Key Insights
+1. **Planar Graph Constraints**: The graph is planar, meaning the number of edges \( m \) is \( O(n) \) (specifically, \( m \leq 3n - 6 \) for \( n \geq 3 \)). This sparsity allows efficient enumeration of certain subgraphs.
+2. **Clique Limitations**: Due to planarity, the largest possible clique (complete subgraph) is of size 4 (since \( K_5 \) is non-planar). Thus, only cliques of size 1, 2, 3, or 4 need consideration.
+3. **Penalty Impact**: The penalty term grows quadratically with the number of missing edges. For subsets larger than 4, the penalty becomes prohibitive (e.g., for size 5, even with the maximum 9 edges in a planar graph, the penalty is at least \( 10^6 \), reducing the score to at most \( 9 \times 10^6 - 10^6 = 8 \times 10^6 \)). However, a size-4 clique can yield up to \( 6 \times 10^6 \) (if all edges have maximum weight), which is better than the size-5 maximum. Thus, subsets larger than 4 are not competitive.
+4. **Candidate Subsets**: The optimal subset must be among:
+   - **Size 1**: Score 0.
+   - **Size 2**: An edge (highway) with its attraction points.
+   - **Size 3**: A triangle (3-clique) with the sum of its edge weights.
+   - **Size 4**: A 4-clique (\( K_4 \)) with the sum of its six edge weights.
+
+### Approach
+1. **Size 1**: Always yields a score of 0.
+2. **Size 2**: For each highway, the score is its attraction points. The maximum over all highways is a candidate.
+3. **Size 3 (Triangles)**:
+   - **Triangle Enumeration**: For each edge \( (u, v) \), find common neighbors \( w \) such that \( (u, w) \) and \( (v, w) \) are edges. To ensure \( u < v < w \) and avoid duplicates, process edges with the smaller-degree vertex first and check neighbors \( w > v \).
+   - **Efficiency**: Since the graph is planar, the degree of each vertex is bounded, and the total work is \( O(m \sqrt{m}) \), feasible for \( m \leq 300,000 \).
+4. **Size 4 (\( K_4 \))**:
+   - **\( K_4 \) Enumeration**: For each edge \( (u, v) \), find common neighbors. For each pair of common neighbors \( (w, x) \), if \( (w, x) \) is an edge, then \( \{u, v, w, x\} \) forms a \( K_4 \).
+   - **Efficiency**: The number of common neighbors per edge is at most 3 (since \( K_{2,4} \) is non-planar), making the work per edge \( O(1) \) and total \( O(m) \).
+
+### Solution Code
+```python
+import sys
+from collections import defaultdict
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        print(0)
+        return
+        
+    it = iter(data)
+    n = int(next(it)); m = int(next(it))
+    cities = []
+    for i in range(n):
+        x = int(next(it)); y = int(next(it))
+        cities.append((x, y))
+    
+    graph = [[] for _ in range(n+1)]
+    deg = [0] * (n+1)
+    edges_dict = {}
+    for i in range(m):
+        u = int(next(it)); v = int(next(it)); a = int(next(it))
+        if u > v:
+            u, v = v, u
+        graph[u].append(v)
+        graph[v].append(u)
+        deg[u] += 1
+        deg[v] += 1
+        edges_dict[(u, v)] = a
+        
+    adj_set = [set() for _ in range(n+1)]
+    for i in range(1, n+1):
+        adj_set[i] = set(graph[i])
+    
+    best = 0
+    
+    for key in edges_dict:
+        a_val = edges_dict[key]
+        if a_val > best:
+            best = a_val
+            
+    triangles = []
+    for u in range(1, n+1):
+        for v in graph[u]:
+            if u >= v:
+                continue
+            if deg[u] < deg[v] or (deg[u] == deg[v] and u < v):
+                pass
+            else:
+                continue
+            for w in graph[u]:
+                if w <= v:
+                    continue
+                if w in adj_set[v]:
+                    triangles.append((u, v, w))
+    
+    for (u, v, w) in triangles:
+        a1 = edges_dict.get((u, v), 0)
+        a2 = edges_dict.get((u, w), 0)
+        a3 = edges_dict.get((v, w), 0)
+        total_tri = a1 + a2 + a3
+        if total_tri > best:
+            best = total_tri
+            
+    done_k4 = set()
+    for (u, v) in list(edges_dict.keys()):
+        if deg[u] < deg[v] or (deg[u] == deg[v] and u < v):
+            set1 = adj_set[u]
+            set2 = adj_set[v]
+        else:
+            set1 = adj_set[v]
+            set2 = adj_set[u]
+        common = []
+        for w in set1:
+            if w == u or w == v:
+                continue
+            if w in set2:
+                common.append(w)
+        common.sort()
+        n_common = len(common)
+        for i in range(n_common):
+            for j in range(i+1, n_common):
+                w1 = common[i]
+                w2 = common[j]
+                if w1 > w2:
+                    w1, w2 = w2, w1
+                if (w1, w2) in edges_dict:
+                    four = tuple(sorted([u, v, w1, w2]))
+                    if four in done_k4:
+                        continue
+                    done_k4.add(four)
+                    nodes = sorted([u, v, w1, w2])
+                    e1 = (nodes[0], nodes[1])
+                    e2 = (nodes[0], nodes[2])
+                    e3 = (nodes[0], nodes[3])
+                    e4 = (nodes[1], nodes[2])
+                    e5 = (nodes[1], nodes[3])
+                    e6 = (nodes[2], nodes[3])
+                    total_k4 = 0
+                    total_k4 += edges_dict.get(e1, 0)
+                    total_k4 += edges_dict.get(e2, 0)
+                    total_k4 += edges_dict.get(e3, 0)
+                    total_k4 += edges_dict.get(e4, 0)
+                    total_k4 += edges_dict.get(e5, 0)
+                    total_k4 += edges_dict.get(e6, 0)
+                    if total_k4 > best:
+                        best = total_k4
+                        
+    print(best)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Input Parsing**: The input is read and parsed into the number of cities \( n \), highways \( m \), city coordinates, and highway details (endpoints and attraction points).
+2. **Graph Construction**: The graph is stored as adjacency lists, and a dictionary maps edges to their attraction points.
+3. **Size 2 Subsets**: The maximum attraction from any single highway (size 2 subset) is computed.
+4. **Triangle Enumeration (Size 3)**:
+   - For each edge \( (u, v) \), neighbors \( w \) of \( u \) (the vertex with smaller degree) that are also neighbors of \( v \) and satisfy \( u < v < w \) are found. The sum of the three edge weights is a candidate score.
+5. **\( K_4 \) Enumeration (Size 4)**:
+   - For each edge \( (u, v) \), common neighbors \( w \) and \( x \) are found. If \( (w, x) \) is an edge, \( \{u, v, w, x\} \) forms a \( K_4 \). The sum of the six edge weights is a candidate score, avoiding duplicates by storing sorted tuples of the four vertices.
+6. **Result**: The maximum score from size 1 (0), size 2, size 3, and size 4 subsets is printed.
+
+This approach efficiently checks all competitive subsets by leveraging planarity properties, ensuring optimal performance within constraints.

@@ -1,0 +1,194 @@
+### Approach
+The problem involves minimizing the total distance traveled by robots in a tree-structured warehouse system to assemble at a single warehouse. The solution leverages properties of trees and efficient algorithms to handle multiple queries.
+
+#### Key Insights:
+1. **Tree Structure**: The warehouses form a tree, meaning there's exactly one unique path between any two warehouses.
+2. **Optimal Assembly Point**: The optimal assembly point (minimizing total distance) lies on the path between the two farthest robots (diameter) in the query set. This is derived from the property that the median of a set in a tree minimizes the sum of distances.
+3. **Efficient Query Handling**: For each query, the solution identifies the diameter endpoints of the robot set, then performs ternary search along the path between these endpoints to find the assembly point that minimizes the total distance.
+
+#### Algorithm:
+1. **Preprocessing**:
+   - **Depth and Parent Arrays**: Using BFS or DFS, compute the depth of each node and a binary lifting table for efficient LCA (Lowest Common Ancestor) and node climbing operations.
+2. **Query Processing**:
+   - **Diameter Identification**: For each query, find the two farthest robots (diameter endpoints) by:
+     1. Selecting an arbitrary robot and finding the farthest robot from it.
+     2. Finding the farthest robot from the first endpoint.
+   - **Ternary Search**: Along the path between the diameter endpoints:
+     1. Convert the path into a linear segment where each point represents a node.
+     2. Use ternary search to evaluate the total distance for key points, leveraging convexity of the distance function.
+   - **Distance Calculation**: For each candidate point during ternary search, compute the sum of distances from all robots to that point using LCA to determine individual distances.
+
+#### Complexity Analysis:
+- **Preprocessing**: 
+  - Depth and parent arrays: \(O(N)\).
+  - Binary lifting table: \(O(N \log N)\).
+- **Query Handling**:
+  - Diameter identification: \(O(K \log N)\) per query.
+  - Ternary search: \(O(\log (\text{diameter length}))\) iterations per query, each requiring \(O(K \log N)\) for distance sums.
+  - Total per query: \(O(K \log N \log D)\), where \(D\) is the diameter length (up to \(N\)).
+  - Overall for \(Q\) queries: \(O(Q \cdot K \log N \log D)\), feasible given constraints (\(Q \leq 5000\), \(K \leq 50\)).
+
+### Solution Code
+```python
+import sys
+from collections import deque
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    it = iter(data)
+    n = int(next(it))
+    graph = [[] for _ in range(n+1)]
+    for _ in range(n-1):
+        a = int(next(it))
+        b = int(next(it))
+        graph[a].append(b)
+        graph[b].append(a)
+    
+    depth = [0] * (n+1)
+    parent0 = [0] * (n+1)
+    
+    queue = deque([1])
+    depth[1] = 0
+    parent0[1] = 0
+    while queue:
+        u = queue.popleft()
+        for v in graph[u]:
+            if v == parent0[u]:
+                continue
+            depth[v] = depth[u] + 1
+            parent0[u] = u
+            queue.append(v)
+    
+    max_log = 0
+    while (1 << max_log) < n:
+        max_log += 1
+    max_log = max(1, max_log)
+    
+    parent = [[0] * (n+1) for _ in range(max_log+1)]
+    for i in range(1, n+1):
+        parent[0][i] = parent0[i]
+    
+    for j in range(1, max_log+1):
+        for i in range(1, n+1):
+            prev = parent[j-1][i]
+            parent[j][i] = parent[j-1][prev] if prev != 0 else 0
+    
+    def lca(u, v):
+        if depth[u] < depth[v]:
+            u, v = v, u
+        diff = depth[u] - depth[v]
+        bit = 0
+        while diff:
+            if diff & 1:
+                u = parent[bit][u]
+            diff //= 2
+            bit += 1
+        
+        if u == v:
+            return u
+        
+        for j in range(max_log, -1, -1):
+            if parent[j][u] != parent[j][v]:
+                u = parent[j][u]
+                v = parent[j][v]
+        return parent[0][u]
+    
+    def dist(u, v):
+        w = lca(u, v)
+        return depth[u] + depth[v] - 2 * depth[w]
+    
+    def climb(u, steps):
+        node = u
+        for j in range(max_log+1):
+            if steps & (1 << j):
+                node = parent[j][node]
+                if node == 0:
+                    break
+        return node
+    
+    q = int(next(it))
+    out_lines = []
+    for _ in range(q):
+        k = int(next(it))
+        S = [int(next(it)) for _ in range(k)]
+        
+        if k == 1:
+            out_lines.append("0")
+            continue
+        
+        u0 = S[0]
+        best_dist = -1
+        candidate_u = u0
+        for s in S:
+            d_val = dist(u0, s)
+            if d_val > best_dist:
+                best_dist = d_val
+                candidate_u = s
+        u = candidate_u
+        
+        best_dist = -1
+        candidate_v = u0
+        for s in S:
+            d_val = dist(u, s)
+            if d_val > best_dist:
+                best_dist = d_val
+                candidate_v = s
+        v = candidate_v
+        
+        w = lca(u, v)
+        d1 = depth[u] - depth[w]
+        d2 = depth[v] - depth[w]
+        d_total = d1 + d2
+        
+        def g(t):
+            if t <= d1:
+                x = climb(u, t)
+            else:
+                x = climb(v, d_total - t)
+            total = 0
+            for s in S:
+                w2 = lca(s, x)
+                total += (depth[s] + depth[x] - 2 * depth[w2])
+            return total
+        
+        low = 0
+        high = d_total
+        while high - low > 2:
+            d_len = high - low
+            mid1 = low + d_len // 3
+            mid2 = high - d_len // 3
+            f1 = g(mid1)
+            f2 = g(mid2)
+            if f1 < f2:
+                high = mid2
+            else:
+                low = mid1
+        
+        best = 10**18
+        for t in range(low, high+1):
+            candidate_val = g(t)
+            if candidate_val < best:
+                best = candidate_val
+        out_lines.append(str(best))
+    
+    sys.stdout.write("\n".join(out_lines))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Tree Construction**: The warehouses and rails form a tree, read from input.
+2. **Preprocessing**:
+   - **Depth and Parent Arrays**: Computed via BFS starting from an arbitrary root (warehouse 1).
+   - **Binary Lifting Table**: Constructed to enable efficient LCA queries and node climbing operations.
+3. **Query Handling**:
+   - **Diameter Identification**: For each query, the two farthest robots (diameter endpoints) are found by computing distances from an arbitrary robot and then from the first endpoint.
+   - **Ternary Search**: The path between diameter endpoints is treated as a linear segment. Ternary search efficiently narrows down the optimal assembly point by evaluating the sum of distances at key points.
+   - **Distance Calculation**: For each candidate point during the search, the sum of distances from all robots to that point is computed using LCA to determine individual path lengths.
+4. **Output**: The minimum total distance for each query is output.
+
+This approach efficiently handles the constraints by leveraging tree properties and ternary search, ensuring optimal performance even for large inputs.

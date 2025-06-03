@@ -1,0 +1,1581 @@
+ Okay, we are given a string S of length N and Q queries. The queries can be of two types:
+   Type 1: update a character at position i to c.
+   Type 2: query the density of substring S[l..r].
+
+ The density of a substring is defined as follows:
+   Partition the substring into contiguous blocks of the same character.
+   Then, the density is the sum of the squares of the lengths of these blocks.
+
+ Example: "aabcccacc" -> blocks: "aa", "b", "ccc", "a", "cc" -> wait, but actually the entire string?
+   Actually, the sample query "2 1 9" for "aabcccacc" gives 19.
+
+ Let's break the entire string "aabcccacc":
+   [1: 'a'] -> but then next 'a'? Actually, it's "aa" at the beginning? 
+   Actually: 
+     positions 1-2: 'aa' -> block of length 2 -> 2^2 = 4
+     position 3: 'b' -> 1^2 = 1
+     positions 4-6: 'ccc' -> 3^2 = 9
+     position 7: 'a' -> 1
+     positions 8-9: 'cc' -> 2^2 = 4
+   Total = 4+1+9+1+4 = 19.
+
+ However, the sample input then updates: `1 7 c` -> changes the 7th character (which was 'a') to 'c'. 
+   Then the string becomes "aabcccccc"? But wait: 
+        Original: a a b c c c a c c
+        Change the 7th character (which is the first 'a' after the c's) to 'c'. 
+        So the new string is: "aabcccccc" -> but wait, the 7th character is the 7th in the original 9? 
+        Let's index: 
+          index: 1 2 3 4 5 6 7 8 9
+          char:  a a b c c c a c c -> after update: change S[7] to 'c': so becomes "aabcccccc"
+
+ Then the query "2 2 8": substring from index 2 to 8: "abcccccc" -> but actually from index 2 to 8: 
+        index2: 'a' -> but wait, index2 is the second character? 
+        So: 
+          index2: 'a' (the second 'a' in the first two a's) -> but then we start at index2: 
+          substring: "abcccccc" -> actually no: from index2 to index8: 
+          index2: 'a' -> but this is the last 'a'? Then we have:
+            [2: 'a'] -> but next is at index3: 'b'? Then index4-8: 'c'*5?
+          So blocks: 
+            [2]: 'a' -> length 1 -> 1
+            [3]: 'b' -> length 1 -> 1
+            [4-8]: 5 c's -> 25
+          Total = 1+1+25 = 27.
+
+ Therefore, the problem requires supporting point updates and range queries for the density.
+
+ However, note that the density is computed over contiguous blocks. The challenge: 
+   We have to update a character, which might merge adjacent blocks or split a block? 
+   Actually, updating a character at position i can affect the blocks that contain the neighbors (i-1, i, i+1). 
+
+ How to approach?
+
+ Let's think about the contribution of each character. Actually, the entire string is partitioned into runs (maximal contiguous same character). 
+
+ The density for a segment [l, r] is the sum over the runs that are entirely or partially in [l, r]. However, the run that starts before l or ends after r must be broken appropriately.
+
+ Alternatively, we can express the density as:
+
+   Let the entire string be partitioned into runs. For a run of length L, its contribution to the density is L^2, but only for the parts that are inside [l, r]. However, if the run is broken at the boundaries, then we get smaller runs.
+
+ How about we compute the density by traversing the segment? That would be O(n) per query -> too slow (n,q up to 200,000).
+
+ We need a data structure that can update and query efficiently.
+
+ Idea:
+
+ We note that the density = sum_{each maximal run in [l, r]} ( (length of that run)^2 )
+
+ But note: the runs are defined by the boundaries: a boundary occurs at position i if S[i] != S[i-1]. 
+
+ Actually, the entire segment [l, r] is broken at every position i (l < i <= r) where S[i] != S[i-1]. 
+
+ Then, the density can also be expressed as:
+
+   Let the segment [l, r] have k runs. Then the density is the sum of the squares of the lengths of these k runs.
+
+ How can we compute the density without knowing the runs explicitly? 
+
+ Alternative approach:
+
+   Consider the entire string and the boundaries. Each boundary at position i (meaning S[i] != S[i-1]) splits the string.
+
+   We can also note that the density of the entire string is:
+
+        density = (length of segment) + 2 * (sum of the lengths of the runs minus the number of runs) ??? 
+
+   Actually, that doesn't seem to help.
+
+   Instead, we can use the following:
+
+        Let F(l, r) = ?
+
+        Consider that the density of a contiguous segment of the same character of length L is L^2.
+
+        But if we have multiple runs, we break at boundaries.
+
+        How about we express the density in terms of the entire segment and the boundaries?
+
+        Actually, note:
+
+          Without boundaries, if the entire segment is one run of length L, then density = L^2.
+
+          But if there are boundaries, then we break the segment into runs.
+
+        We can also express the density as:
+
+          Let the segment [l, r] have runs of lengths: L1, L2, ..., Lk.
+
+          Then density = L1^2 + L2^2 + ... + Lk^2.
+
+        We can also write:
+
+          density = (L1 + L2 + ... + Lk) + 2 * (sum of the pairs of distinct positions within the same run? )
+
+        Actually, that is not straightforward.
+
+ Another idea: 
+
+        We can use a segment tree that stores information about the runs at the boundaries. 
+
+        We note that updating one character might change at most O(1) runs? 
+
+        Specifically, updating a character at position i:
+
+          It might break one run into three, or merge three runs into one, or merge two runs and break one, etc.
+
+        Actually, the update at position i can affect:
+
+          - The character at i changes, so the runs that contained i-1, i, i+1 might be altered.
+
+        How many runs are affected? Only the runs that include i-1, i, i+1? Actually:
+
+          Before update, the run that contained i might be split if the update breaks the run? 
+          Actually, we have to consider:
+
+            Let the original run that contains i: [a, b] (so from a to b, all same character).
+
+            After update, at position i we have a new character. Now:
+
+              Check the neighbors: 
+                If the new character is the same as S[i-1] and same as S[i+1], then the entire [a, b] becomes one run? Actually no: the update might merge the left and right.
+
+            Specifically:
+
+              Case 1: Before update, the character at i was same as left and same as right? Then the run was continuous. After update, if the new character is different from both, then we break the run into three: [a, i-1], [i], [i+1, b]. 
+
+              Case 2: If the new character is same as the left but different from the right, then we have [a, i] and [i+1, b]. 
+
+              Similarly for the right.
+
+          But also, we must consider that the update might merge with the left and/or right:
+
+            If the new character is same as the left and same as the right, then we merge the left run and the right run (if they exist and are adjacent) and the current update? Actually, we break the existing run at i and then merge the left and right runs (if they are the same as the new character) into one.
+
+          However, note that the update might also affect the boundaries at positions i, i+1, and also i-1 and i+1? Actually:
+
+            The boundaries are at positions: 
+                - between i-1 and i: this boundary might appear or disappear.
+                - between i and i+1: similarly.
+
+          Therefore, the update affects the boundaries at positions i and i+1 (if they exist). Also, the boundaries at positions i-1 and i+2? Actually, no: the boundary between i-2 and i-1 remains unchanged? 
+
+          But the run that ends at i-1 might now merge with the run that starts at i (if the new character equals S[i-1]), and similarly for i+1.
+
+        So the update might change:
+
+          - The run that originally contained i: it breaks, and then the new character might merge with the left run and/or the right run.
+
+        Therefore, the runs that are affected are:
+
+          - The run that contained i-1 (if exists and if the new character equals S[i-1])
+          - The run that contained i (the original one)
+          - The run that contained i+1 (if exists and if the new character equals S[i+1])
+
+        Actually, the runs that are directly overlapping with i-1, i, i+1.
+
+        The number of runs that are modified is at most 3.
+
+        So we can store the entire set of runs? But we have to update the data structure for the density over arbitrary segments.
+
+        We want to support:
+
+          Query: for segment [l, r], return the sum of the squares of the runs that lie entirely in [l, r] and also the partial runs at the boundaries? 
+
+        However, note that the runs that cross the boundaries of [l, r] must be broken: 
+
+          For example, if a run starts at position x < l and ends at y > l, then in [l, r] we only take the part from l to min(y, r). 
+
+        How to handle partial runs?
+
+        We need a segment tree that can merge segments and account for runs that cross the middle.
+
+        Standard approach for problems with run-length encoding: 
+
+          We can design a segment tree where each node stores:
+
+            - The entire segment's density (sum of squares of runs in that segment) -> but this is not additive because of the boundaries.
+
+          Actually, the segment tree must know about the runs at the boundaries to merge.
+
+          Specifically, each node [L, R] (representing the segment from L to R) should store:
+
+            - The density (sum of squares) of the runs that are entirely inside [L, R]? But note: runs that are broken at the boundaries are not entirely inside.
+
+          We have to account for the runs that are in the middle and then the ones that merge at the boundaries.
+
+          Standard technique for problems like "Count of distinct consecutive elements" or "run length" is to store:
+
+            - The leftmost character and the length of the run starting at the left.
+            - The rightmost character and the length of the run ending at the right.
+            - The entire segment's density.
+
+          Then, when merging two adjacent segments [L, mid] and [mid+1, R], we check if the last character of the left segment is the same as the first character of the right segment.
+
+          If they are the same, then we merge the last run of the left and the first run of the right into one.
+
+          How does that affect the density?
+
+            Originally, the left segment had a run at the end of length L1, and the right segment had a run at the beginning of length L2. 
+            In the merged segment, these two runs become one run of length L1+L2.
+
+            Then the density of the merged segment = 
+                (density of left) + (density of right) 
+                - (L1^2)   [because in the left segment the last run was counted as L1^2] 
+                - (L2^2)   [because in the right segment the first run was counted as L2^2]
+                + (L1+L2)^2
+
+          So: 
+            density_merged = left.density + right.density - L1^2 - L2^2 + (L1+L2)^2
+                          = left.density + right.density + 2*L1*L2
+
+          But note: the entire segment's density is additive except at the boundary.
+
+          Therefore, we can design a segment tree node that stores:
+
+            - left_char: the character at the leftmost position of the segment.
+            - right_char: the character at the rightmost position of the segment.
+            - left_run: the length of the run starting at the left (so the entire left run that is contiguous and same as left_char).
+            - right_run: the length of the run ending at the right (entire right run that is contiguous and same as right_char).
+            - total_density: the sum of squares of the runs in the entire segment.
+
+          However, note: the entire segment might have multiple runs. The total_density is the sum of squares for all runs in the segment.
+
+          How to merge two nodes: left_seg and right_seg?
+
+            Case 1: If left_seg's right_char != right_seg's left_char:
+                Then the runs do not merge. The new node:
+                  left_char = left_seg.left_char
+                  left_run = left_seg.left_run   [unless the entire left_seg is one run? actually if the entire left_seg is one run, then left_run is the whole segment? but we store the run starting at the left, which might not be the whole segment if there's a boundary?]
+
+            Actually, the stored left_run is the length of the run that starts at the left and continues until a break. Similarly for the right.
+
+            When merging, if the rightmost character of the left_seg is not the same as the leftmost character of the right_seg, then we just concatenate.
+
+                total_density = left_seg.total_density + right_seg.total_density
+
+                left_char = left_seg.left_char
+                left_run = left_seg.left_run   [but note: if the entire left_seg is one run and the run is of length left_seg.length? but we don't store the length of the segment?]
+
+            We must store the length of the segment? Actually, we know the segment length: R-L+1. But we can compute that from the children? 
+
+            Alternatively, we store the segment length as well? Or we can compute it from the children: the segment length is the sum of the lengths of the two children.
+
+            However, we don't need the entire segment length? But we do: because the left_run might be the entire left_seg? 
+
+            Therefore, we also store the length of the segment? Actually, we can avoid by having:
+
+              The left_run of a leaf is 1.
+
+              The left_run of an internal node: 
+                 if left_seg.left_run == left_seg.length (the entire left_seg is one run) and the run can merge with the right_seg? 
+                 but wait, we don't store the entire left_seg as one run? We only store the run starting at the left, which might be the entire segment? 
+
+            Actually, we don't store if the entire segment is one run. We only store the run from the left and the run from the right.
+
+            So we must store the entire segment length? Actually, yes, because the run starting at the left might be the entire segment? 
+
+            But we can compute the length of the segment from the children? 
+
+            However, we have the segment tree built on the base of the entire array, so each node covers a fixed interval. We can store the size (number of characters) in the node.
+
+            So node structure:
+
+              size: the length of the segment (number of characters)
+              lc: leftmost character
+              rc: rightmost character
+              lrun: length of the run starting from the left (so from the first character, how many consecutive same characters? including the first)
+              rrun: length of the run ending at the right (from the last character backwards, how many consecutive same? including the last)
+              dens: the total density (sum of squares of runs) in the segment.
+
+          How to merge two segments, left (L) and right (R):
+
+            size = L.size + R.size
+
+            lc = L.lc
+            rc = R.rc
+
+            lrun:
+                if L.lrun == L.size and L.rc == R.lc:
+                    then the entire left segment is one run and it can merge with the beginning of the right segment? 
+                    But note: the beginning of the right segment is R.lc, and if it equals L.rc (which is the same as L.lc? not necessarily: if the entire left segment is one run then L.lc = L.rc) then we have:
+                    lrun = L.lrun + (if the right segment's left run is of the same character, then we can take R.lrun? But wait: the entire left segment is one run, so L.rc = L.lc and equals R.lc. Then the left_run of the merged segment is L.lrun + R.lrun? 
+
+                Actually, no: because the run starting at the left of the merged segment would be the entire left segment plus the run starting at the left of the right segment? But only if the entire left segment is one run and the character matches the right segment's left character.
+
+                However, note: if the entire left segment is one run, then L.lrun = L.size. Then we check if L.rc (which is the same as L.lc) equals R.lc, then the run starting at the left of the merged segment continues for L.lrun + R.lrun? 
+
+                But what if the entire right segment is not one run? Then the left run of the merged segment is L.lrun + R.lrun? Only if the entire right segment is one run? Actually no: the run starting at the left of the right segment is R.lrun, which is the maximal run from the left of R. So the merged run at the left will be L.lrun (which is the entire left) and then the first R.lrun characters of the right? 
+
+                So: 
+                  if L.lrun == L.size and L.rc == R.lc:
+                      lrun = L.lrun + R.lrun   [because the entire left segment is one run and the first run of the right is merged?]
+                  else:
+                      lrun = L.lrun   [because the run from the left breaks at the boundary of the left segment?]
+
+            Similarly, rrun:
+                if R.rrun == R.size and L.rc == R.lc:
+                    rrun = R.rrun + L.rrun
+                else:
+                    rrun = R.rrun
+
+            But wait: what if the left segment is not entirely one run? Then we cannot merge beyond the left segment? So the left_run of the merged segment is just the left_run of the left segment.
+
+            However, what if the entire left segment is one run? Then we have a run from the left that goes to the end of the left segment. Then if the left segment's last character equals the right segment's first character, then the run continues into the right segment? But note: the run starting at the left of the merged segment is the entire left segment plus the contiguous same characters at the beginning of the right segment? 
+
+            Therefore, the rule for lrun:
+
+                if the entire left segment is one run (L.lrun == L.size) and the last character of the left segment (L.rc) is the same as the first character of the right segment (R.lc), then the run starting at the left of the merged segment extends to the right segment for R.lrun characters? 
+                Then lrun = L.size + R.lrun.
+
+                Otherwise, lrun = L.lrun.
+
+            Similarly, for rrun:
+
+                if the entire right segment is one run (R.rrun == R.size) and L.rc == R.lc, then rrun = R.size + L.rrun
+                Otherwise, rrun = R.rrun.
+
+            Now, for the density:
+
+                Initially, the density is L.dens + R.dens.
+
+                However, if the last run of L and the first run of R merge (because L.rc == R.lc), then we have to subtract the squares of the two runs that are being merged and then add the square of the merged run.
+
+                But note: the last run of L is not necessarily the entire left segment? And the first run of R is not necessarily the entire right segment? 
+
+                Actually, the last run of L is the run that ends at the boundary: that run has length L.rrun. Similarly, the first run of R is R.lrun.
+
+                And when they merge, we get a run of length L.rrun + R.lrun.
+
+                So the adjustment:
+
+                  If L.rc == R.lc:
+                      dens = L.dens + R.dens - (L.rrun)^2 - (R.lrun)^2 + (L.rrun + R.lrun)^2
+                  else:
+                      dens = L.dens + R.dens
+
+            But note: what if the entire left segment is one run? Then the last run of the left segment is the entire left segment, so L.rrun = L.size. Similarly, the first run of the right is R.lrun. Then we subtract L.rrun^2 and R.lrun^2 and add (L.rrun+R.lrun)^2.
+
+            However, what if the entire left segment is not one run? Then the last run of the left segment is just the last L.rrun characters, and the first run of the right is the first R.lrun characters. Then we do the same adjustment: subtract the squares of those two runs and add the square of the merged run.
+
+            This adjustment is always valid? 
+
+            Example: 
+              Left: "aab" -> runs: "aa" (2^2=4) and "b" (1^2=1) -> total dens=5.
+                lc='a', rc='b', lrun=2, rrun=1.
+
+              Right: "baa" -> runs: "b" (1) and "aa" (4) -> total dens=5.
+                lc='b', rc='a', lrun=1, rrun=2.
+
+              Now, merge: "aabbaa" -> but actually: 
+                The entire string: "aab" + "baa" = "aabbaa" -> runs: "aa", "bb", "aa" -> density: 4+4+4=12.
+
+              However, when merging: 
+                Since L.rc='b' and R.lc='b'? Actually, no: the left segment ends with 'b', and the right segment starts with 'b'. 
+                So we merge: the last run of left is the 'b' (length 1) and the first run of right is the 'b' (length 1) -> then we get a run "bb" (length 2).
+
+                Then adjustment: 
+                  dens = 5 (left) + 5 (right) - (1^2) - (1^2) + (2^2) = 5+5-1-1+4 = 12.
+
+            So it works.
+
+          But note: the left_run of the merged segment: 
+            The entire left segment is not one run? (because "aab" has two runs) -> so lrun for the merged segment is the lrun of the left segment: 2 (because the left segment's left run is 2, and it doesn't extend to the right because the characters at the boundary are different? Actually: the boundary between left and right: the last character of left is 'b' and the first of right is 'b' -> same? So they merge? 
+
+            However, the run starting at the left: the first two are 'a' and then the next is 'b'? So the run starting at the left is still 2? 
+
+            How do we compute lrun for the merged segment?
+              We check: is the entire left segment one run? No (because L.lrun=2, but L.size=3 -> not equal). So lrun = L.lrun = 2.
+
+            Similarly, rrun: the entire right segment? R.rrun=2, but R.size=3? Then rrun = R.rrun = 2? But actually the entire right segment is not one run? So we set rrun=2.
+
+          But what if the left segment ends with a run that is not the entire segment? Then the left_run of the merged segment is just the left_run of the left segment? 
+
+          However, what if the left segment ends with a run that is the entire segment? Then we extend? 
+
+          Actually, we defined:
+
+            if (L.lrun == L.size and L.rc == R.lc) then lrun = L.size + R.lrun.
+
+          But in the above example, we did not have the entire left segment as one run, so we set lrun = L.lrun.
+
+          Similarly, if the entire left segment is one run and the characters match, then we extend.
+
+          However, consider: 
+            Left: "aaa" (lrun=3, rrun=3, lc='a', rc='a')
+            Right: "aab" (lrun=2, rrun=1, lc='a', rc='b')
+            Merge: 
+              Since L.rc='a' and R.lc='a', we merge: 
+                Then the last run of left (which is the entire left, length 3) and the first run of right (length 2) merge? But the entire left is one run, so we set lrun for the merged segment = L.lrun + R.lrun = 3+2=5? 
+
+            But the entire merged segment is "aaaaab" -> the run starting at the left is 5? 
+
+            How about the run? 
+              The entire merged segment: "aaaaab" -> the first run is "aaaaa" (5) -> so lrun=5.
+
+            But the entire left segment was one run? Then the entire merged segment's left run is the entire left segment (3) plus the run at the beginning of the right (2) -> 5.
+
+          However, what if the entire left segment is one run but we don't merge? 
+            If the characters do not match: then lrun = L.lrun = 3.
+
+          Similarly, for the right run: 
+            We only extend the right_run if the entire right segment is one run and the characters match? 
+
+          But consider: 
+            Left: "aab" (lrun=2, rrun=1) -> not entire one run.
+            Right: "aaa" (lrun=3, rrun=3) -> entire one run.
+            Merge: 
+              The boundary: L.rc='b', R.lc='a' -> no merge.
+
+            Then the merged segment: 
+              lrun = left.lrun = 2? 
+              rrun = right.rrun = 3? 
+
+          But the entire merged segment: "aabaaa": 
+            The run starting at the left: "aa" -> length 2 -> correct.
+            The run ending at the right: "aaa" -> length 3 -> correct.
+
+          However, what if the left segment is not entirely one run but the last run of the left segment and the first run of the right segment are the same? Then we merge those two runs? 
+
+          But note: the condition for the adjustment in density is only that the last character of the left segment equals the first character of the right segment? 
+
+          And the adjustment for the runs at the boundaries (lrun and rrun) is independent? 
+
+          Actually, we have two conditions:
+
+            Condition for lrun: 
+              We extend the left_run only if the entire left segment is one run and the characters match? 
+
+          But what if the entire left segment is not one run? Then we cannot extend? 
+
+          Example: 
+            Left: "aaba" (so runs: "aa", "b", "a") -> lrun=2 (the two a's at the start), rrun=1 (the last 'a'? but actually the last run is only one 'a'? 
+            Then we set: 
+                lc='a', rc='a', lrun=2, rrun=1, dens = 4+1+1=6.
+
+            Right: "aaa" -> lrun=3, rrun=3, dens=9.
+
+            Now merge: 
+              The boundary: left.rc='a' and right.lc='a' -> merge the last run of left (length 1) and the first run of right (length 3) -> so we do the density adjustment: 
+                  dens = 6+9 - 1^2 - 3^2 + (1+3)^2 = 15 -1 -9 +16 = 21.
+
+            Now, what is the actual density of "aabaaaa"? 
+                Runs: "aa", "b", "aaaa" -> 2^2 + 1^2 + 4^2 = 4+1+16 = 21 -> correct.
+
+            But what about the left_run of the merged segment?
+              The entire left segment is not one run? (because "aaba" has three runs) -> so lrun = left.lrun = 2 -> correct: the first two are 'a', then the next is 'a'? Actually no: the first two are 'a', then the next is 'a'? But wait: the first two are 'a', then the next character is 'a'? But then why is it broken? 
+
+            Actually, the left segment "aaba": 
+                index0: 'a'
+                index1: 'a' -> same -> so run of 2
+                index2: 'b' -> different -> run of 1
+                index3: 'a' -> different -> run of 1.
+
+            Then the merged segment: the entire string "aabaaaa": 
+                The first two are 'a', then a 'b', then a run of 4 a's? 
+                The run starting at the left: the first two a's -> so length 2 -> so lrun=2.
+
+            And the right_run: 
+                The entire right segment was one run? But now the merged segment: the last run is the last 4 a's? 
+                How do we compute the right_run? 
+                  We defined: 
+                    if (R.rrun == R.size and L.rc == R.lc) then ... -> but here R.rrun was 3 and R.size=3, but the condition for the right_run in the merged segment: 
+                    The entire right segment is one run? Yes, but the condition also requires that the last character of the left segment (which was 'a') equals the first character of the right segment (which is 'a') -> so we set rrun = R.rrun + L.rrun = 3 + 1 = 4? 
+
+                But note: the last run of the left segment was the last character 'a' (length 1) and the entire right segment is a run of 'a' (length 3) -> so the merged run at the end is 4.
+
+                However, the entire merged segment: the run ending at the right is the last 4 a's -> so rrun=4.
+
+            Therefore, the condition for rrun is:
+
+                if the entire right segment is one run? But note: the entire right segment is one run, but that run is now merged with the last run of the left segment? 
+
+                Actually, we can compute the rrun of the merged segment as:
+
+                  If the entire right segment is one run and the boundary condition (L.rc == R.lc) holds, then the run ending at the right of the merged segment is the entire right segment plus the last run of the left segment? 
+
+                But note: the last run of the left segment might not be adjacent to the entire right segment? Actually, it is adjacent? 
+
+                However, what if the last run of the left segment is not at the boundary? 
+
+                Actually, the last run of the left segment is stored as L.rrun, and it is at the right boundary of the left segment. And the right segment's first run is stored as R.lrun, which is at the left boundary of the right segment. 
+
+                Then the condition for extending the right_run is:
+
+                  We can extend the right_run if the last run of the left segment (which is of length L.rrun) is adjacent to the entire run at the beginning of the right segment? 
+
+                But note: the right_run of the merged segment is the run that ends at the very end of the merged segment. This run might be:
+
+                  The run that ends at the right of the right segment? But if the entire right segment is one run? Then the run that ends at the right of the right segment is the entire right segment. And if the last character of the left segment (which is the character at the boundary) is the same as the character of the right segment, then the entire run that ends at the right of the merged segment is the entire right segment plus the last run of the left segment? 
+
+                Actually, that is not necessarily the entire run? 
+
+                Consider: 
+                  Left: "baa" -> runs: "b", "aa" -> lc='b', rc='a', lrun=1, rrun=2, dens=1+4=5.
+                  Right: "aab" -> runs: "aa", "b" -> lc='a', rc='b', lrun=2, rrun=1, dens=4+1=5.
+                  Merge: "baaaab" -> runs: "b", "aaaa", "b" -> but wait: 
+                         Actually: "b", then "aaaa", then "b"? -> no: the entire string: 
+                         b, then a (at the end of left) and then a's in the right? Then the a's merge: so runs: "b", "aaaa", "b" -> density: 1+16+1=18.
+
+                Now, when merging:
+
+                  Condition for density: 
+                    L.rc='a', R.lc='a' -> same -> so we merge: 
+                      Subtract: L.rrun^2 = 2^2 = 4, R.lrun^2=2^2=4, and add (2+2)^2=16 -> dens = 5+5-4-4+16 = 18.
+
+                Now, for the rrun of the merged segment?
+                  The entire right segment is not one run? (because "aab" has two runs) -> so we set rrun = R.rrun = 1? 
+                  But the actual run ending at the right of the merged segment is the last character 'b' -> length 1 -> correct.
+
+                However, the last run of the merged segment is the last character? So we don't extend.
+
+                How about the left_run? 
+                  The entire left segment is not one run? -> so lrun = L.lrun = 1 -> correct: the first character is 'b' -> run of 1.
+
+            Therefore, the rules for lrun and rrun:
+
+                lrun = 
+                  if (L.lrun == L.size and L.rc == R.lc) then L.lrun + R.lrun
+                  else L.lrun
+
+                rrun = 
+                  if (R.rrun == R.size and L.rc == R.lc) then R.rrun + L.rrun
+                  else R.rrun
+
+            However, wait: in the example above with "baa" and "aab", the entire right segment is not one run? So we don't extend the rrun. 
+
+            But what if the entire right segment is one run? Then we extend? 
+
+            Example: 
+              Left: "baa" -> as above: lrun=1, rrun=2, lc='b', rc='a'
+              Right: "aaa" -> lrun=3, rrun=3, lc='a', rc='a'
+              Merge: "baaaaa" -> runs: "b", "aaaaa" -> density: 1+25=26.
+
+              Now, for the merged segment:
+                lrun: 
+                  entire left segment? 3? no: left segment size=3, but L.lrun=1 (so not entire) -> lrun=1.
+                rrun: 
+                  entire right segment is one run? yes -> and L.rc='a' and R.lc='a' -> same -> so rrun = R.rrun + L.rrun = 3+2 = 5? 
+                  But the entire run at the end is 5? -> yes.
+
+            However, note: the last run of the left segment (which is the last two a's) is adjacent to the entire run of the right segment? Then the run at the end of the merged segment is the last two a's of the left and the entire right segment? -> total 5.
+
+          But what if the entire left segment is one run? Then we extend the left_run? 
+
+          However, what if the entire left segment is one run and the entire right segment is one run? Then we extend both? 
+
+          Example: 
+            Left: "aaa", Right: "aaa"
+            Then merged: "aaaaaa"
+            lrun: 3+3=6? 
+            rrun: 3+3=6? 
+
+          But the entire segment is one run? Then the left_run should be 6? and the right_run should be 6? 
+
+          However, the run starting at the left is the entire segment? So lrun=6. The run ending at the right is also the entire segment? So rrun=6.
+
+          So the rules hold.
+
+          But note: the condition for extending the left_run requires the entire left segment to be one run? Why not just check the boundary? 
+
+          Consider: 
+            Left: "aaba" (so runs: "aa","b","a") -> last run is one 'a'. 
+            Right: "aaa" -> entire one run? 
+            Then the merged segment: "aabaaaa" -> runs: "aa","b","aaaa" -> the run starting at the left is "aa" -> length 2.
+
+            How do we compute lrun? 
+              Since the entire left segment is not one run (because "aaba" has three runs) -> so lrun = left.lrun = 2 -> correct.
+
+          But what if the left segment is not entirely one run, but the run starting at the left actually extends into the right segment? 
+
+          Example: 
+            Left: "aaab" -> runs: "aaa","b" -> lrun=3, rrun=1, lc='a', rc='b'
+            Right: "baa" -> runs: "b","aa" -> lrun=1, rrun=2, lc='b', rc='a'
+
+            Now, if we update the boundary character? Actually, the boundary: the last character of left is 'b', and the first of right is 'b'? Then we merge the last run of the left (which is the 'b') and the first run of the right (the 'b') -> so we get a run "bb" in the middle? 
+
+            Then the entire string: "aaabbaa" -> runs: "aaa","bb","aa" -> density: 9+4+4=17.
+
+            Now, when merging:
+
+              lrun: 
+                entire left? no -> so lrun = left.lrun = 3 -> correct: the first run is "aaa", length 3.
+
+              rrun:
+                entire right? no -> so rrun = right.rrun = 2? -> but the last run is "aa", which is 2? correct.
+
+              But note: the merged run in the middle: we don't extend the left_run or the right_run? 
+
+          Therefore, the rules for lrun and rrun are independent of the merge? They are computed solely by:
+
+            - The left segment's left_run and the condition (if the entire left segment is one run and the boundary matches) then we extend the left_run by the right segment's left_run.
+
+            Similarly for the right_run.
+
+          But note: the condition for extending the right_run: we require that the entire right segment is one run and the boundary matches? 
+
+          Why not extend the right_run by the last run of the left segment even if the entire right segment is not one run? 
+
+          Consider: 
+            Left: "aa" -> runs: one run? -> lrun=2, rrun=2, lc='a', rc='a'
+            Right: "aab" -> runs: "aa","b" -> lrun=2, rrun=1, lc='a', rc='b'
+
+            Merge: 
+              Boundary: same character? yes -> so we merge the last run of left (which is the entire left, length 2) and the first run of right (length 2) -> so the run in the middle is 4? 
+
+            Then the entire segment: "aaaab" -> runs: "aaaa","b" -> density: 16+1=17.
+
+            Now, for the merged segment:
+              lrun: 
+                entire left? yes -> and boundary same -> so lrun = 2 + R.lrun = 2+2=4 -> correct: the first run is 4 a's.
+              rrun: 
+                entire right? no -> so rrun = R.rrun = 1 -> correct: the last run is the last character 'b'.
+
+          But what if we try to extend the right_run when the entire right segment is not one run? 
+
+            For the right_run of the merged segment: 
+              The run ending at the right is the last character 'b'? So we don't extend.
+
+          However, what if the run at the end of the merged segment is actually longer? 
+
+          Example: 
+            Left: "a" -> lrun=1, rrun=1, lc='a', rc='a'
+            Right: "ab" -> lrun=1, rrun=1, lc='a', rc='b'
+
+            Merge: 
+              Boundary same? yes -> so we merge the last run of left (length 1) and the first run of right (length 1) -> run of length 2.
+
+            Then the entire segment: "aab" -> runs: "aa","b" -> density: 4+1=5.
+
+            Now, the merged segment:
+              lrun: entire left? yes (1==1) -> so lrun = 1 + R.lrun = 1+1=2 -> correct: the first run is 2 a's.
+              rrun: entire right? no -> so rrun = R.rrun = 1 -> correct: the last run is the last character 'b'.
+
+          Therefore, the rules for lrun and rrun only extend when the entire segment (left for lrun, right for rrun) is one run and the boundary matches.
+
+          However, note: the entire segment being one run is equivalent to: 
+              for the left segment: lrun == left.size -> which means the entire segment is one run? 
+              because the run starting at the left extends the entire segment? 
+
+          Similarly, for the right segment: rrun == right.size.
+
+          This is correct.
+
+        Summary of node merge:
+
+          size = L.size + R.size
+          lc = L.lc
+          rc = R.rc
+
+          // left run: 
+          if (L.lrun == L.size && L.rc == R.lc) 
+              lrun = L.lrun + R.lrun;
+          else 
+              lrun = L.lrun;
+
+          // right run:
+          if (R.rrun == R.size && L.rc == R.lc)
+              rrun = R.rrun + L.rrun;
+          else
+              rrun = R.rrun;
+
+          // density:
+          dens = L.dens + R.dens;
+          if (L.rc == R.lc) {
+              // subtract the two runs that are merged: the last run of L (length L.rrun) and the first run of R (length R.lrun)
+              dens = dens - (L.rrun * L.rrun) - (R.lrun * R.lrun) + (L.rrun + R.lrun) * (L.rrun + R.lrun);
+          }
+
+        Now, we must build a segment tree that supports point updates and range queries? 
+
+        However, note: the query is for an arbitrary range [l, r]. Our segment tree nodes are built for contiguous segments. We want to query an interval [l, r] that might not align with the entire segment? 
+
+        Actually, we can build a segment tree that covers the entire array and then we can combine the nodes that cover [l, r]? 
+
+        But the segment tree is usually built for contiguous intervals. We can break [l, r] into O(log n) segments and then merge them? 
+
+        How to merge more than two segments? 
+
+          We can merge the segments from left to right. We start with the leftmost segment, then merge the next segment to the right, and so on.
+
+        Steps for query:
+
+          We break the interval [l, r] into O(log n) base segments. Then we traverse from left to right and merge the segments one by one? 
+
+          We maintain a current merged node, and then we merge the next segment to the right.
+
+          However, note: the segment tree is a binary tree. We can do a recursive traversal and merge the segments in the standard way? 
+
+          But if we break the query into disjoint segments, we can merge them in order. 
+
+          We can write a function:
+
+            Node query(int l, int r, int node, int segl, int segr)
+
+          But then we get a set of nodes. How to combine them? 
+
+          Alternatively, we can use a iterative merging: 
+
+            vector<Node> nodes = get_base_nodes(l, r);
+            Node result = nodes[0];
+            for (int i = 1; i < nodes.size(); i++) {
+                result = merge(result, nodes[i]);
+            }
+
+          But the merging operation is associative? 
+
+          Actually, the merging operation we defined is for two adjacent segments. And we are merging from left to right? 
+
+          Example: 
+            We have three segments: A, B, C. 
+            First merge A and B to get AB, then merge AB and C to get ABC.
+
+          This is the same as merging A and BC? 
+
+          Actually, the operation is associative? 
+
+          Let me try:
+
+            A: "a" -> (size=1, lc='a', rc='a', lrun=1, rrun=1, dens=1)
+            B: "a" -> (size=1, lc='a', rc='a', lrun=1, rrun=1, dens=1)
+            C: "b" -> (size=1, lc='b', rc='b', lrun=1, rrun=1, dens=1)
+
+            Merge A and B: 
+                size=2, lc='a', rc='a'
+                lrun: A.lrun==1 and A.size=1 -> true, and A.rc=='a' and B.lc=='a' -> true -> so lrun=1+1=2.
+                rrun: same -> 2.
+                dens: 1+1 - 1^2 - 1^2 + 2^2 = 2 -1-1+4 = 4.
+
+            Then merge AB and C:
+                size=3, lc='a', rc='b'
+                lrun: AB.lrun=2 and AB.size=2 -> true, but AB.rc='a' != C.lc='b' -> so lrun=2.
+                rrun: C.rrun=1 (since entire C? yes, but condition: AB.rc=='a' != C.lc='b' -> so rrun=1.
+                dens: 4 + 1 = 5? and then no merge? -> 5.
+
+            Now, merge B and C first:
+                B: "a", C: "b": 
+                  size=2, lc='a', rc='b'
+                  lrun: B.lrun=1 and B.size=1 -> true, but B.rc='a' != C.lc='b'? -> so lrun=1.
+                  rrun: same? -> 1.
+                  dens: 1+1 = 2.
+
+            Then merge A and BC:
+                A: "a", BC: (size=2, lc='a', rc='b', lrun=1, rrun=1, dens=2)
+                Merge: 
+                  size=3, lc='a', rc='b'
+                  lrun: A.lrun=1 and A.size=1 -> true, and A.rc='a' == BC.lc='a'? -> so lrun = 1 + BC.lrun = 1+1=2.
+                  rrun: BC.rrun=1 (and entire BC? no? BC.size=2, BC.rrun=1 -> not entire) -> so rrun=1.
+                  dens: 1 + 2 - 1^2 - 1^2 + (1+1)^2 = 3 -1-1+4 = 5.
+
+            Same.
+
+          Therefore, the merging is associative.
+
+        So we can merge the nodes in any order? Actually, we must merge adjacent segments in the order of the array.
+
+        Therefore, we can break the interval [l, r] into contiguous base segments (from the segment tree) and then merge them from left to right.
+
+        Alternatively, we can build a segment tree that supports merging of two nodes, and then do a standard range query that merges the segments in the tree? 
+
+        We can build a segment tree that stores the node structure for each segment. Then:
+
+          - Update: we update a leaf, then update the ancestors (by merging the two children).
+
+          - Query: we break the interval [l, r] into O(log n) segments that are stored in the tree, then merge them in order.
+
+        How to merge multiple segments? 
+
+          We can store the segments in a list and then merge them one by one? 
+
+          But that would be O(number_of_segments) per query, and the number of segments is O(log n), so total O(log n) per query? 
+
+          Actually, the segment tree query returns O(log n) segments, and merging them takes O(log n) time? 
+
+          But each merge is O(1). So total O(log n) per query.
+
+        Steps for update:
+
+          We update the leaf corresponding to the position i. Then we update the parent by merging the two children. Then recursively up.
+
+        How to represent a leaf? 
+
+          For a leaf at position i (character c):
+
+            size = 1
+            lc = c, rc = c
+            lrun = 1, rrun = 1
+            dens = 1*1 = 1
+
+        Then, when updating the character at position i:
+
+          We set the leaf to the new character, then update the ancestors.
+
+        However, note: updating one character might affect three runs? But our segment tree update will update the leaf and then the ancestors. Since we only update the leaf, and then we merge the children, the effect propagates? 
+
+          Actually, when we update a leaf, we change the character at that leaf. Then we must update the node that contains that leaf. Then the parent node, etc.
+
+          The merging formula we defined will automatically account for the changes in the boundaries? 
+
+          But note: the update might break or merge runs that cross the boundaries of the segments? 
+
+          Actually, the segment tree is built on contiguous intervals. The boundaries between segments are internal boundaries? 
+
+          Our merge function handles the boundary between two adjacent segments. So when we update, the changes propagate naturally.
+
+        Therefore, we can build a segment tree with:
+
+          - Each node representing a contiguous segment.
+
+          - The node structure: 
+                struct Node {
+                    int size;       // length of the segment
+                    char lc, rc;   // but note: the constraint says the string has lowercase alphabets, so we can store as char. However, the problem has 200,000, so we can use char.
+                    int lrun;      // length of the run starting at the left
+                    int rrun;      // length of the run ending at the right
+                    long long dens; // the density (sum of squares) for the segment
+                };
+
+          - The base leaf: 
+                size=1, lc=rc = the character, lrun=rrun=1, dens=1.
+
+          - The merge function as described.
+
+        But note: the segment tree must support range queries that are arbitrary? 
+
+          Actually, we want to query [l, r]. We break [l, r] into O(log n) segments that are stored in the tree. Then we merge them in order? 
+
+          We can do:
+
+            vector<Node> segs;
+            query_tree(..., &segs);   // get the segments
+
+            Then if segs is empty? 
+            Otherwise, initialize res = segs[0], then for i from 1 to end: res = merge(res, segs[i])
+
+          However, we can also do iterative merging without storing the entire vector? We can traverse the segments and merge on the fly? 
+
+          We can do:
+
+            Node res = identity? 
+            Then for each segment in the query, we merge: 
+                if res is empty, then set res = seg.
+                else: res = merge(res, seg)
+
+          What is the identity? 
+
+            We can avoid by starting with the first segment.
+
+          But note: the segments we get from the segment tree are contiguous and in the order of the array? 
+
+        Implementation of the segment tree for query:
+
+          We can do a recursive function that collects the segments? 
+
+          Alternatively, we can do iterative merging in the recursive query:
+
+            Node query(int node, int segl, int segr, int l, int r) {
+                if (l <= segl && segr <= r) {
+                    return tree[node];
+                }
+                int mid = (segl+segr)/2;
+                if (r <= mid) {
+                    return query(left_child, segl, mid, l, r);
+                } else if (l > mid) {
+                    return query(right_child, mid+1, segr, l, r);
+                } else {
+                    Node L = query(left_child, segl, mid, l, r);
+                    Node R = query(right_child, mid+1, segr, l, r);
+                    return merge(L, R);
+                }
+            }
+
+          But wait: this only merges two nodes? And if the query spans multiple segments? 
+
+          Actually, we break [l, r] into segments that are entirely in the left or entirely in the right? 
+
+          However, the standard segment tree breaks the query into O(log n) segments? Then we have to merge them one by one? 
+
+          But the above recursive function only merges two children? 
+
+          How to merge more than two? 
+
+          We can change:
+
+            if the query covers [segl, segr] we return the node.
+
+            Otherwise, we break the query and then merge the two parts? 
+
+          But note: the two parts are adjacent? 
+
+          Actually, the left child covers [segl, mid] and the right child covers [mid+1, segr]. So if the query [l, r] covers both [l, mid] and [mid+1, r]? Then we can merge the two nodes.
+
+          But what if the query [l, r] is broken into more than two segments? 
+
+          The recursive function will break the query into two parts: 
+            [l, mid] and [mid+1, r]? 
+
+          Then we get the left part from the left child and the right part from the right child? 
+
+          But the left child might not cover the entire [l, mid]? 
+
+          Actually, the recursive function for the left child: 
+            we call query(left_child, segl, mid, l, min(mid, r))
+
+          Similarly for the right child: 
+            query(right_child, mid+1, segr, max(mid+1, l), r)
+
+          Then we merge the two results.
+
+          This is standard. And the merge function we defined merges two adjacent segments? 
+
+          Therefore, the entire query will be merged from the base segments in a binary tree fashion? 
+
+          However, note: the segment tree is built as a binary tree, and we merge the nodes from the bottom up. This is efficient.
+
+          The time for update and query: O(log n).
+
+        However, we must be cautious: the merge function is O(1). 
+
+        Therefore, we can build a segment tree of size about 4*N.
+
+        Steps:
+
+          Precomputation: 
+            Build the segment tree for the initial string.
+
+          For each query:
+            Type 1: update at index i to character c.
+                We update the leaf at position i (if we built the tree with the array index 0-indexed? the problem is 1-indexed, so we use index i-1).
+
+            Type 2: query [l, r] (1-indexed) -> we convert to 0-indexed: [l-1, r-1].
+
+        But note: the segment tree we built is 0-indexed.
+
+        However, the sample: 
+          "aabcccacc", then update: change index 7 (1-indexed) to 'c'. Then the string becomes: 
+                indices: 0 1 2 3 4 5 6 7 8
+                before: a a b c c c a c c
+                after:  a a b c c c c c c   -> so index6 (0-indexed) becomes 'c'
+
+          Then query [2,8] (1-indexed) -> 0-indexed: [1,7] -> substring: "abccccc" -> but wait: 
+                positions: 
+                  1: 'a' (the second character)
+                  2: 'b'
+                  3: 'c'
+                  4: 'c'
+                  5: 'c'
+                  6: 'c'
+                  7: 'c'
+
+                So blocks: "a", "b", "ccccc" -> density=1+1+25=27.
+
+        We must check if our segment tree query returns 27.
+
+        How the segment tree will compute:
+
+          We break [1,7] (0-indexed) into base segments? 
+
+          The segment tree base leaves: each leaf is one character.
+
+          Then we merge:
+
+            We start with the leaf at index1: 
+                Node1: (size=1, lc='a', rc='a', lrun=1, rrun=1, dens=1)
+
+            Then leaf at index2: 
+                Node2: (size=1, lc='b', rc='b', lrun=1, rrun=1, dens=1)
+
+            Then leaf at index3: 
+                Node3: (size=1, lc='c', ...)
+
+          How do we merge? 
+
+          We merge in a binary tree? 
+
+          Actually, the segment tree structure: 
+            We build a tree for indices [0,8]. 
+            Then the query [1,7] will be broken into segments: 
+                [1,1], [2,2], [3,7]? 
+
+          But we don't care about the exact merging order? Because the merging is associative.
+
+          We can simulate:
+
+            Step 1: merge [1,1] and [2,2]:
+                Node1: (1, 'a','a',1,1,1)
+                Node2: (1, 'b','b',1,1,1)
+                Merge: 
+                  size=2, lc='a', rc='b'
+                  lrun: entire left? yes, but 'a' != 'b'? -> so lrun=1
+                  rrun: entire right? yes, but 'a' != 'b'? -> so rrun=1
+                  dens: 1+1 = 2 (because no merge: 'a' != 'b')
+
+            Step 2: merge [3,7] (which is 5 leaves of 'c')? 
+                We build a segment for 5 consecutive 'c's? 
+
+                How to build a segment for 5 consecutive 'c's: 
+                  size=5, lc='c', rc='c', lrun=5, rrun=5, dens=5^2=25.
+
+            Then merge the two segments: the segment [1,2] and [3,7]:
+                Node_left: (2, 'a','b',1,1,2)
+                Node_right: (5, 'c','c',5,5,25)
+                Merge: 
+                  size=7, lc='a', rc='c'
+                  lrun: entire left? no? (because left segment has two runs? actually no: the left segment [1,2] is two runs? But wait: we stored for the segment [1,2]: 
+                         it has two runs? but in the segment tree node for [1,2]: 
+                         we did not store the entire segment as one run? 
+                         Actually, the segment [1,2] is "a" and "b", so the node for [1,2] is: 
+                             lrun=1 (because the entire left segment is not one run? Actually: the entire left segment is one run? -> no, because the run starting at the left is only the first character? 
+                         But in the merge we did for [1,2]: 
+                             We had two leaves: 
+                                 left: 'a', right: 'b'
+                             Then: 
+                                 lrun: 
+                                     entire left leaf? yes (size=1, lrun=1) -> but then we check: left.rc='a' and right.lc='b' -> different -> so lrun = left.lrun = 1.
+                                 rrun: same -> 1.
+                                 dens=2.
+
+                  Then for the merge of [1,2] and [3,7]:
+                     lrun: entire left segment? no -> so lrun = 1? 
+                     rrun: entire right segment? yes -> but the boundary: left.rc='b' != right.lc='c'? -> so rrun = right.rrun = 5.
+                     dens = 2 + 25 = 27.
+
+            So the total density is 27 -> correct.
+
+        Therefore, the segment tree works.
+
+        Implementation note: 
+
+          We are storing long long for dens? because the maximum density for a segment of length n: the worst-case run is the entire segment, then density = n^2. 
+          n up to 200,000 -> n^2 = 40e9, which is within long long (which is 64-bit, about 9e18).
+
+        But note: the entire segment tree node might have a segment of length up to 200,000? 
+          Then the density for that segment: worst-case one run -> 200000^2 = 40e9, which is about 4e10 -> fits in long long.
+
+        However, the merging formula: 
+          dens = left.dens + right.dens - (L.rrun)^2 - (R.lrun)^2 + (L.rrun+R.lrun)^2
+
+          The squares: L.rrun and R.lrun can be up to 200,000? 
+          Then (L.rrun+R.lrun)^2 can be (400000)^2 = 160e9 -> which is about 1.6e11 -> fits in long long.
+
+        Therefore, we use long long for dens.
+
+        Steps:
+
+          Precomputation: 
+            n, q = read
+            s = string of length n
+            Build segment tree of size 4*n.
+
+          For building the tree:
+
+            void build(int node, int l, int r) {
+                if (l == r) {
+                    tree[node] = Node(1, s[l], s[l], 1, 1, 1);
+                    return;
+                }
+                int mid = (l+r)/2;
+                build(2*node, l, mid);
+                build(2*node+1, mid+1, r);
+                tree[node] = merge(tree[2*node], tree[2*node+1]);
+            }
+
+          Update:
+
+            void update(int node, int l, int r, int idx, char c) {
+                if (l == r) {
+                    s[l] = c;   // if we want to store the string? actually we don't need the entire string if we update the tree? 
+                    tree[node] = Node(1, c, c, 1, 1, 1);
+                    return;
+                }
+                int mid = (l+r)/2;
+                if (idx <= mid) 
+                    update(2*node, l, mid, idx, c);
+                else
+                    update(2*node+1, mid+1, r, idx, c);
+                tree[node] = merge(tree[2*node], tree[2*node+1]);
+            }
+
+          Query:
+
+            Node query(int node, int l, int r, int ql, int qr) {
+                if (ql <= l && r <= qr) {
+                    return tree[node];
+                }
+                int mid = (l+r)/2;
+                if (qr <= mid) {
+                    return query(2*node, l, mid, ql, qr);
+                } else if (ql > mid) {
+                    return query(2*node+1, mid+1, r, ql, qr);
+                } else {
+                    Node L = query(2*node, l, mid, ql, qr);
+                    Node R = query(2*node+1, mid+1, r, ql, qr);
+                    return merge(L, R);
+                }
+            }
+
+          Then for type2 query: we get a node and output node.dens.
+
+        However, what if the query is a single point? 
+
+          Then we get a leaf: dens=1, which is correct.
+
+        But note: the merging function must be careful for the case when the entire left segment is one run? 
+
+          We have to store the size of the segment? 
+
+          In the node, we store size, so we can check: 
+             if (L.lrun == L.size) ... 
+
+        Therefore, the node must store the size.
+
+        Let's write the merge function:
+
+          Node merge(Node L, Node R) {
+              Node res;
+              res.size = L.size + R.size;
+              res.lc = L.lc;
+              res.rc = R.rc;
+
+              // left run: 
+              if (L.lrun == L.size && L.rc == R.lc) {
+                  res.lrun = L.lrun + R.lrun;
+              } else {
+                  res.lrun = L.lrun;
+              }
+
+              // right run:
+              if (R.rrun == R.size && L.rc == R.lc) {
+                  res.rrun = R.rrun + L.rrun;
+              } else {
+                  res.rrun = R.rrun;
+              }
+
+              // density: 
+              res.dens = L.dens + R.dens;
+              if (L.rc == R.lc) {
+                  // subtract the two runs: the last run of L (length L.rrun) and the first run of R (length R.lrun)
+                  // and add the merged run
+                  res.dens = res.dens - (long long)L.rrun*L.rrun - (long long)R.lrun*R.lrun + (long long)(L.rrun + R.lrun)*(L.rrun + R.lrun);
+              }
+
+              return res;
+          }
+
+        However, note: what if the entire left segment is one run and the boundary matches? Then we set res.lrun = L.lrun + R.lrun. 
+        But what if the entire left segment is one run and the boundary does not match? Then we set res.lrun = L.lrun.
+
+        Similarly for the right run.
+
+        And the density adjustment: we do it if the boundary matches, regardless of the entire segment.
+
+        This is correct.
+
+        But note: the adjustment uses L.rrun and R.lrun. These values are the original ones from the children, not the updated ones? 
+
+          Yes, because we haven't changed L and R.
+
+        Therefore, we have a solution.
+
+        However, note: the segment tree query for [l, r] that is broken into two segments [l, mid] and [mid+1, r] is adjacent? 
+
+          Yes, because the segment tree splits the array into contiguous segments.
+
+        But what if the query is broken into three segments? 
+
+          Actually, the recursive query for the segment tree breaks the query into two parts: left and right. Then we merge them. 
+
+          But if the query spans more than two segments? Then the recursive query breaks the interval recursively. 
+
+          For example, if we have a segment tree for [0,7] and we query [1,6]:
+
+            The root: [0,7] -> we break into [0,3] and [4,7]. 
+            Then the query [1,6] is not entirely in either, so we break the query: 
+                left: [1,3] -> which is entirely in the left child? 
+                right: [4,6] -> entirely in the right child? 
+            Then we merge the two nodes: one for [1,3] and one for [4,6]. 
+
+          But note: the segments [1,3] and [4,6] are adjacent? 
+            [1,3] ends at 3, and [4,6] starts at 4 -> so there is a gap? 
+
+          Actually, the segment tree we built covers contiguous intervals without gaps. 
+
+          The left child [0,3] and the right child [4,7] are adjacent? 
+            The left child ends at 3 and the right child starts at 4 -> so they are adjacent? 
+
+          But the query [1,6] covers [1,3] and [4,6] -> which are adjacent? 
+
+          However, the merging function requires the two segments to be adjacent? 
+
+          Actually, the merging function is defined for two adjacent segments. But here the segments are not adjacent? 
+
+          How do we handle this? 
+
+          We must break the query into contiguous segments that are adjacent? 
+
+          Actually, the segment tree we built is a contiguous array. The intervals we break are contiguous. But the standard segment tree we built (with intervals [l, mid] and [mid+1, r]) is contiguous. 
+
+          However, in the above example, the root [0,7] has two children: [0,3] and [4,7]. Then the query [1,6] is broken into:
+
+            left: [1,3] (from the left child [0,3])
+            right: [4,6] (from the right child [4,7])
+
+          And these two segments are adjacent: [1,3] and [4,6] are consecutive? 
+
+          Actually, no: [1,3] ends at 3, and [4,6] starts at 4 -> so they are not adjacent? There is a gap at 3 and 4? 
+
+          This is a problem.
+
+        How to fix? 
+
+          We must build the segment tree such that the children are [l, mid] and [mid+1, r]. Then the two children are adjacent? 
+
+          But when we break the query [l, r] that spans two children, we break it at mid: 
+
+            left part: [l, mid]
+            right part: [mid+1, r]
+
+          Then the two segments are adjacent.
+
+          However, in the recursive query, we break the query exactly at the midpoint? 
+
+          The standard segment tree does:
+
+            if (ql <= mid) 
+                left_node = query(left_child, l, mid, ql, min(qr, mid))
+            if (qr > mid)
+                right_node = query(right_child, mid+1, r, max(ql, mid+1), qr)
+
+          Then the two segments are [ql, mid] and [mid+1, qr] -> adjacent.
+
+          Therefore, we can merge them.
+
+        So the above recursive query that returns two segments and then merges them is correct.
+
+        Therefore, the solution:
+
+          We build a segment tree that supports:
+             - Point update: update a leaf and then update the ancestors.
+             - Range query: returns the node for the contiguous segment [l, r] (which is computed by merging the left and right parts that are adjacent).
+
+        The node structure and the merge function as described.
+
+        Let me test with the sample:
+
+          Initial string: "aabcccacc" -> 0-indexed: 
+             0:a, 1:a, 2:b, 3:c, 4:c, 5:c, 6:a, 7:c, 8:c
+
+          Query1: [0,8] (entire string) -> density=19.
+
+          How do we build the segment tree? 
+
+          The entire segment: we break into [0,4] and [5,8]? 
+
+          But we can simulate the entire merge:
+
+            We can build the tree recursively? 
+
+          Alternatively, we can do a bottom-up build:
+
+            Leaves: 
+                node0: (1, 'a', 'a', 1,1,1)
+                node1: (1, 'a','a',1,1,1)
+                node2: (1, 'b','b',1,1,1)
+                node3: (1, 'c','c',1,1,1)
+                node4: (1, 'c','c',1,1,1)
+                node5: (1, 'c','c',1,1,1)
+                node6: (1, 'a','a',1,1,1)
+                node7: (1, 'c','c',1,1,1)
+                node8: (1, 'c','c',1,1,1)
+
+            Then we merge:
+
+              Level 1: 
+                Merge node0 and node1: 
+                  'a' and 'a': 
+                    size=2, lc='a', rc='a'
+                    lrun: 1==1 and 'a'=='a' -> so 1+1=2
+                    rrun: same -> 2
+                    dens: 1+1 - 1-1 + (1+1)^2 = 0 + 4 = 4.
+
+              Similarly, merge node3 and node4: 
+                    size=2, lc='c','c' -> same, so lrun=2, rrun=2, dens=4.
+
+              Merge node7 and node8: same -> dens=4.
+
+              Now, the leaves at level1: 
+                [0,1]: (2, 'a','a',2,2,4)
+                [2,2]: same as node2: (1, 'b','b',1,1,1)
+                [3,4]: (2, 'c','c',2,2,4)
+                [5,5]: node5: (1, 'c','c',1,1,1)
+                [6,6]: node6: (1, 'a','a',1,1,1)
+                [7,8]: (2, 'c','c',2,2,4)
+
+            Then level2:
+
+              Merge [0,1] and [2,2]:
+                L: [0,1] -> (2, 'a','a',2,2,4)
+                R: [2,2] -> (1, 'b','b',1,1,1)
+                Merge: 
+                  lc='a', rc='b'
+                  lrun: entire left? 2==2 -> yes, but 'a' != 'b'? -> so lrun=2
+                  rrun: entire right? yes, but not same -> rrun=1
+                  dens: 4+1 = 5? 
+                  (no merge: because 'a' != 'b')
+
+              Merge [3,4] and [5,5]:
+                L: [3,4]: (2, 'c','c',2,2,4)
+                R: [5,5]: (1, 'c','c',1,1,1)
+                Merge: 
+                  same character -> 
+                    lrun: 2==2 -> yes and 'c'=='c' -> so lrun=2+1=3
+                    rrun: entire right? 1==1 -> yes, and same -> so rrun=1+2=3? 
+                         Actually: condition for rrun: 
+                             if (R.rrun == R.size) -> R.rrun=1, R.size=1 -> true, and L.rc='c' == R.lc='c' -> true -> so rrun = R.rrun + L.rrun = 1+2=3.
+                    dens: 4+1 - 2^2 - 1^2 + (2+1)^2 = 5 -4-1+9 = 9.
+
+              Then [6,6] and [7,8]:
+                L: [6,6]: (1, 'a','a',1,1,1)
+                R: [7,8]: (2, 'c','c',2,2,4)
+                Merge: 
+                  'a' != 'c' -> 
+                    lrun=1, rrun=2, dens=1+4=5.
+
+            Level3: 
+              Now we have:
+                [0,2]: (3, 'a','b',2,1,5)
+                [3,5]: (3, 'c','c',3,3,9)
+                [6,8]: (3, 'a','c',1,2,5)
+
+            Then merge [0,2] and [3,5]:
+                L: (3, 'a','b',2,1,5)
+                R: (3, 'c','c',3,3,9)
+                Merge: 
+                  lc='a', rc='c'
+                  lrun: entire left? 3? but L.lrun=2 != 3? -> so lrun=2
+                  rrun: entire right? 3==3 -> true, but L.rc='b' != R.lc='c' -> so rrun=3
+                  dens: 5+9 = 14? (no merge)
+
+            Then merge [6,8] alone? 
+
+            Then we merge [0,5] and [6,8]? 
+                L: [0,5]: (6, 'a','c',2,3,14)
+                R: [6,8]: (3, 'a','c',1,2,5)
+                Merge: 
+                  lc='a', rc='c'
+                  lrun: entire left? 6? but L.lrun=2 !=6 -> so lrun=2
+                  rrun: entire right? 3? but R.rrun=2 !=3 -> so rrun=2
+                  dens: 14+5=19? -> and then check: 
+                     boundary: L.rc='c' and R.lc='a' -> not same -> so 19.
+
+            So the entire segment [0,8] has density 19.
+
+          Then we update index6 (0-indexed) to 'c' -> so the leaf at index6 becomes 'c'. Then update the tree.
+
+          Then query [1,7] (0-indexed: [1,7]):
+
+            We break [1,7] into:
+
+              [1,2] (from [0,2] we cannot take the entire? Actually, we break the tree) -> 
+                Actually, we can do:
+
+                  The segment tree: 
+                    root: [0,8] -> we break into [0,4] and [5,8]? 
+
+                  Then [1,7] covers both [0,4] and [5,8]? 
+                    Actually, [1,7] = [1,4] from the left child and [5,7] from the right child.
+
+            How to compute [1,4]? 
+              [1,4] is from the left child [0,4]: 
+                We break [0,4] into [0,2] and [3,4]. 
+                Then [1,4] = [1,2] from [0,2] and [3,4] from [3,4].
+
+            So:
+
+              [1,2]: 
+                 The segment [0,2] is stored as the node for [0,2]? 
+                 But we want [1,2]: we break [0,2] into [0,1] and [2,2]. 
+                 Then [1,2] = [1,1] and [2,2]? 
+
+            Then we merge:
+
+              [1,1]: leaf: 'a' -> (1, 'a','a',1,1,1)
+              [2,2]: leaf: 'b' -> (1, 'b','b',1,1,1)
+              Merge: 
+                 'a' != 'b' -> so (2, 'a','b',1,1,2)
+
+              [3,4]: we have the node for [3,4]? which we built as (2, 'c','c',2,2,4)
+
+              Then merge [1,2] and [3,4]:
+                 [1,4]: 
+                    lc='a', rc='c'
+                    lrun: 2? but the entire left segment? no -> so lrun=1
+                    rrun: entire right? yes? but 'b' (from [1,2]'s last) != 'c' -> so rrun=2
+                    dens: 2+4=6
+
+            Then [5,7]: 
+                We break the right child [5,8] into [5,6] and [7,8]. 
+                Then [5,7] = [5,6] and [7,7]? 
+
+              [5,5]: leaf: 'c' -> (1, 'c','c',1,1,1)
+              [6,6]: leaf: now updated to 'c' -> (1, 'c','c',1,1,1)
+              Merge [5,6]: 
+                 same -> (2, 'c','c',2,2,4)
+
+              [7,7]: leaf: 'c' -> (1, 'c','c',1,1,1)
+
+              Then merge [5,6] and [7,7]:
+                 same -> 
+                    lrun: 2==2 -> yes, and same -> so 2+1=3
+                    rrun: entire right? yes -> 1+2=3
+                    dens: 4+1 - 4 - 1 + (2+1)^2 = 5 -5 +9 = 9.
+
+            Then merge [1,4] and [5,7]:
+                [1,7]: 
+                  [1,4]: lc='a', rc='c', lrun=1, rrun=2, dens=6
+                  [5,7]: lc='c', rc='c', lrun=3, rrun=3, dens=9
+                Now, boundary: [1,4].rc='c' and [5,7].lc='c' -> same -> 
+                Then:
+                  dens = 6+9 - (2)^2 - (3)^2 + (2+3)^2 
+                       = 15 -4 -9 +25 = 15 -13 +25 = 27.
+
+            Correct.
+
+        Therefore, we implement the segment tree as described.
+
+        But note: the segment tree must be built for the entire array, and the update and query work.
+
+        However, the constraints: N, Q up to 200,000.
+
+          The segment tree has O(n) space and O(log n) per update and per query.
+
+        Therefore, total time: O((n + Q) * log n) = 200,000 * log2(200000) ~ 200000 * 18 = 3.6e6, which is acceptable in 1 second.
+
+        Implementation details:
+
+          - We store the segment tree as an array of nodes, size 4*n.
+
+          - The node structure:
+
+                struct Node {
+                    int size;
+                    char lc, rc;
+                    int lrun, rrun;
+                    long long dens;
+                    // we can also avoid storing lc,rc? but we need them for merging.
+                };
+
+          - The merge function: as above.
+
+          - We need to store the entire string? Only for building the initial tree? Then we update the tree and the string is updated? 
+
+            Actually, we don't need to store the entire string. The segment tree has the leaf updated.
+
+          - When updating, we update the leaf and then the ancestors.
+
+        Let's code the merge function carefully:
+
+          Node merge(Node L, Node R) {
+              Node res;
+              res.size = L.size + R.size;
+              res.lc = L.lc;
+              res.rc = R.rc;
+
+              // Check if the entire left segment is one run and the boundary matches?
+              if (L.lrun == L.size && L.rc == R.lc) {
+                  res.lrun = L.lrun + R.lrun;
+              } else {
+                  res.lrun = L.lrun;
+              }
+
+              if (R.rrun == R.size && L.rc == R.lc) {
+                  res.rrun = R.rrun + L.rrun;
+              } else {
+                  res.rrun = R.rrun;
+              }
+
+              res.dens = L.dens + R.dens;
+              if (L.rc == R.lc) {
+                  // Subtract the squares of the last run of L and the first run of R, and add the square of the merged run.
+                  long long subtract = (long long)L.rrun * L.rrun + (long long)R.lrun * R.lrun;
+                  long long add = (long long)(L.rrun + R.lrun) * (L.rrun + R.lrun);
+                  res.dens = res.dens - subtract + add;
+              }
+              return res;
+          }
+
+        One more corner: when the segment has only one node? 
+
+          Then the merge function for two leaves: we did it above.
+
+        We are ready.
+
+        However, note: the segment tree query for a single point? 
+
+          Then we return the leaf node.
+
+        But what if the query is a segment that is not contiguous? 
+
+          The segment tree we built is for contiguous segments. The query [l, r] is contiguous.
+
+        Therefore, we output the solution.
+
+        Let me run the sample input:
+
+          Input: 
+            9 3
+            aabcccacc
+            2 1 9   -> 19
+            1 7 c   -> update index6 (0-indexed) to 'c'
+            2 2 8   -> [1,7] (0-indexed) -> 27
+
+        We get 19 and 27.
+
+        We are done.
+
+        Code in C++? But the problem says avoid writing code? 
+
+        However, the editorial should explain the solution.
+
+        Summary:
+
+          We use a segment tree where each node stores:
+            - size: the length of the segment.
+            - lc, rc: the leftmost and rightmost characters.
+            - lrun: the length of the run starting at the left of the segment.
+            - rrun: the length of the run ending at the right of the segment.
+            - dens: the density of the segment (sum of squares of the runs).
+
+          The merge function for two nodes L (left segment) and R (right segment) is:
+
+            size = L.size + R.size
+            lc = L.lc, rc = R.rc
+
+            lrun = 
+                if (L.lrun == L.size and L.rc == R.lc) then L.lrun + R.lrun
+                else L.lrun
+
+            rrun = 
+                if (R.rrun == R.size and L.rc == R.lc) then R.rrun + L.rrun
+                else R.rrun
+
+            dens = L.dens + R.dens
+            if (L.rc == R.lc) then 
+                dens = dens - L.rrun^2 - R.lrun^2 + (L.rrun+R.lrun)^2
+
+          We build the segment tree for the initial string.
+
+          For update: update the leaf and then update the ancestors.
+
+          For a range query [l, r]: we break the range into O(log n) segments that are adjacent and stored in the tree, and then merge them in order (which is associative) to get the final node. The density of the final node is the answer.
+
+        Why is this correct?
+
+          The segment tree node correctly stores the density for a contiguous segment by accounting for the runs that cross the internal boundaries (by merging the runs at the boundary). The update propagates the changes to the boundaries appropriately.
+
+        This solution runs in O(log n) per update and per query.
+
+        We hope it fits the constraints.
+
+        Note: The segment tree uses 4 * n nodes.
+
+        We are done.

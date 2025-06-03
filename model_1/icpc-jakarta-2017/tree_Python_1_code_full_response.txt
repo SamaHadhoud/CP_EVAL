@@ -1,0 +1,187 @@
+To solve this problem, we need to find the optimal assembly point in a tree-structured warehouse system such that the total distance traveled by all robots to reach this point is minimized. The solution leverages properties of trees and efficient algorithms to handle multiple queries.
+
+### Approach
+1. **Tree Representation**: The warehouses and the special rails form a tree, ensuring a unique path between any two warehouses.
+2. **Preprocessing**:
+   - **Depth and Parent Arrays**: Using BFS, compute the depth of each node and its immediate parent from an arbitrary root (warehouse 1).
+   - **Binary Lifting Table**: Construct a table to facilitate efficient computation of the Lowest Common Ancestor (LCA) and node climbing operations. This table allows climbing the tree in logarithmic time.
+3. **Query Processing**:
+   - **Diameter Identification**: For each query, identify the two farthest robots (diameter endpoints) in the given set. This involves:
+     1. Selecting an arbitrary robot and finding the farthest robot from it.
+     2. Finding the farthest robot from the first endpoint.
+   - **Ternary Search**: The optimal assembly point lies on the path between the identified diameter endpoints. Perform ternary search along this path to find the point that minimizes the total distance. The total distance for a candidate point is the sum of distances from all robots to this point, computed using LCA.
+4. **Complexity Analysis**:
+   - **Preprocessing**: Building depth, parent arrays, and the binary lifting table takes \(O(N \log N)\) time.
+   - **Query Handling**: Each query involves \(O(K \log N)\) operations for diameter identification and \(O(\log D \cdot K \log N)\) operations for ternary search, where \(D\) is the path length between diameter endpoints. With \(Q\) queries and \(K\) robots per query, the total time is \(O(Q \cdot K \log N \log D)\).
+
+### Solution Code
+```python
+import sys
+from collections import deque
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    it = iter(data)
+    n = int(next(it))
+    graph = [[] for _ in range(n+1)]
+    for _ in range(n-1):
+        a = int(next(it))
+        b = int(next(it))
+        graph[a].append(b)
+        graph[b].append(a)
+    
+    depth = [0] * (n+1)
+    parent0 = [0] * (n+1)
+    graph[0] = []
+    
+    queue = deque([1])
+    depth[1] = 0
+    parent0[1] = 0
+    while queue:
+        u = queue.popleft()
+        for v in graph[u]:
+            if v == parent0[u]:
+                continue
+            depth[v] = depth[u] + 1
+            parent0[v] = u
+            queue.append(v)
+    
+    max_log = 0
+    temp = 1
+    while temp <= n:
+        max_log += 1
+        temp *= 2
+    max_log -= 1
+    if max_log < 0:
+        max_log = 0
+    
+    parent_table = [[0] * (n+1) for _ in range(max_log+1)]
+    for i in range(1, n+1):
+        parent_table[0][i] = parent0[i]
+    
+    for i in range(1, max_log+1):
+        for node in range(1, n+1):
+            prev = parent_table[i-1][node]
+            parent_table[i][node] = parent_table[i-1][prev] if prev != 0 else 0
+    
+    def lca(u, v):
+        if depth[u] < depth[v]:
+            u, v = v, u
+        diff = depth[u] - depth[v]
+        bit = 0
+        while diff:
+            if diff & 1:
+                u = parent_table[bit][u]
+            bit += 1
+            diff //= 2
+        
+        if u == v:
+            return u
+        
+        for i in range(max_log, -1, -1):
+            if parent_table[i][u] != parent_table[i][v]:
+                u = parent_table[i][u]
+                v = parent_table[i][v]
+        return parent_table[0][u]
+    
+    def dist(u, v):
+        w = lca(u, v)
+        return depth[u] + depth[v] - 2 * depth[w]
+    
+    def climb(u, steps):
+        node = u
+        for i in range(max_log+1):
+            if steps & (1 << i):
+                node = parent_table[i][node]
+                if node == 0:
+                    break
+        return node
+    
+    q = int(next(it))
+    out_lines = []
+    for _ in range(q):
+        k = int(next(it))
+        robots = []
+        for _ in range(k):
+            robots.append(int(next(it)))
+        
+        if k == 1:
+            out_lines.append("0")
+            continue
+        
+        u0 = robots[0]
+        best_dist = -1
+        candidate_u = u0
+        for s in robots:
+            d_val = dist(u0, s)
+            if d_val > best_dist:
+                best_dist = d_val
+                candidate_u = s
+        u = candidate_u
+        
+        best_dist = -1
+        candidate_v = u0
+        for s in robots:
+            d_val = dist(u, s)
+            if d_val > best_dist:
+                best_dist = d_val
+                candidate_v = s
+        v = candidate_v
+        
+        w = lca(u, v)
+        d1 = depth[u] - depth[w]
+        d2 = depth[v] - depth[w]
+        d_total = d1 + d2
+        
+        def get_node_at_step(t):
+            if t <= d1:
+                return climb(u, t)
+            else:
+                return climb(v, d_total - t)
+        
+        def g(t):
+            x = get_node_at_step(t)
+            total = 0
+            for s in robots:
+                total += dist(s, x)
+            return total
+        
+        low = 0
+        high = d_total
+        while high - low > 2:
+            d_len = high - low
+            mid1 = low + d_len // 3
+            mid2 = high - d_len // 3
+            f1 = g(mid1)
+            f2 = g(mid2)
+            if f1 < f2:
+                high = mid2
+            else:
+                low = mid1
+        
+        best_val = 10**18
+        for t in range(low, high+1):
+            val = g(t)
+            if val < best_val:
+                best_val = val
+        out_lines.append(str(best_val))
+    
+    sys.stdout.write("\n".join(out_lines))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Tree Construction**: The warehouses and rails are read and stored as an adjacency list.
+2. **BFS for Depth and Parent Arrays**: Starting from warehouse 1, BFS computes the depth of each node and its immediate parent.
+3. **Binary Lifting Table**: This table allows efficient climbing of the tree in logarithmic time, crucial for LCA and distance calculations.
+4. **Query Processing**:
+   - **Diameter Identification**: For each query, the two farthest robots are found by computing distances from an arbitrary robot and then from the first endpoint.
+   - **Ternary Search**: The path between the diameter endpoints is treated as a linear segment. Ternary search evaluates the total distance at key points to find the minimum.
+5. **Distance Calculation**: For each candidate point during the search, the sum of distances from all robots to this point is computed using LCA.
+6. **Output**: The minimum total distance for each query is output.
+
+This approach efficiently handles the constraints by leveraging tree properties and ternary search, ensuring optimal performance for large inputs.

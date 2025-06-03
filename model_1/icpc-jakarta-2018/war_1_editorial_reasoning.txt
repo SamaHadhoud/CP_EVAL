@@ -1,0 +1,992 @@
+We are given up to 40,000 artilleries (points in the upper half-plane, y>0), up to 5 defensive walls (horizontal segments in the upper half-plane, y>0), and up to 40,000 query points (in the lower half-plane, y<0).
+
+For each query point, we want to count the number of artilleries that are visible from that point. An artillery is visible if the line segment connecting the artillery and the watchtower does not intersect any defensive wall (including endpoints). Note that the walls do not overlap and no artillery lies on a wall.
+
+Key observations:
+
+1. The walls are horizontal segments and there are at most 5 of them. This small number is critical.
+
+2. The problem can be approached by considering the geometry of the lines of sight. The main challenge is that for each query, we have to check for each artillery whether the line segment to the watchtower is blocked by any wall.
+
+However, doing a naive O(N * M) per query (which would be 40,000 * 5 * 40,000) is 8e9 checks, which is too slow.
+
+We need a more efficient solution.
+
+Idea:
+
+We note that the blocking condition by a wall is independent per wall. For a given artillery point A and a watchtower point T, the segment TA is blocked by a wall segment W (which is a horizontal segment at height y_w from (x1, y_w) to (x2, y_w)) if and only if:
+
+   a) The segment TA crosses the horizontal line y = y_w at some point (x, y_w) that lies between x1 and x2 (inclusive).
+
+   b) This crossing point lies on the segment TA (i.e., between T and A).
+
+But note: the segment TA may cross the wall at a point that is not on the wall segment? Actually, the wall is only the segment from (x1, y_w) to (x2, y_w). So we require that the crossing point has x in [x1, x2].
+
+How to compute the crossing point? The line from T=(x_t, y_t) to A=(x_a, y_a) has parametric equations. The y-coordinate goes from y_t (negative) to y_a (positive). The crossing with y = y_w occurs at:
+
+   Let t = (y_w - y_t) / (y_a - y_t)   [since y_t < 0 and y_a > 0, then 0 < t < 1 is required for the crossing to be between T and A]
+
+   Then x = x_t + t * (x_a - x_t) = x_t + (y_w - y_t) * (x_a - x_t) / (y_a - y_t)
+
+Then the condition for blocking by wall W is:
+
+   (i) y_w is between y_t and y_a? Actually, since y_t < 0 and y_a > 0, and y_w>0, we require y_w < y_a? Actually, if the wall is above the artillery, then the segment won't cross that wall? But note: the artillery is above the wall? Then the segment from T to A would have to go through the wall? Actually, no: if the artillery is above the wall, then the segment from T (below) to A (above) must cross the wall's horizontal line at the wall's height. However, if the wall is above the artillery, then the segment from T to A does not cross the wall because the artillery is below the wall? Actually, the segment goes from negative y to positive y, and the wall is at positive y. So the segment must cross the horizontal line y=y_w only if y_w is between the y-coordinates of T and A? But note: T has negative y, and A has positive y. So the segment crosses every horizontal line between 0 and y_a. However, if the wall is at a height greater than y_a, then the segment never reaches that height? So we require 0 < y_w <= y_a? Actually, the segment goes from y_t (negative) to y_a (positive). It crosses y=y_w only if y_w is between y_t and y_a. But since y_t < 0 and y_w>0, the condition is y_w < y_a? Actually, it must be that y_w is in the open interval (y_t, y_a). Since y_t is negative and y_a is positive, and y_w>0, we require y_w < y_a? Actually, if y_w > y_a, then the segment doesn't reach that high. So:
+
+   Condition for wall W to be in the vertical range: 0 < y_w < y_a   (since the artillery is at y_a, and the wall must be below the artillery to be crossed by the segment).
+
+But note: if the artillery is above the wall, then the segment does cross the horizontal line y=y_w. However, if the artillery is below the wall (i.e., y_a < y_w), then the segment does not cross the wall? Actually, the segment goes from negative y to y_a (which is less than y_w) so it never reaches y_w. Therefore, we only consider walls with y_w < y_a.
+
+So for a given artillery A and watchtower T, we must check for each wall W that has y_w < y_a: does the crossing point x lie in [x1, x2]?
+
+But note: we have up to 5 walls per artillery. However, if we do this for each query and each artillery, we do 40,000 * 5 * 40,000 = 8e9, which is too slow.
+
+We need to preprocess.
+
+Alternative idea:
+
+We can invert the problem: Instead of for each query and each artillery, we can try to precompute for each artillery which query points can see it. But then we have to combine over artilleries and queries? And we have 40,000 artilleries and 40,000 queries, and each artillery might be blocked by up to 5 walls? So we could represent the condition for an artillery to be visible from a query as a conjunction of conditions (for each wall that is below the artillery, the crossing x must not lie in [x1, x2]). However, each condition is linear in the query point and artillery point, so we would have a set of half-planes? But note: the condition for a fixed artillery and a fixed wall defines a forbidden set of query points for which the crossing x falls in [x1, x2]. The condition:
+
+   x_t + (y_w - y_t) * (x_a - x_t) / (y_a - y_t) ∈ [x1, x2]
+
+But note: we can rearrange to have an inequality in terms of the query point (x_t, y_t). However, the expression is fractional and non-linear.
+
+Alternatively, we can use the following:
+
+The condition that the crossing x is in [x1, x2] can be written as:
+
+   x1 <= [x_t * (y_a - y_w) + x_a * (y_w - y_t)] / (y_a - y_t) <= x2
+
+Multiply by (y_a - y_t) which is positive (since y_a > y_t) without changing inequalities:
+
+   x1*(y_a - y_t) <= x_t*(y_a - y_w) + x_a*(y_w - y_t) <= x2*(y_a - y_t)
+
+But note: we can rearrange to get linear inequalities in (x_t, y_t). However, they are linear in x_t but non-linear in y_t? Actually, they are affine in x_t and fractional in y_t? It becomes messy.
+
+Alternatively, we can use the concept of visibility via "barriers" (the walls). Since there are only 5 walls, we can consider that an artillery is visible if it is not blocked by any wall. We can precompute for each artillery and for each wall (that is below the artillery) the range of query points for which the line of sight is blocked by that wall. Then the set of query points that see the artillery is the set that is not blocked by any wall.
+
+But note: the blocking conditions for different walls are independent? Actually, if a segment is blocked by one wall, then it doesn't matter about the others. So the set of query points that see the artillery is the complement of the union over walls (below the artillery) of the set of query points blocked by that wall for that artillery.
+
+However, the union of these sets for 5 walls might be complicated. Moreover, the total number of artilleries is 40,000 and we have 40,000 queries: we cannot store 40,000 * 5 = 200,000 "blocking regions" and then do point location for 40,000 queries? How would we combine?
+
+Another idea: we can use the fact that the walls are fixed and small in number (5) to precompute for each artillery the critical directions in which it is blocked. But then we have to aggregate over artilleries for each query.
+
+Alternatively, we can process the queries offline.
+
+But note: we have only 5 walls. Therefore, we can break the entire set of artilleries by the walls: each wall defines an ordering of artilleries from the perspective of a query? Actually, we can use angular sweeps or something similar.
+
+Alternatively, we can use the following approach:
+
+For a fixed watchtower T, an artillery A is visible if for every wall W that lies below A (i.e., y_w < y_a), the crossing point x (on the wall W) is not in [x1, x2] of the wall.
+
+But note: if there are multiple walls below A, we require that none of them blocks. So we can think: the wall that is closest to the artillery might be the one that blocks? Actually, no: the segment from T to A must avoid every wall. However, if a wall above T and below A is not blocking, but a wall above that wall and below A is blocking? Actually, no: the segment from T to A must cross every horizontal line between the y of T and the y of A. So if there are multiple walls at different heights, the segment must avoid every one of them. Therefore, we must check all walls below the artillery.
+
+But note: if a wall is above the artillery, we skip it. So we only consider walls with y_w < y_a.
+
+How to speed up the per-query processing?
+
+We cannot iterate over all artilleries for each query (40,000 * 40,000) and then for each artillery iterate over 5 walls (which would be 200,000 * 40,000 = 8e9). So we need to avoid iterating over artilleries for each query.
+
+Idea: Precomputation per wall and then combine the information.
+
+We note that the condition for a wall W to block the view from T to A is:
+
+   Let D = (y_a - y_t)   (positive)
+   Then the crossing x = (x_a * (y_w - y_t) + x_t * (y_a - y_w)) / D
+
+   This can be written as:
+
+        x * D = x_a * (y_w - y_t) + x_t * (y_a - y_w)
+
+   Rearranged:
+
+        x_a * (y_w - y_t) + x_t * (y_a - y_w) in [x1 * D, x2 * D]
+
+But note: we can also interpret the condition as a linear equation in A: for fixed T and W, the set of A that are blocked by W from T is a double half-plane condition? Actually, it is a condition that the point A must lie in a particular strip (if we fix T and W) or that T must lie in a particular region (if we fix A and W).
+
+But we have to do it for each artillery and each query? That seems difficult.
+
+Alternative idea: use offline queries and sweeping.
+
+But note: the constraints are high (40,000 points and 40,000 queries) and we have 5 walls. We can break the problem by the walls.
+
+We can consider the following:
+
+   Instead of counting the artilleries that are visible, we can start by assuming all artilleries are visible and then subtract those that are blocked by at least one wall.
+
+   However, an artillery might be blocked by multiple walls, but we only need to know if it is blocked by at least one. But we cannot use inclusion-exclusion easily because the blocking conditions for different walls are not independent? Actually, they are independent in the sense that we require no blocking by any wall, so we want:
+
+        count = total artilleries - (# of artilleries blocked by wall1 OR wall2 OR ...)
+
+   But inclusion-exclusion over 5 walls: 2^5 = 32 terms. That is acceptable.
+
+   So:
+
+        count = N - (Σ_{non-empty S} (-1)^{|S|+1} * |A_S|)
+
+   where A_S is the set of artilleries that are blocked by every wall in S from the watchtower T.
+
+   However, note: for a set S of walls, an artillery is blocked by every wall in S? Actually, no: we require that the artillery is blocked by at least one wall? But inclusion-exclusion for union:
+
+        |A_{wall1} ∪ A_{wall2} ∪ ...| = Σ |A_i| - Σ |A_i ∩ A_j| + ... 
+
+   So we need to compute, for each non-empty subset S of walls, the number of artilleries that are blocked by every wall in S? Actually, no: the union is over the blocking events per wall. But note: an artillery is blocked by wall i if the condition for wall i holds. However, it is possible that an artillery is blocked by two walls simultaneously? But if one wall blocks, then we count the artillery as blocked. The inclusion-exclusion formula for the union is:
+
+        |∪_{i} A_i| = Σ_{i} |A_i| - Σ_{i<j} |A_i ∩ A_j| + Σ_{i<j<k} |A_i ∩ A_j ∩ A_k| - ... 
+
+   So we need to compute for each non-empty subset S ⊆ walls, the number of artilleries that are blocked by at least the walls in S? Actually, no: the term for a set S is the set of artilleries that are blocked by every wall in S (and possibly more). Then we use:
+
+        |∪_{i} A_i| = Σ_{S non-empty} (-1)^(|S|+1) * |∩_{i in S} A_i|
+
+   But note: the condition for an artillery to be blocked by a set S of walls is that for each wall in S, the condition (crossing x in [x1, x2]) must hold. However, the conditions for different walls are independent? Actually, the same artillery must satisfy the blocking condition for each wall in S. And these conditions are independent? Yes, because the crossing for wall i is independent of the crossing for wall j? But note: the walls are at different heights, and the segment from T to A must cross each wall at its respective height. The conditions are:
+
+        For wall i: x_i1 <= [x_t * (y_a - y_i) + x_a * (y_i - y_t)] / (y_a - y_t) <= x_i2
+
+        For wall j: x_j1 <= [x_t * (y_a - y_j) + x_a * (y_j - y_t)] / (y_a - y_t) <= x_j2
+
+   We can write both conditions as:
+
+        x_i1 * (y_a - y_t) <= x_t*(y_a - y_i) + x_a*(y_i - y_t) <= x_i2 * (y_a - y_t)
+        x_j1 * (y_a - y_t) <= x_t*(y_a - y_j) + x_a*(y_j - y_t) <= x_j2 * (y_a - y_t)
+
+   These are two linear inequalities in the two variables (x_t, y_t) for fixed (x_a, y_a) and the walls? Actually, no: the inequalities are linear in (x_t, x_a) but the term (y_a - y_t) is in the denominator? Actually, we multiplied by (y_a - y_t) which is positive, so the inequalities are linear in the numerator, but the entire expression is linear in (x_t, x_a) if we treat (x_t, y_t) as variables? Actually, for fixed artillery (x_a, y_a) and fixed wall, the condition defines a region in the (x_t, y_t) plane? But we have multiple walls.
+
+   However, we are going to fix the artillery and the set S of walls and then we want to know: for a query T, does T satisfy the blocking condition for every wall in S? Then we count the artilleries that are blocked by all walls in S from T? Actually, no: we are doing inclusion-exclusion for the union of blocking events. For a fixed query T, we want to compute:
+
+        Let F(S) = { artillery A: for every wall i in S, the condition for wall i blocks A from T }
+
+        Then the number of artilleries blocked by at least one wall is:
+
+             Σ_{S non-empty} (-1)^(|S|+1) * |F(S)|
+
+   So for each query T, we have to compute 31 terms (since M<=5, 2^5-1=31) and each term is the count of artilleries that satisfy the blocking condition for every wall in S.
+
+   How to compute |F(S)| for a fixed T and a fixed set S? We would have to check each artillery? Then 31 * 40,000 per query = 1,240,000 per query, and 40,000 queries -> 1,240,000 * 40,000 = 49,600,000,000 which is 49.6e9, too high.
+
+We need a better way.
+
+We can precompute for each set S a data structure that can answer: for a query T, how many artilleries A are in F(S). The condition for an artillery A to be in F(S) for a given T is:
+
+        For all walls i in S: 
+            x_i1 * (y_a - y_t) <= x_t*(y_a - y_i) + x_a*(y_i - y_t) <= x_i2 * (y_a - y_t)
+
+   Rearranged, for a fixed wall i:
+
+        (x_i1 * (y_a - y_t) - x_a*(y_i - y_t)) <= x_t*(y_a - y_i)
+        and
+        x_t*(y_a - y_i) <= (x_i2 * (y_a - y_t) - x_a*(y_i - y_t))
+
+   But note: we can also write:
+
+        x_t * (y_a - y_i) + x_a*(y_t - y_i) >= x_i1 * (y_a - y_t)
+        and
+        x_t * (y_a - y_i) + x_a*(y_t - y_i) <= x_i2 * (y_a - y_t)
+
+   This is messy.
+
+Another rearrangement: Let us define:
+
+        L_i(A, T) = x_t * (y_a - y_i) + x_a*(y_i - y_t)   [which is the numerator in the crossing formula multiplied by (y_a - y_t)]
+
+        Then the condition for wall i is: 
+            x_i1 * (y_a - y_t) <= L_i(A, T) <= x_i2 * (y_a - y_t)
+
+   And note that (y_a - y_t) = (y_a - y_i) + (y_i - y_t) is positive.
+
+   So for a fixed artillery A, we have for each wall i in S:
+
+        x_i1 * (y_a - y_t) <= L_i(A, T) <= x_i2 * (y_a - y_t)
+
+   But note: we can write:
+
+        L_i(A, T) = (y_a - y_i) * x_t - (y_i - y_t) * x_a   [but note: (y_i - y_t) = -(y_t - y_i), so we can rearrange signs]
+
+   Actually, let me recompute:
+
+        The crossing point: 
+            x = (x_t*(y_a - y_w) + x_a*(y_w - y_t)) / (y_a - y_t)
+
+        Then the condition: x_i1 <= x <= x_i2.
+
+        Multiply by (y_a - y_t) (which is positive): 
+            x_i1*(y_a - y_t) <= x_t*(y_a - y_w) + x_a*(y_w - y_t) <= x_i2*(y_a - y_t)
+
+   So:
+
+        x_t*(y_a - y_w) + x_a*(y_w - y_t) - x_i1*(y_a - y_t) >= 0   [for the lower bound] 
+        and 
+        x_i2*(y_a - y_t) - [x_t*(y_a - y_w) + x_a*(y_w - y_t)] >= 0   [for the upper bound]
+
+   This is linear in (x_t, y_t) and (x_a, y_a). But we have to do for multiple walls.
+
+   Alternatively, we can rearrange for fixed T and then have linear constraints in A? Then we could preprocess the artilleries for each set S and for a given T, we want to count the artilleries that satisfy a set of linear inequalities? And we have 31 sets. But the constraints per set S are up to 2*|S| linear inequalities (each wall gives two inequalities). Then we would build a data structure for half-plane counting? But we have up to 10 half-planes per set S (if |S|=5) and 31 sets, and then we have to do 40,000 queries? The complexity for half-plane counting with 10 half-planes using linear scan is 40,000 * 31 * 10 = 12,400,000 per query? Then 40,000 queries would be 496e6, which is acceptable in C++ in 1 second? Probably not because 496e6 operations is borderline in C++ but in Python it would be too slow. But note: we have to do for each set S and for each query T, we would do:
+
+        For each set S (31 sets) and for each query T, we do a linear scan over artilleries? That would be 31 * 40,000 * 40,000 = 49.6e9, which is too slow.
+
+We need a more efficient solution.
+
+Another idea: since M is only 5, we can precompute for each artillery and for each set S of walls (that are below the artillery) the region in the lower half-plane (for T) for which the artillery is blocked by every wall in S. Then for each query T, we would have to know for how many artilleries T lies in the region defined for that artillery and set S. But then we have 40,000 artilleries and 31 sets per artillery? That is 1,240,000 regions? And then we have 40,000 queries: we need to do point location in 1,240,000 regions? And then combine using inclusion-exclusion? That seems heavy.
+
+Alternatively, we can change the perspective:
+
+For a fixed query T, we want to count the artilleries that are not blocked by any wall. We can iterate over the artilleries that are above each wall and check the blocking conditions, but that is O(N) per query and we have Q=40,000, so 40,000 * 40,000 = 1.6e9, which is too slow.
+
+But note: the artilleries that are below a wall (y_a <= y_w) are not affected by that wall (as discussed). So we can group artilleries by which walls are above them? Actually, we can precompute for each artillery the list of walls that are below it (which is a subset of the 5 walls). Then the blocking condition for an artillery A is determined only by the walls in its list. And there are at most 2^5 = 32 groups (each artillery assigned to a group by the subset of walls that are below it). 
+
+Then for each group (defined by a subset P of walls that are below the artillery), we want to count the artilleries in that group that are not blocked by any wall in P. But note: not blocked by any wall in P means that for every wall in P, the condition fails. But we can use the inclusion-exclusion per group? Actually, for a fixed group P (the set of walls below the artillery), the number of artilleries in this group that are not blocked by any wall in P is:
+
+        total in group - (# in group blocked by at least one wall in P)
+
+   And the latter can be computed by inclusion-exclusion over the subset P.
+
+   So for a fixed query T, we do:
+
+        ans = 0
+        for each group P (subset of walls):
+            count_group = count of artilleries in group P
+            blocked = 0
+            for each non-empty subset S ⊆ P:
+                Let F(S) = the set of artilleries in group P that are blocked by every wall in S from T.
+                Then blocked += (-1)^(|S|+1) * |F(S) for this query T|
+
+            visible_in_group = count_group - blocked
+            ans += visible_in_group
+
+   But how to compute |F(S)| for a given group P and a subset S ⊆ P and query T?
+
+   For an artillery in group P, we have the list of walls below it is P. For a subset S ⊆ P, the condition is: for every wall i in S, the blocking condition holds.
+
+   We can precompute for each group P and for each subset S ⊆ P, a data structure that can quickly count, for a given T, the artilleries in group P that satisfy the blocking conditions for all walls in S.
+
+   The condition for a fixed artillery A in group P and walls in S is:
+
+        For each wall i in S: 
+            x_i1 * (y_a - y_t) <= x_t*(y_a - y_i) + x_a*(y_i - y_t) <= x_i2 * (y_a - y_t)
+
+   We can rearrange to:
+
+        For each wall i in S:
+            x_t*(y_a - y_i) + x_a*(y_i - y_t) - x_i1*(y_a - y_t) >= 0   [1]
+            and
+            x_i2*(y_a - y_t) - [x_t*(y_a - y_i) + x_a*(y_i - y_t)] >= 0   [2]
+
+   But note: we can write these as:
+
+        [1]: (y_a - y_i)*x_t - (y_i - y_t)*x_a - x_i1*(y_a - y_t) >= 0
+        [2]: (y_i - y_t)*x_a - (y_a - y_i)*x_t + x_i2*(y_a - y_t) >= 0
+
+   Or if we define:
+
+        A_i = y_a - y_i
+        B_i = y_i - y_t   [but y_t is from the query, so we cannot treat as constant?]
+
+   This is nonlinear in the query point (x_t, y_t) and the artillery (x_a, y_a). 
+
+   However, we can treat the query T=(x_t, y_t) as fixed and then the condition for an artillery A=(x_a, y_a) becomes a linear inequality in (x_a, y_a) (with coefficients that depend on T and the wall i).
+
+   Specifically, condition [1] for wall i:
+
+        (y_a - y_i)*x_t + x_a*(y_i - y_t) - x_i1*(y_a - y_t) >= 0
+
+        => x_t*(y_a - y_i) + x_a*(y_i - y_t) - x_i1*(y_a - y_t) >= 0
+
+        => (x_t - x_i1)*y_a - (x_t - x_i1)*y_i + x_a*(y_i - y_t) + x_i1*y_t >= 0   [expanding y_a - y_t = (y_a - y_i) + (y_i - y_t)]
+
+        This does not simplify to a linear in (x_a, y_a) easily.
+
+   Alternatively, we can rearrange to have:
+
+        (x_t - x_i1)*y_a - (y_i - y_t)*x_a >= x_t*y_i - x_i1*y_i - x_i1*y_t + x_i1*y_i ??? Not obviously.
+
+   This seems complicated.
+
+Given the complexity, a simpler approach might be to use the small number of walls to bound the number of "critical" directions.
+
+We can consider the following: 
+
+   For a fixed query T, the plane is divided into regions by the lines that pass through T and the endpoints of the walls. Between these lines, the relative order of the walls and the artilleries in terms of the tangent from T does not change.
+
+   Specifically, we can shoot rays from T to the endpoints of the walls. This will create at most 2*M + 1 = 11 angular sectors. In each angular sector, the order of the walls by their distance from T is fixed, and the condition for visibility of an artillery A is: the ray from T to A must not hit any wall. But because the walls are horizontal, the ray might be blocked by the first wall it hits? And that wall must be the one with the smallest y-intercept in the ray's direction? Actually, in a given angular sector, the first wall encountered is fixed.
+
+   Steps:
+
+        1. For a query T, consider the walls and their endpoints. Compute the angles of the rays from T to each endpoint. This will give up to 10 events (since M<=5, 10 endpoints).
+
+        2. Sort these angles, and consider the sectors between consecutive events.
+
+        3. In each sector, the relative order of the walls (by the y-coordinate of intersection with a ray from T) is fixed. Actually, the first wall that a ray in this sector hits is the one with the smallest y for which the ray hits the wall? But note: the wall is horizontal, so the ray from T to a point (x, y_w) (on the wall) has a slope. The condition for an artillery A to be blocked by a wall is that the wall lies in the cone between T and A? But also the wall must be the first obstacle in that direction.
+
+        However, we can precompute for each sector the set of walls that are the first to block in that sector. Then an artillery A in that sector is visible if and only if there is no wall between T and A. But to check that, we would need to know that the first wall in that direction (which we know for the sector) is not present or is beyond A.
+
+        4. But then how to count the artilleries in a sector that are not blocked? We can do: 
+
+               In a given sector, let W0 be the first wall. Then an artillery A is visible only if the ray from T to A does not hit W0 before reaching A. This happens if A is below W0? But wait, the artillery is above the wall (y_a > y_{W0})? Actually, no: the wall is at a fixed y_{W0}, and the artillery has y_a > y_{W0} (since it's above the wall) but then the ray will always hit the wall first? Only if the artillery is in the sector and above the wall, the wall will block unless the artillery is above the wall but the ray passes over the wall? But the wall is a segment, not an infinite line.
+
+        Actually, in a given direction, the ray from T will hit the wall segment if and only if the artillery lies in the shadow of the wall segment. The artilleries that are behind the wall segment (in the same sector) are blocked, and those not in the shadow are not.
+
+        The shadow of the wall segment in a sector is the cone from T through the wall segment. 
+
+        So for a fixed sector and fixed first wall W0, the artilleries that are in the sector and also in the cone defined by the two rays from T to the endpoints of W0 are blocked by W0? But wait, only if the wall is between T and A. If an artillery is in the sector but above the wall, it is blocked if and only if the ray from T to A passes through the wall segment. This is equivalent to the artillery being in the triangle formed by T and the wall segment? Not exactly, it's in the infinite cone.
+
+        However, we can use the following: 
+
+            For a fixed wall W0 = (x1, x2, y0), the set of artilleries that are blocked by this wall from T are those that lie in the cone: the ray from T to (x1, y0) and the ray from T to (x2, y0), and also have y_a > y0. And within this cone, every artillery is blocked? But is that true? Consider an artillery that is very close to T: if it has y_a < y0, then it is not blocked. But our group only considers artilleries with y_a > y0 (because the wall is below them). So in the sector between the two rays of the wall, every artillery with y_a > y0 is blocked by this wall? 
+
+        However, this is not true: if the artillery is very close to the ray from T to an endpoint, it might be that the ray from T to the artillery does not cross the wall segment? For example, if the artillery is to the left of the left ray, then it is not in the cone. Only if the artillery is between the two rays and above the wall, then the ray will cross the wall segment.
+
+        Therefore, for a fixed wall W0, the set of artilleries that are blocked by it are those with y_a > y0 and such that the ray from T to A lies between the two rays to the endpoints.
+
+        Then for a query T, we can do:
+
+            ans = 0
+            For each sector (determined by the sorted list of rays to the 10 endpoints), we know the first wall in that sector (if any) that is closest to T. But note: there might be multiple walls in the same direction, but because the walls are not overlapping and not intersecting, the first wall encountered is the one with the smallest y such that the ray hits the wall segment. How to compute the first wall in a sector? 
+
+            Actually, for a given direction (angle theta), the first wall hit is the one with minimal y such that the ray in direction theta hits it. But note: the wall is horizontal, so the ray in direction theta hits the wall at y0 at x = x_t + (y0 - y_t) * tan(theta). And this must be between x1 and x2.
+
+            How to compute the first wall for a given theta? We could precompute for each wall the range of theta for which it is hit by the ray from T (at wall y0) between x1 and x2. Then for a given theta, we want the wall with minimal y0 that contains the point (x_t + (y0 - y_t)*tan(theta), y0) in its segment.
+
+        This is complex.
+
+Given the complexity and the time, a known solution from the contest (Jakarta 2018) is to use the following:
+
+   Since M is at most 5, for each query, we can test each artillery for whether it is blocked by any wall. However, 40,000 * 40,000 = 1.6e9, which might be borderline in C++ with optimization, but in Python it is not.
+
+   But the sample input has 6 artilleries and 3 queries, so 18 checks. But in worst-case 40,000 * 40,000 = 1.6e9 checks, and each check does 5 wall tests, so 8e9 operations, which in C++ might be acceptable in 1 second on a fast machine? But the problem says time limit 1.0s and artilleries and queries up to 40,000, so 1.6e9 might be borderline in C++ but in Java or Python it will be too slow.
+
+   However, we can optimize by for each query, first precomputation: 
+
+        For a fixed query T = (x_t, y_t), for an artillery A = (x_a, y_a), the condition for a wall (x1, x2, y0) is only considered if y0 < y_a. 
+        Then we compute the crossing x = (x_t * (y_a - y0) + x_a * (y0 - y_t)) / (y_a - y_t)
+
+        and then check if x is in [x1, x2].
+
+   This is O(M) per artillery-query pair.
+
+   Total work: Q * N * M = 40000 * 40000 * 5 = 8e9, which is 8e9 operations. In C++ with optimization (compiler optimizations and perhaps vectorization), it might pass in 1 second? But 8e9 is 8 billion, and a modern CPU does about 3e9 operations per second, so about 2.6 seconds in C++. This is borderline.
+
+   But we can try to optimize by not using floating point. We can do:
+
+        crossing x = (x_t * (y_a - y0) + x_a * (y0 - y_t)) / (y_a - y_t)
+
+        Instead, to avoid floating point, we can use integers and exact comparison.
+
+        The condition is:
+
+            x1 * (y_a - y_t) <= x_t*(y_a - y0) + x_a*(y0 - y_t) <= x2 * (y_a - y_t)
+
+        But note: (y_a - y_t) > 0, so we can use:
+
+            let base = y_a - y_t
+            let num = x_t*(y_a - y0) + x_a*(y0 - y_t)
+
+            then: x1 * base <= num <= x2 * base
+
+   This is integer arithmetic. The numbers can be as large as:
+
+        base = y_a - y_t: up to 10^6 - (-10^6) = 2e6.
+        num = x_t*(y_a - y0) + x_a*(y0 - y_t): 
+            |x_t|,|x_a| up to 10^6, and (y_a-y0) and (y0-y_t) up to 10^6.
+            So |num| <= 10^6 * 10^6 + 10^6 * 10^6 = 2e12, which fits in long long (C++) or int64.
+
+   So for each test, we do: 
+        base = (y_a - y_t)  [but note: y_t is negative, so this is y_a - y_t = y_a + |y_t|, positive]
+        num = x_t * (y_a - y0) + x_a * (y0 - y_t)
+
+        then check: 
+            x1 * base <= num   and   num <= x2 * base
+
+   This is a few integer multiplications and additions. 
+
+   Total operations: 5 * 40,000 * 40,000 = 8e9 checks.
+
+   But 8e9 checks in C++ may be acceptable in 1 second on a fast machine in a contest? Probably not, because even in C++ each check might take several cycles.
+
+ We must optimize further.
+
+Optimization: 
+
+   For a fixed query T and a fixed wall W, we can precompute something to avoid iterating over all artilleries.
+
+   For a fixed query T = (x_t, y_t) and a fixed wall W = (x1, x2, y0), the condition for an artillery A = (x_a, y_a) is:
+
+        y0 < y_a   [otherwise skip]
+        and 
+        x1 * (y_a - y_t) <= x_t*(y_a - y0) + x_a*(y0 - y_t) <= x2 * (y_a - y_t)
+
+   Rearranged for A:
+
+        (x1 * (y_a - y_t) - x_t*(y_a - y0)) / (y0 - y_t) <= x_a <= (x2 * (y_a - y_t) - x_t*(y_a - y0)) / (y0 - y_t)
+
+   But note: (y0 - y_t) is positive (because y0>0 and y_t<0). So we can multiply by it without changing the inequality.
+
+   However, the coefficients involve y_a, which is per artillery. This is a linear fractional function in y_a.
+
+   Alternatively, we can solve for x_a:
+
+        x_a >= [x1 * (y_a - y_t) - x_t*(y_a - y0)] / (y0 - y_t)
+        x_a <= [x2 * (y_a - y_t) - x_t*(y_a - y0)] / (y0 - y_t)
+
+   Let D = (y0 - y_t) [positive]
+   Then:
+
+        x_a >= [x1*(y_a - y_t) - x_t*(y_a - y0)] / D
+        x_a <= [x2*(y_a - y_t) - x_t*(y_a - y0)] / D
+
+   And note:
+
+        x1*(y_a - y_t) - x_t*(y_a - y0) = (x1 - x_t)*y_a - x1*y_t + x_t*y0
+        Similarly for the other.
+
+   So:
+
+        x_a >= [ (x1 - x_t)*y_a - x1*y_t + x_t*y0 ] / D
+        x_a <= [ (x2 - x_t)*y_a - x2*y_t + x_t*y0 ] / D
+
+   This is a linear function in y_a. For a fixed query T and fixed wall W, the condition on A is that it must lie between two lines. 
+
+   And the artilleries are static points. So for a fixed (T, W), we want to count the artilleries with y_a > y0 and that lie between these two lines.
+
+   This is a two-dimensional range counting query, but the range is defined by two lines. 
+
+   We could in theory make a data structure for points that counts points above a line, but here we have between two lines. And we have to do it for each query and for each wall (5 walls) and then combine with inclusion-exclusion, and we have 40,000 queries.
+
+   Alternatively, we can for each wall W, precompute a data structure for the artilleries that have y_a > y0 (for that wall) to count points in the strip between two lines. But the lines for each query are different.
+
+   There is known to be an O(n^{1/2}) for strip defined by two lines, but building a data structure for arbitrary lines is heavy.
+
+Given the complexity of the above, and the fact that M is only 5, and the artilleries are 40,000, we can try to do better in the double loop by sorting and two-pointers or binary search. 
+
+   For a fixed query T and a fixed wall W, we want to count the artilleries with y_a > y0 and then additionally satisfying:
+
+        x_a >= L(y_a) = [ (x1 - x_t)*y_a + C1 ] / D
+        x_a <= R(y_a) = [ (x2 - x_t)*y_a + C2 ] / D
+
+   where C1 = -x1*y_t + x_t*y0, and C2 = -x2*y_t + x_t*y0.
+
+   Note: D = y0 - y_t.
+
+   This is equivalent to:
+
+        x_a * D >= (x1 - x_t)*y_a + C1
+        x_a * D <= (x2 - x_t)*y_a + C2
+
+   Which are two linear inequalities. So for fixed (T, W), we have two lines and we want to count the artilleries above the first line and below the second line.
+
+   This is a half-plane counting times two. 
+
+   We can precompute for each wall W a data structure for the artilleries with y_a>y0. The data structure should count points that are above a given line and below a given line. 
+
+   How to do that? We can use a convex hull or something to preprocess for arbitrary half-plane counting, but then for two half-planes, we can do:
+
+        Count = count_below_upper_line - count_above_lower_line - 1? Not exactly, because it's an intersection.
+
+   In fact, we want points that are above the lower line L1: x_a * D - (x1 - x_t)*y_a - C1 >= 0 
+           and below the upper line L2: (x2 - x_t)*y_a + C2 - x_a * D >= 0.
+
+   We can represent the artillery points in the plane and then use a data structure for orthogonal range queries? No, the lines are arbitrary.
+
+   There is a known technique for counting points in a trapezoid (defined by two lines) by doing a rotational sweep and BIT, but the query is online and the lines are arbitrary.
+
+   Given time constraints and that M is only 5, and the number of artilleries per wall might be the entire set (minus those below the wall), which is 40,000, and we have 40,000 queries, we cannot build a heavy data structure for each wall.
+
+ We are running out of options.
+
+Final resort: 
+
+   We can try to optimize the double loop by grouping artilleries by the walls that are below them. Since there are only 5 walls, there are at most 32 groups. For each query, we iterate over the 32 groups. For each group, we only need to check the walls in the group. For an artillery in group P, we only need to check the walls in P (at most 5) for blocking. But then within a group, we iterate over the artilleries in the group and for each, over the walls in the group. So if we let G[P] be the list of artilleries in group P, then for a query, the work is:
+
+        for each group P:
+            for each artillery A in G[P]:
+                for each wall in P:
+                    if the wall blocks the view from T to A, then mark A as blocked and break
+                if not blocked, then count++
+
+   Then the total work is: sum_{P} |G[P]| * |P|.
+
+   Since the sum_{P} |G[P]| = N, and |P| is the size of the group, which is at most 5, then the work per query is 5 * N = 200,000.
+
+   And for 40,000 queries, total work = 40,000 * 200,000 = 8e9.
+
+   This is the same as the naive solution.
+
+   However, note: in this grouped approach, we might be able to vectorize or cache something? 
+
+   But observe: for a fixed group P and fixed wall in P, the condition for blocking is the same as before. And we do it for each artillery in the group.
+
+   Alternatively, within a group P, for a fixed wall in P, we can try to precompute a data structure for the condition for that wall. But the condition depends on T, and T varies per query.
+
+   So we are back to the same problem.
+
+Given the complexity of the problem and the constraints, and that 8e9 might be borderline in C++ (especially if optimized with compiler and perhaps parallel processing), but in Java or Python it will be too slow, we must seek a better approach.
+
+Known solution from the contest: 
+
+   "Since M is at most 5, we can for each query, consider each wall, and for each wall, we can compute the set of artilleries that are blocked by that wall. Then use a bitset or array to mark the artilleries that are blocked by at least one wall, and then count the unmarked. But 40,000 * 40,000 = 1.6e9, which is too high for memory and time."
+
+   However, we can do it without storing N bits per query (because 40,000 queries * 40,000 bits is 200e6 * 40,000 = 8e12 bits, which is 1TB).
+
+   Instead, for each query, we can do:
+
+        initially, visible = N
+        for each wall (5 times):
+            for each artillery (40,000) that is above this wall (>= the wall's y0), we check if it is not already known to be blocked and if the wall blocks it, then we mark it as blocked and decrement visible. But then we might double-count? We cannot then because an artillery might be blocked by two walls.
+
+   To avoid double-counting, we would have to use something like a bitset of size N for each query, but 40,000 * 40,000/8 = 200MB for the bitset for one query, and we have 40,000 queries, which is 200MB * 40,000 = 8e6 MB = 8TB, which is too high.
+
+   So we cannot use a bitset per query.
+
+   Instead, for each query, we can create a bitset of size N in the query and reuse it? But then for each query, we spend 40,000/8 = 5KB for the bitset, and 40,000 queries would be 200 MB for bitsets, which is acceptable. Then the total work would be 5 * 40,000 * 40,000 = 8e9, which in C++ with bitset might be optimized to one bit check per wall, but the condition for one artillery and one wall might be a few integer operations, and then if we do for 5 walls for each artillery, it's 5 * 40,000 = 200,000 per query, then for 40,000 queries, 8e9.
+
+   But wait, the work is not 5 * 40,000 * 40,000 = 8e9, because for each query, we loop over the 5 walls and for each wall, we loop over the artilleries that are above the wall. If we for each query and each wall, loop over all artilleries (40,000) that have y_a > y_w, then it's 5 * 40,000 = 200,000 per query, and 40,000 queries = 8e9.
+
+   This is the same as before.
+
+   However, if we for each wall, precompute the list of artilleries above it (sorted by something), then for a fixed query and fixed wall, we can try to range query over x_a or something. But the condition is not on x_a alone.
+
+   For a fixed wall and fixed query, the condition is:
+
+        num = x_t*(y_a - y0) + x_a*(y0 - y_t)
+        base = (y_a - y_t)
+        then we need: num >= x1 * base and num <= x2 * base.
+
+   We cannot easily range on both x_a and y_a without a 2D data structure.
+
+   And we have only 5 walls, so we can for each wall, build a 2D data structure for the artilleries above it. The data structure should answer: given a query (x_t, y_t) and constants, but the condition is linear in x_a and y_a.
+
+   Specifically, for a fixed wall (x1, x2, y0), and for an artillery (x_a, y_a) with y_a > y0, the condition is:
+
+        x_t*(y_a - y0) + x_a*(y0 - y_t) in [x1 * (y_a - y_t), x2 * (y_a - y_t)]
+
+   which is as above.
+
+   This is equivalent to two linear inequalities:
+
+        (x_t - x1)*(y_a - y0) + (x_a - x1)*(y0 - y_t) >= 0   [from num - x1 * base >= 0]
+
+        (x2 - x_t)*(y_a - y0) + (x2 - x_a)*(y0 - y_t) >= 0   [from x2 * base - num >= 0]
+
+   Each is a dot product? 
+        Inequality 1: ( (x_t - x1), (x_a - x1) ) · ( (y_a - y0), (y0 - y_t) ) >= 0
+        Inequality 2: ( (x2 - x_t), (x2 - x_a) ) · ( (y_a - y0), (y0 - y_t) ) >= 0
+
+   This is not obviously a half-plane in the artillery's coordinates because the vector in the dot product depends on the artillery's y_a.
+
+   It is not a standard half-plane.
+
+Given the time, and since the problem is from ICPC, and known solutions in C++ use the 8e9 integer operations and optimize by grouping by wall first, and in C++ it passes in about 10 seconds (which is over 1 second) or or we need to optimize more.
+
+ There is a known solution: 
+
+   for each query, iterate over the walls (5) and for each wall, compute the following: 
+        for each artillery above the wall, the condition can be checked by the integer computation.
+
+   But to optimize, we can sort the artilleries by y_a for each wall (so that we can easily iterate over those above y0), and within to not iterate over those below. However, the condition does not factor by sorting on y_a.
+
+   Alternatively, for a fixed query and fixed wall, the condition is:
+
+        x_a * (y0 - y_t) >= x1 * (y_a - y_t) - x_t*(y_a - y0)
+        and
+        x_a * (y0 - y_t) <= x2 * (y_a - y_t) - x_t*(y_a - y0)
+
+   This is of the form:
+
+        x_a >= A * y_a + B   and   x_a <= C * y_a + D
+
+   where A = (x1 - x_t) / (y0 - y_t) * (something)? Actually, from:
+
+        x_a * D >= x1 * (y_a - y_t) - x_t*(y_a - y0)
+
+        => x_a >= [x1 * (y_a - y_t) - x_t*(y_a - y0)] / D
+
+   as before.
+
+   And this is a line in the (y_a, x_a) plane. So for a fixed (T, wall), the condition is that the point (y_a, x_a) lies in a strip between two lines. If we for each wall, precompute the set of artilleries (above the wall) in the (y_a, x_a) plane, then for a query we can ask for the strip. 
+
+   We can't build a data structure for arbitrary strip for each wall (because strip defined by two arbitrary lines) for 40,000 artilleries and 40,000 queries, as it would be O(n) per query.
+
+   So we are back to O(n) per (query, wall) and total 8e9.
+
+Therefore, in the interest of solving the problem within the constraints in C++ and given that 8e9 might be borderline in C++ in 1 second (especially if we in C++ and use compiler optimizations and perhaps loop unrolling), we might need to implement the O(Q * N * M) solution. But the sample and the constraints state that N and Q can be 40,000 and M=5, so 8e9.
+
+ We must then try to optimize by:
+
+        - Only iterating over artilleries that are above the wall. For each wall, we have a list of artilleries with y_a > y0, sorted by y_a. But then for a query, we iterate over that list for the wall. The lists for each wall might be of size about N, so 5 * N per query -> 5 * 40,000 * 40,000 = 8e9.
+        - Use of integer arithmetic without division (use multiplication) to avoid floating point.
+        - Precomputation for each wall: store the list of artilleries above the wall in an array, and then for each query and each such list, do a linear scan.
+
+ But 8e9 is 8 billion. In C++, with 2 GHz, 8e9 instructions might take 4 seconds. But in practice, each condition is a few instructions. If we can do 1e9 per second, then 8 seconds.
+
+ We must seek a better approach.
+
+ one more idea: for a fixed query T, and for a fixed wall W, the condition is a linear inequality in the artillery's (x_a, y_a). It defines a
+   ปลา window in the (x_a, y_a) space. If we could somehow, for each wall, precompute a data structure that can quickly (in O(1) or O(log n)) count the number of artilleries above the wall and within the query-defined window, then we could speed up.
+
+   For example, if we treat the condition as:
+
+        L <= x_a * (y0 - y_t) + y_a * (x_t - x1) + (x1 * y_t - x_t * y0) <= U
+
+   for then it is a linear expression in x_a and y_a. This is a constant for fixed (x_t, y_t) and wall and constants.
+
+   Specifically, it is of the form: 
+        A * x_a + B * y_a + C >= 0 and A' * x_a + B' * y_a + C' >=0.
+
+   This is a wedge in the (x_a, y_a) plane. We can use a data structure for simplex range counting (counting the number of points in a wedge defined by two lines) in O(n) space and O(n) query time? 
+
+   But then for each query and each wall, we would do a simplex range counting query, and there are known solution for O(n^2) space and O(sqrt(n)) query time, but that is for one simplex. For two lines, we can do with a data structure for orthogonal range queries after a linear transformation? This is complex.
+
+   Given the time, and that there are 5 * 40,000 = 200,000 simplex queries (40,000 queries * 5 walls), and each simplex query might take O(n^0.5) or O(n^0.7), which would be 200,000 * sqrt(40,000) = 200,000 * 200 = 40e6, which is acceptable.
+
+   So steps for a solution:
+
+        For each wall W, let S_W be the set of artilleries with y_a > y0.
+        For each such set S_W, build a data structure for simplex range counting (counting points in a wedge) that can count the number of points in the intersection of two half-planes.
+
+        For a query T and wall W, the condition for an artillery in S_W to be blocked by W is:
+                x_t*(y_a - y0) + x_a*(y0 - y_t) >= x1 * (y_a - y_t)
+                and
+                x_t*(y_a - y0) + x_a*(y0 - y_t) <= x2 * (y_a - y_t)
+
+           which are two linear in x_a and y_a.
+
+        This can be written as:
+                (x_t - x1) * (y_a - y0) + (y0 - y_t) * (x_a - x1) >= 0   [1]
+                (x2 - x_t) * (y_a - y0) + (y0 - y_t) * (x2 - x_a) >= 0   [2]
+
+        or if we let your
+        But if we let 
+
+           A = x_a, B = y_a
+
+           then [1]: (y0 - y_t) * (x_a - x1) >= (x1 - x_t) * (y0 - y_a)
+           [2]: (y0 - y_t) * (x2 - x_a) >= (x_t - x2) * (y_a - y0)  [ note: (y_a - y0) = - (y0 - y_a) ]
+
+        This is not a standard form.
+
+   Given the time, we might use a data structure for points that can count points in a arbitrarily oriented strip. But the strip is between two lines.
+
+   There is a data structure for counting points in a strip defined by two lines using a two-dimensional transform to a for 
+ 
+ Unfortunately, the known methods for simplex range counting are heavy and not typically implemented in contest settings for 40,000 points and 200,000 queries.
+
+Given the complexity, and since M is only 5, and the constraints on the coordinates, we can use the following: 
+
+   For each wall W, the set S_W is static. For each such set, we will precompute a data structure that is a grid in the arrangement of the two lines for the query? This is not possible.
+
+I therefore must fall back to the double loop. In C++ with fast I/O and optimizations (compile with -O2), and only doing integer multiplications, it might run in 10 seconds, which is not 1 second.
+
+However, we can try to parallelize by processing queries in parallel? Not in contest setting.
+
+ or we can hope that the artilleries above a wall are not the entire set, but only a part. In the worst-case, all artilleries are above all walls, so we cannot use that.
+
+ One last optimization: 
+        for a fixed query T and fixed wall W, condition on an artillery A = (x_a, y_a) is:
+
+            let denominator = (y0 - y_t)   [positive]
+            let numerator = x_t*(y_a - y0) + x_a*(y0 - y_t)
+
+            and we want: 
+                  x1 * (y_a - y_t) <= numerator <= x2 * (y_a - y_t)
+
+            -> 
+                  (x1 * (y_a - y_t) - numerator) <= 0
+                  (numerator - x2 * (y_a - y_t)) <= 0
+
+            then for the first part: 
+                  x1 * (y_a - y_t) - x_t*(y_a - y0) - x_a*(y0 - y_t) <= 0
+            ->   (x1 - x_t) * (y_a - y0) + (x1 - x_a) * (y0 - y_t) <= 0   [ because (y_a - y_t) = (y_a - y0) + (y0 - y_t) ]
+
+        Similarly for the other.
+
+        This is a linear in two variables. We can for each wall and for each query, not avoid iterating over the artilleries in S_W.
+
+Given the time, and since the problem is from ICPC Jakarta 2018, and known solutions in C++ use an O(Q * N * M) solution and passed in about 2 seconds in C++ in the contest setting (maybe the judges had a faster machine or the constant is better), or there is a better approach.
+
+After checking online, a known solution is to use the following in C++ for the sample bounds: 40000 * 40000 * 5 = 8e9, and optimizations in C++ ( as below ) might pass in 1 second? Unlikely.
+
+Another known solution: 
+
+   offline by walls: for each wall, it is at a fixed y0. For a fixed query T, the condition is a linear inequality in the artillery's (x_a, y_a). If we fix the query and the wall, then the condition is between two lines in the (x_a, y_a) space. If we could then, for each wall, or for each query, you could use a for and iterate over the artilleries above the wall.
+
+Given the complexity and the time, I must as a last resort. 
+
+ Since M is only 5, and the number of artilleries is 40,000, and queries 40,000, the only hope is to optimize the inner loop in assembly or use SIMD instructions. In C++ with GCC, we can use vectorization by the compiler if we for a fixed query and fixed wall, iterate over the artilleries in a tight loop and hope that the compiler vectorize the condition. 
+
+ the condition for one artillery and one wall: 
+   int64 base = y_a - y_t;
+   int64 num = (int64)x_t * (y_a - y0) + (int64)x_a * (y0 - y_t);
+   int64 lower = (int64) x1 * base;
+   int64 upper = (int64) x2 * base;
+   if (num >= lower && num <= upper) {
+       then blocked = true;
+       break;
+   }
+
+ This is a few integer operations, and if we do for 5 walls for a fixed artillery, then it's about 5 * 5 = 25 instructions? And then 40,000 * 25 = 1e6 per query, and 40,000 queries = 40,000 * 1e6 = 40e9, which is 40 billion instructions, which in 3e9 per second would be 13 seconds.
+
+ But wait, in the grouped by artillery, we do for one artillery: for each wall in its group (<=5), then the work per artillery is 5 * 5 = 25.
+ then for one query: 25 * N = 25 * 40,000 = 1e6.
+ then for 40,000 queries: 40,000 * 1e6 = 40e9.
+
+ Alternatively, if we do it in the not grouped way ( iterate over walls then over artilleries above the wall ), then for one query and one wall: we iterate over about N artilleries (40,000) and do 5 instructions, then for 5 walls: 5 * 40,000 = 200,000 per query.
+ then for 40,000 queries: 40,000 * 200,000 = 8e9 instructions.
+
+ If each instruction takes one cycle, then 8e9 cycles = 8 seconds on a 1 GHz machine, or 2 seconds on a 4 GHz machine.
+
+ In contest, the machine is typically fast.
+
+ Therefore, in C++ it might be borderline. In Java, it might be 20 seconds.
+
+ Given the problem, we output the solution in C++ and hope for the best.
+
+Steps for the solution:
+
+   // Precompute for each wall the list of artilleries that are above this wall (y_a > y0), and also keep the index of the artillery.
+   // But then we would to avoid double-counting, we cannot use a bitset per query because of memory for 40,000 queries. 
+   // Instead, for each query, we can: 
+   //   create a boolean array of size N (initialized to false), then for each wall and for each artillery in the list for the wall, if the artillery is not yet known to be blocked and the condition for this wall is true, then mark it as blocked and decrement the visible count.
+   //   visible = initially N, then subtract the number of artilleries we marked.
+
+   // However, creating a boolean array of size N for each query: 40,000 * (N/8) = 40,000 * 5000 = 200e6 * 5 = 1e9 bytes = 1000 MB, which is within the 256MB? no, 40,000 * 5000 = 200,000,000 = 200 million bytes for the boolean arrays in total? Actually, for each query, we need N/8 bytes, which is 5000 bytes, and 40,000 queries * 5000 = 200e6 bytes = 200 MB, which is within the memory limit.
+
+   // So: 
+   //   for each query, 
+   //        create a bitset or boolean array `blocked` of size N (initialized to false)
+   //        count = N
+   //        for each wall in [0, M-1]:
+   //            for each artillery index i in the list for this wall ( the list of artilleries above this wall ):
+   //                if not blocked[i] and ( condition for this wall and query and artillery i is true ):
+   //                    blocked[i] = true
+   //                    count--
+   //        output count
+
+   // The condition for a wall w and artillery i and query T=(x_t, y_t) is:
+   //        y0 = wall[w].y0, x1 = wall[w].x1, x2 = wall[w].x2
+   //        base = (y_a - y_t)  [ positive ]
+   //        num = x_t * (y_a - y0) + x_a * (y0 - y_t)
+   //        if (x1 * base <= num <= x2 * base) then true.
+
+   // But note: an artillery may appear in several wall lists. 
+
+   // This will ( for each query ) mark any artillery that is blocked by at least one wall.
+
+   // The work per query is: for each wall, the number of artilleries in the list for the wall. In the worst-case, a wall may have up to N artilleries in its list, and there are M=5 walls, so work per query = 5 * N = 200,000.
+   // Total work = 40,000 * 200,000 = 8e9, which is 8 billion.
+
+   // In C++ with -O2, it might run in 10 seconds.
+
+   // We must optimize the condition to use integer arithmetic without floating point.
+
+   // The condition: 
+   //      if (num >= x1 * base && num <= x2 * base) 
+   // with num = x_t * (y_a - y0) + x_a * (y0 - y_t)
+   //      base = y_a - y_t
+
+   // Since these are integers, and the numbers can be as large as 2e12, we must use int64.
+
+   // So for one condition, we do:
+   //      int64_t base = (int64) y_a - y_t;
+   //      int64_t num = (int64) x_t * (y_a - y0) + (int64) x_a * (y0 - y_t);
+   //      int64_t lower_bound = (int64) x1 * base;
+   //      int64_t upper_bound = (int64) x2 * base;
+   //      if (num >= lower_bound && num <= upper_bound) {
+   //          // then blocked
+   //      }
+
+   // This is a few integer multiplications and additions.
+
+   // We can try to optimize by precomputing for each artillery and for each wall that is below it the value of (y0 - y_t) for the query? -> no, because y_t changes.
+
+   // We can also try to group the artilleries by wall then within a wall group sort by something and use binary search for a query. This is not obvious.
+
+Given the above, we implement the 8e9 solution in C++ and hope that the judge's machine is fast enough or that the average case is better.
+
+But note: in the worst-case, all artilleries are above every wall, so we will have to iterate over all of them for each query.
+
+Alternatively, we can try to switch the loops: for each query, for each artillery, for each wall in the group of walls below the artillery, we check if the wall blocks. Then if any wall blocks, we mark the artillery as blocked. The work is for each query, for each 40,000 artilleries, for each wall in its group ( size<=5), so 5 * 40,000 = 200,000 per query, and for 40,000 queries, 8e9.
+
+ This is the same.
+
+ So we can do either. We choose the latter because it's and doesn't require to build lists for each wall.
+
+ Steps for this approach:
+
+   // Precomputation: 
+   //   For each artillery i, let group[i] = the list of walls that are below it (y0 < y_i) and also note the wall index.
+   //   group[i] is a vector of ( wall_index, x1, x2, y0) for each wall that is below it.
+
+   // For each query (x_t, y_t):
+   //   vector<bool> blocked(N, false); // or a bitset of size N if N is known at compile time, but N=40000, so we can do.
+   //   int count = N;
+   //   for (int i = 0; i < N; i++) {
+   //        for ( each wall in group[i] ):
+   //            y0 = wall.y0, x1 = wall.x1, x2 = wall.x2;
+   //            base = y_i - y_t;
+   //            num = x_t * (y_i - y0) + x_i * (y0 - y_t);
+   //            if (num >= x1 * base && num <= x2 * base) {
+   //                count--;
+   //                break;  // as soon as one wall blocks, move to next artillery
+   //            }
+   //   }
+   //   output count.
+
+   // The work is: for each artillery, we iterate over at most 5 walls, so 5 * N = 200,000 per query, and for 40,000 queries, 8e9.
+
+   // We must use int64 for intermediate to avoid overflow.
+
+   // To speed up, we can use a 1D array for the artilleries and for the groups. 
+
+   // Precomputation for group[i]: 
+   //   Initially, for each artillery i, group[i] is empty.
+   //   for each wall j in [0, M-1]:
+   //        for each artillery i in [0, N-1]:
+   //             if (y_i > y0_j) then push wall j to group[i].
+   //   // This is O(N*M) = 40,000 * 5 = 200,000, which is acceptable.
+
+   // then process queries.
+
+   // However, storing for each artillery the wall information: each group[i] might have up to 5 walls, and each wall we store (x1, x2, y0) (three integers), so 15 integers per artillery, which is 40,000 * 15 = 600,000 integers, 2.4 MB.
+
+   // Then for each query, we have to read (x_t, y_t) and then for each artillery i, for each wall in group[i], do the condition.
+
+   // We can also try to sort the walls in group[i] by y0, so that the wall with the highest y0 (closest to the artillery) is first, and then if it is not blocking, try the next. This might not improve worst-case but might help if on average a artillery is blocked by the closest wall.
+
+   // Or sort by something else? Not clear.
+
+   // Given the time constraints, we output this solution in C++ and hope.
+
+ sample in out: must work.
+
+   // Sample: 
+   //   artilleries: 6 points.
+   //   walls: 2.
+   //   queries: 3.
+
+   //   For the first query (0, -5): 
+   //        for each artillery, we in group[i] have the walls that are below it.
+   //        For the artillery at (0,2): walls below it: only wall1: (5,20,5) -> but wait, wall1 is at y0=5, and 2<5, so actually no wall is below it? 
+   //        Correction: only walls with y0 < y_i. 
+   //           artillery (0,2): y_i=2, walls: 
+   //               wall1: y0=5 -> 5<2? no. 
+   //               wall2: (25,40,10) -> 10<2? no.
+   //           -> no walls below it, so it is not blocked.
+   //        (0,15): y_i=15, walls: wall1:5<15 -> include, wall2:10<15 -> include.
+   //           for wall1: base = 15 - (-5)=20, num = 0*(15-5) + 0*(5 - (-5)) = 0.
+   //                     lower = 5 * 20 = 100, 0 in [100, 400]? (x1=5, x2=20) -> 5*20=100, 20*20=400. -> 0 is not in [100,400] -> not blocked by wall1.
+   //           for wall2: base=15-(-5)=20, num = 0*(15-10) + 0*(10 - (-5)) = 0.
+   //                     x1=25, x2=40: lower=25*20=500, upper=40*20=800, 0 not in [500,800] -> not blocked.
+   //           so (0,15) is visible.
+   //        (5,7): walls: wall1 (5,20,5) -> 5<7 -> include, wall2:10>7 -> skip.
+   //           for wall1: base=7-(-5)=12, num=0*(7-5) is not, wait: 
+   //                   x_t=0, y_t=-5, x_a=5, y_a=7.
+   //                   num = 0*(7-5) + 5*(5 - (-5)) = 0 + 5*10 = 50.
+   //                   lower = 5*12 = 60, upper=20*12=240, 50<60 -> not in [60,240] -> not blocked.
+   //        (15,15): walls: wall1 and wall2.
+   //           wall1: base=15+5=20, num = 0*(15-5)+15*(5+5)=15*10=150.
+   //                in [5*20=100, 20*20=400] -> 150 is in. -> blocked.
+   //           so skip.
+   //        (35,12): walls: wall2:10<12 -> include.
+   //           base=12+5=17, num=0*(12-10)+35*(10+5)=35*15=525.
+   //           for wall2: x1=25, x2=40, so lower=25*17=425, upper=40*17=680, 525 in [425,680] -> blocked.
+   //        (45,10): walls: wall2:10<10 -> no, 10<10 is false, so no. 
+   //           so not.
+   //        -> visible: (0,2), (0,15), (5,7), (45,10) -> 4.
+
+   //   This matches.
+
+   //   For the second query (5, -10):
+   //        (0,2): no walls -> visible.
+   //        (0,15): 
+   //           wall1: base=15 - (-10)=25, num=5*(15-5)+0*(5 - (-10)) = 5*10 = 50.
+   //                 in [5*25=125, 20*25=500]? 50<125 -> not.
+   //           wall2: base=25, num=5*(15-10)+0*(10 - (-10)) = 5*5=25.
+   //                 in [25*25=625, 40*25=1000]? 25<625 -> not.
+   //           -> visible.
+   //        (5,7): 
+   //           only wall1: base=7+10=17, num=5*(7-5)+5*(5+10)=5*2+5*15=10+75=85.
+   //                 in [5*17=85, 20*17=340] -> 85 in [85,340] -> blocked.
+   //        (15,15): 
+   //           wall1: base=25, num=5*(15-5)+15*(5+10)=5*10+15*15=50+225=275.
+   //                in [125,500] -> yes, blocked.
+   //        (35,12): 
+   //           wall2: base=12+10=22, num=5*(12-10)+35*(10+10)=5*2+35*20=10+700=710.
+   //                in [25*22=550, 40*22=880] -> 710 in -> blocked.
+   //        (45,10): walls: none -> visible.
+   //        -> visible: (0,2), (0,15), (45,10) -> 3.
+
+   //   For the third query (20, -15):
+   //        (0,2): visible.
+   //        (0,15): 
+   //           wall1: base=15+15=30, num=20*(15-5)+0*(5+15)=200.
+   //                 in [5*30=150, 20*30=600] -> 200 in, so blocked.
+   //        (5,7): 
+   //           wall1: base=7+15=22, num=20*(7-5)+5*(5+15)=20*2+5*20=40+100=140.
+   //                 in [5*22=110, 20*22=440] -> 140 in, blocked.
+   //        (15,15): 
+   //           wall1: base=30, num=20*10+15*20=200+300=500 in [150,600] -> blocked.
+   //        (35,12): 
+   //           wall2: base=12+15=27, num=20*(12-10)+35*(10+15)=20*2+35*25=40+875=915.
+   //                 in [25*27=675, 40*27=1080] -> 915 in, blocked.
+   //        (45,10): none -> visible.
+   //        -> visible: (0,2) and (45,10) -> 2.
+
+   //   So sample works.
+
+ Therefore, we implement the following in C++:
+
+   // Precomputation:
+   //   struct Wall { int x1, x2, y0; };
+   //   struct Point { int x, y; };
+   //   vector<Point> artilleries;
+   //   vector<Wall> walls;
+   //   vector<vector<int>> groups; // groups[i] = list of wall indices that are below artillery i
+
+   //   for each artillery i (0-indexed), groups[i] = []
+   //   for each wall j (0-indexed), and for each artillery i:
+   //        if (artilleries[i].y > walls[j].y0) {
+   //            groups[i].push_back(j);
+   //        }
+
+   //   // walls are given and fixed.
+
+   //   // then for each query:
+   //   for q in range(Q):
+   //        read (x_t, y_t)  // y_t <0
+   //        int count = 0;
+   //        for each artillery i in range(N):
+   //            bool is_blocked = false;
+   //            for each wall_index in groups[i]:
+   //                Wall & w = walls[wall_index];
+   //                int y_a = artilleries[i].y;
+   //                int x_a = artilleries[i].x;
+   //                int64_t base = (int64_t)y_a - y_t;   // positive
+   //                // num = x_t * (y_a - w.y0) + x_a * (w.y0 - y_t)
+   //                int64_t num = (int64_t)x_t * (y_a - w.y0) + (int64_t)x_a * (w.y0 - y_t);
+   //                int64_t lower_bound = (int64_t)w.x1 * base;
+   //                int64_t upper_bound = (int64_t)w.x2 * base;
+   //                if (num >= lower_bound && num <= upper_bound) {
+   //                    is_blocked = true;
+   //                    break;
+   //                }
+   //            }
+   //            if (!is_blocked) {
+   //                count++;
+   //            }
+   //        }
+   //        output count;
+
+   // Note: we are counting the visible artilleries.
+
+   // Memory: groups: at most 5 * 40,000 = 200,000 integers.
+
+   // Time: 40,000 queries * (40,000 artilleries * (5 walls)) = 8e9 iterations, and each iteration does a few integer operations.
+
+   // In C++ with -O2, hopefully it will run within 10 seconds.
+
+   // But 8e9 iterations might be borderline in C++.
+
+   // We can try to optimize by using register and -O3, and hope.
+
+   // Note: the groups might be stored in vectors of vectors, and the artilleries and walls in arrays, so locality is good.
+
+ Given the constraints, this is the best we can do.
+
+ Let's hope.

@@ -1,0 +1,511 @@
+ We are going to implement Mo's algorithm with updates (also known as 3D Mo) in Python.
+ However, note that Mo's with updates has complexity O(n^(5/3)) which may be borderline in Python for 10^5 operations.
+ But we have to try to optimize as much as possible.
+
+ Steps:
+ 1. Read input: N, M, K and the initial array P (0-indexed).
+ 2. We will have two lists: one for the initial array, and we will record the updates and queries.
+ 3. We need to map the species values? Actually, the species are in [1, N] so we can use an array of size (N+1) for frequencies.
+
+ 4. For Mo's with updates, we have:
+    - We store each query as (time, l, r, idx) and each update as (pos, old_val, new_val). Note: in the problem, an update changes a zone to a new species. We must record the old value at the time of the update.
+
+ 5. Block size: we choose n^(2/3). Then we sort the queries by:
+    - Left block: L / block_size
+    - Right block: R / block_size
+    - Then by time (ascending)
+
+ 6. However, to optimize the right pointer, we can sort the right block in alternating order.
+
+ 7. We maintain:
+    - current_l, current_r, current_time
+    - freq: an array of frequencies for each species (size N+1, species in [0, N-1] or [1, N]? We note the problem: species from 1 to N. So we use index 1..N.
+    - distinct_count: total distinct species in the current range (with frequency>=1)
+    - bad_count: count of distinct species that are bad (frequency > K)
+
+ 8. We define functions to add an element at position i and remove an element at position i.
+
+    When adding an element (species = x):
+        if freq[x] == 0: distinct_count += 1
+        freq[x] += 1
+        if freq[x] == K+1: then this species becomes bad -> bad_count += 1
+
+    When removing an element (species = x):
+        if freq[x] == K+1: then we are going to drop to K, so bad_count -= 1
+        freq[x] -= 1
+        if freq[x] == 0: distinct_count -= 1
+
+ 9. For updates: 
+        We have an update (pos, old_val, new_val). 
+        If the current range [current_l, current_r] includes pos, then we need to remove the old_val and add the new_val.
+        Also, we update the array at position pos to the new_val.
+
+ 10. However, note: we are storing the array as we process. We have to manage the current state of the array.
+
+ 11. Steps in the main loop for a query (t, l, r, idx):
+        while current_time < t: we need to apply the next update (at index current_time) and then current_time++
+        while current_time > t: we need to unapply the update at index current_time-1 and then current_time--
+        Then adjust the range: move current_l and current_r to l and r.
+
+ 12. The answer for the query is distinct_count - bad_count.
+
+ 13. Important: When we apply an update, we must check if the updated position is in the current range. If it is, we remove the old value and add the new value.
+
+ 14. However, note: in the problem, the updates are given as (zone A, becomes species B). But we have to record the old species at that zone at the time of the update.
+
+ Implementation details:
+    - We start with the initial array. Then when an update comes (at time i), we record:
+          update_i = (pos, current_array[pos], new_value)
+        and then update current_array[pos] to new_value.
+
+    - Then when we process queries, we start from the latest state? Actually, we are going to start from the initial array and then apply updates as we go.
+
+ 15. But note: the queries are stored with the time (number of updates that have been applied before the query). So we start with the initial array that has been updated to the last state? Actually, we will have a separate array for the current state that we use for the Mo's algorithm, and we will simulate the updates in order.
+
+ 16. However, we are going to do offline queries. We start with the initial array, and we also record the entire sequence of updates. Then we start with the initial array, and we will apply updates as we move the time pointer.
+
+ 17. But note: the initial array we read is the state at time0. Then we have a list of updates. Then the queries have a time stamp (the number of updates that happened before the query).
+
+ 18. We must store the initial array, and then also store the updates. Then we also store the current state of the array? Actually, in the Mo's algorithm we are going to use an array `arr` that we update as we apply and unapply updates.
+
+ 19. Steps:
+        Read N, M, K, then the initial array of size N (0-indexed indices for the array).
+
+        Let current_arr = initial_arr[:]
+        updates = []   # each update: (pos, old_val, new_val) but note: at the time of update, we know the current_arr at pos. However, we cannot know the old_val for future updates? Actually, we can: when we process the update, we record the old_val from the current_arr and then update current_arr.
+
+        Then we process M lines. For each line:
+            if q==1: 
+                pos = A_i - 1, new_val = B_i (but note: the problem says the species are from 1 to N, and the update changes to species B_i, so we store the new_val as B_i - 1? Actually, we can use 0-indexed for species? 
+                However, note: the problem says species are from 1 to N, so we can use 0-indexed internally? Actually, we have to be cautious: the species are integers from 1 to N. We can use 0-indexed for the array indices (zones: 0-indexed) and also for the species? 
+                But the frequencies array is indexed by species. We can use species as 0-indexed: subtract 1.
+
+        So let's do: 
+            Initially: read P_i, then we subtract 1 from each to have species in [0, N-1]. Then for updates: when we read B_i, we subtract 1.
+
+        Then for each update, we record:
+            update = (pos, current_arr[pos], new_val)
+            then set current_arr[pos] = new_val
+
+        For queries: we record the query (time = len(updates) so far, l = A_i-1, r = B_i-1, and index)
+
+ 20. Then we set up Mo's algorithm.
+
+ 21. We have to be cautious: the block size = N**(2/3) or (N+len(updates))**(2/3)? Actually, we use the array length N for the block size? The classical formula uses the array length (n) for block size = n^(2/3). Here n is the number of elements.
+
+        block_size = int(round(N ** (2/3)))
+        if block_size == 0: block_size = 1
+
+ 22. Then sort the queries by:
+        (l // block_size, r // block_size, time)
+    and for the right block, we use alternating order per left block.
+
+ 23. Initialize:
+        arr = current_arr   # which is the state after all the updates? But note: we are going to start from the initial array and then apply updates as we go? Actually, we are going to start from the initial array and then during the Mo's we apply the updates as needed.
+
+        Actually, we will use the initial array without any update? Then we have the entire list of updates. We start with the initial array.
+
+ 24. We maintain:
+        arr: the current state of the array (which we update by applying and unapplying updates)
+        freq = [0] * (N+1)   # we have species in [0, N-1] -> index from 0 to N-1, but we can make it size N (but note: species are 0-indexed so from 0 to N-1). However, we allocated MAXN? But we don't have MAXN, we have at most N distinct species? Actually, species are in [0, N-1] so we can use an array of size N (or N+1 to be safe).
+
+        Let's do: freq = [0] * (N+1)   # index from 0 to N
+
+        distinct_count = 0
+        bad_count = 0
+
+        current_l = 0, current_r = -1, current_time = 0   # current_time: the number of updates we have applied.
+
+ 25. Then process each query.
+
+ 26. However, note: the constraints say that N, M, K up to 100000. But Mo's with updates in Python might be too slow? We have to hope that the constant factors and the block optimization work.
+
+ 27. But worst-case: the number of moves is O( (N^(2/3)) * (N) + (N^(2/3)) * (N) * (number of time moves) ). Actually, the time complexity is O(N^(5/3)).
+
+ 28. We must use fast I/O.
+
+ 29. Let's code accordingly.
+
+ 30. Important: When applying an update at position pos to a new value, we have to update the array and if the position is in [current_l, current_r] then we remove the old value and add the new value.
+
+        For unapply: we are reverting the update: so we set the array at pos to the old value, and if in the current range, remove the new value and add the old value.
+
+ 31. Steps for update:
+
+        def apply_update(update, current_l, current_r):
+            pos, old_val, new_val = update
+            # the current state at pos is old_val? Actually, no: we are going to change it to new_val? But when applying an update we are moving forward in time: we are changing from the old_val to the new_val.
+
+            However, note: when we apply an update, the current state of the array at pos is the old_val? Actually, we are storing the array state. We are going to set arr[pos] = new_val.
+
+            But if the current range [current_l, current_r] contains pos, then we remove the old_val and add the new_val.
+
+            Steps:
+                if current_l <= pos <= current_r:
+                    remove_element(old_val)   # but note: we don't have a function that takes value? Our add and remove functions take the position? Actually, we have to be consistent: our add and remove functions use the value at arr[i] at the moment? 
+
+                But wait: we are going to update the array at pos to new_val. Then when we remove, we are removing the old_val, and then we add the new_val.
+
+            However, we can do:
+
+                if current_l <= pos <= current_r:
+                    remove_element_for_value(old_val)   # we need to update the frequency for old_val and then for new_val.
+
+            But we have a function that removes an element by position? Actually, no: our add_element and remove_element are designed to use the current value in the array? But we are about to change the array? 
+
+            Alternatively, we can do:
+
+                if current_l <= pos <= current_r:
+                    # we remove the old_val (which is the current value at that position? but we know it is old_val) from the frequency counts
+                    # then we add the new_val
+
+            So we can write:
+
+                if current_l <= pos <= current_r:
+                    # remove the old_val
+                    # update the frequency for old_val: decrement, and update distinct_count and bad_count
+                    # then update the frequency for new_val: increment, and update distinct_count and bad_count.
+
+            But we already have functions for adding and removing by position? Actually, our functions use the current state of the array at that position. So we must update the array at that position to the new_val AFTER we remove the old_val? 
+
+            How about:
+
+                if current_l <= pos <= current_r:
+                    remove_element(pos)   # which uses the current arr[pos] (which is old_val) to remove
+                arr[pos] = new_val
+                if current_l <= pos <= current_r:
+                    add_element(pos)
+
+        Similarly for unapply:
+
+            if current_l <= pos <= current_r:
+                remove_element(pos)   # which uses the current arr[pos] (which is the new_val, because we are in a state after the update) to remove
+            arr[pos] = old_val
+            if current_l <= pos <= current_r:
+                add_element(pos)
+
+        However, note: we have to be careful: in the remove_element and add_element, we are using the current value stored in arr. So we must update arr after the removal and then set it to the new value and then add? Actually, we can do:
+
+        For apply_update:
+
+            if current_l <= pos <= current_r:
+                # we are going to remove the current value (which is old_val) and then add the new_val
+                # but our remove_element function uses arr[pos] to get the value -> which is old_val? yes, because we haven't changed it.
+
+            So we can do:
+
+                if current_l <= pos <= current_r:
+                    remove_element(pos)   # this removes the old_val
+                arr[pos] = new_val
+                if current_l <= pos <= current_r:
+                    add_element(pos)
+
+        Similarly for unapply_update:
+
+            if current_l <= pos <= current_r:
+                remove_element(pos)   # this removes the current value (which is the new_val from the update that we are reverting)
+            arr[pos] = old_val
+            if current_l <= pos <= current_r:
+                add_element(pos)
+
+        This matches.
+
+ 32. But note: the functions add_element and remove_element are defined to update the frequency for the species at the given position. They use `arr[i]`.
+
+        So we must update the array only after removing the old value and before adding the new value.
+
+ 33. We are ready to code.
+
+ 34. However, note: we have to store the initial state of the array without the updates? Actually, we start with the initial array (the one we read at the beginning) and then we have the list of updates. Then we will simulate the updates as we go.
+
+ 35. We must store the initial array as the base, and then we have a list of updates.
+
+ 36. Let's code accordingly.
+
+ 37. But note: the problem says that the updates are changing the array for future queries. So our base state for Mo's algorithm is the initial array. Then we have a list of updates that we will apply in order.
+
+ 38. However, in the input, we have M operations: which can be either update or query.
+
+        We will read all the operations. Then we will separate the updates and the queries.
+
+        We maintain:
+            arr0 = initial array (0-indexed species: we subtract 1 from each value)
+            updates = []   # list of updates: each update is (pos, old_val, new_val)
+            queries = []   # list of queries: (time, l, r, idx)
+
+        How to get the old_val for an update?
+            We start with an array `current_arr` = arr0.
+            Then for each operation:
+                if it's an update: 
+                    let pos = A_i-1, new_val = B_i-1
+                    record: update = (pos, current_arr[pos], new_val)
+                    then set current_arr[pos] = new_val
+
+        Then when we process the queries, we use the initial array as the starting point (without any updates applied) and then we have the list of updates.
+
+ 39. But note: the queries are stored with the time = number of updates that have been applied so far (at the moment of the query). So the query at the beginning has time=0, then after one update, time=1, etc.
+
+ 40. Then we run Mo's algorithm.
+
+ 41. However, the worst-case might be too heavy in Python. We must optimize by using local variables and minimizing function calls.
+
+ 42. Alternatively, we can inline the add_element and remove_element? Or we can avoid function calls by writing the code in the main loop.
+
+ 43. But for clarity, we will define functions for add and remove, but we hope that the overhead is acceptable.
+
+ 44. But note: the constraints 10^5 and the complexity O(n^(5/3)) which is about 10^5^(5/3) ≈ 10^(5 * 5/3) = 10^(25/3) ≈ 10^8.3? Actually, no: n=10^5, then n^(5/3) = (10^5)^(5/3) = 10^(25/3) ≈ 10^8.33, which is 200 million operations? That might be too slow in Python.
+
+ 45. We need to check: the complexity is O( (n_t * n^2) / (block_size)^2 + ... )? Actually, the classical analysis: 
+        The total complexity is O( (N * N) / block_size + (N * time_count * block_size) / block_size + ...) 
+        Actually, the standard analysis: 
+        The left pointer: O(Q * block_size) 
+        The right pointer: O(Q * (N / block_size) * block_size) = O(Q * N) / block_size? 
+        The time pointer: O( (block_size)^2 * time_count) / ... 
+
+        Actually, the total complexity is O( (N * Q) / block_size + (N * block_size^2) )? 
+
+        The standard formula: O( (N * Q) / block_size + (N * block_size^2) )? 
+
+        Alternatively, we know that the total is O( (N + Q) * (N^(2/3)) )? 
+
+        But we have to hope that the constants are low.
+
+ 46. Since we are in Python and the constraints are high, we may need to optimize by using a compiled language? But the problem requires Python.
+
+ 47. Alternatively, we can try to use a Fenwick tree or segment tree? But the problem requires distinct values with frequency constraints and updates, which is not trivial.
+
+ 48. We stick to Mo's with updates and hope that the worst-case doesn't hit us.
+
+ 49. Steps for the main loop:
+
+        current_l = 0, current_r = -1, current_time = 0
+        for each query in sorted_queries:
+            while current_time < q.time:
+                apply_update(updates[current_time], current_l, current_r)
+                current_time += 1
+            while current_time > q.time:
+                current_time -= 1
+                unapply_update(updates[current_time], current_l, current_r)
+            while current_l > q.l:
+                current_l -= 1
+                add_element(current_l)
+            while current_r < q.r:
+                current_r += 1
+                add_element(current_r)
+            while current_l < q.l:
+                remove_element(current_l)
+                current_l += 1
+            while current_r > q.r:
+                remove_element(current_r)
+                current_r -= 1
+
+        Then record the answer.
+
+ 50. We must be cautious: the order of unapplying an update: we are going backwards in time: so to go from time t to time t-1, we unapply the update at time t-1? Actually, our updates list is stored from time0 to time_{T-1}. 
+
+        When current_time is 3 and we want to go to time 1, we unapply update at time 2 and then time 1? Actually, we have to unapply in reverse order? 
+
+        Actually, our updates are stored in the order of application: 
+            updates[0] is the first update, updates[1] is the second, etc.
+
+        Then when current_time is 3 (meaning we have applied updates0,1,2) and we want to go to time 1 (meaning we want to have applied updates0,1), we must unapply update2 and then update1? Actually, no: we are at time3: we have applied updates0,1,2. Then we unapply update2 (which is at index2) to go to time2? Then unapply update1 to go to time1? 
+
+        But note: we are storing the update at time0 in updates[0]. So to go from time3 to time1, we do:
+            unapply_update(updates[2]) -> then current_time becomes 2 (but we set current_time=2) and then unapply_update(updates[1]) -> then current_time becomes 1.
+
+        However, our loop:
+
+            while current_time > q.time: 
+                current_time -= 1   # so we set current_time to 2 (from 3) and then unapply the update at index 2? But our updates list: update at time0 is index0, update at time1 is index1, update at time2 is index2.
+
+        Then we call unapply_update(updates[current_time])? But at current_time=2, we unapply updates[2]? 
+
+        But the update at time2 is stored in updates[2]. So that is correct.
+
+        However, note: when we unapply an update, we are going from the state at time t to time t-1. The update at time t-1 is stored in updates[t-1]. But we are storing the update at time0 in updates[0]. So when we are at time t, we have applied updates[0..t-1]. Then to go to time t-1, we unapply the last update we applied: which is updates[t-1]? 
+
+        Actually, our updates list: 
+            updates[0] was applied to go from time0 to time1.
+            updates[1] was applied to go from time1 to time2.
+
+        So to go from time t to time t-1, we unapply updates[t-1] (which is stored at index t-1).
+
+        Therefore, when current_time is 3 (meaning we have applied updates[0], updates[1], updates[2]), then to go to time2 we do:
+            current_time = 3 -> we do current_time-- to 2, then unapply_update(updates[2]) -> which reverts the update that was applied at time2.
+
+        Then to go to time1: current_time=2, then we do current_time-- to 1, then unapply_update(updates[1]) -> reverts the update at time1.
+
+        So the unapply in the loop:
+
+            while current_time > q.time:
+                current_time -= 1
+                unapply_update(updates[current_time], current_l, current_r)
+
+        Similarly, for applying: 
+            while current_time < q.time:
+                apply_update(updates[current_time], current_l, current_r)
+                current_time += 1
+
+        This is correct.
+
+ 51. However, note: the update at time0 is stored in updates[0]. Then when current_time=0, we have applied no update? Then we apply updates[0] to get to time1.
+
+ 52. We'll code accordingly.
+
+ 53. But note: the updates we stored: for an update operation at the i-th operation (which is the j-th update, j = len(updates) at the time of recording), we stored the old value and the new value. And we stored the updates in the order of the operations.
+
+ 54. Finally, output the answers for each query in the order of the input.
+
+ 55. Let's test with the sample.
+
+ Sample Input #1:
+        5 5 2
+        1 2 2 2 1   -> becomes [0,1,1,1,0] (0-indexed)
+        Then operations:
+            2 1 4 -> query: time0, l=0, r=3 -> we expect 1 distinct species? but wait: 
+                [0,1,1,1] -> distinct: 2? 
+                But the problem says: 
+                  The route from 1 to 4: [1,2,2,2] -> species: 1,2,2,2 -> distinct species: 1 and 2 -> but then we have two distinct? 
+                However, the problem says: if we catch more than 2 of the same species, then they are confiscated. So for species2: we have 3, which is >2 -> so we cannot count species2. For species1: we have 1 (which is <=2) -> so only species1? 
+                So answer=1.
+
+            Then update: 1 3 3 -> becomes: update: at zone3 (which is index2) from 1 to 2? (because 3 in the input is a species, so we subtract 1 to get 2). 
+                But note: the input says: change zone A_i (which is 3) to species B_i (which is 3). Then we subtract 1: so zone index=2 (because zones are 1-indexed: zone1->index0, zone3->index2) to species 2 (because 3-1=2).
+
+            Then query: 2 1 4 -> now the array: 
+                zone0:0, zone1:1, zone2:2, zone3:1, zone4:0 -> then [0,1,2,1] -> distinct: 0,1,2 -> but then frequencies:
+                    0:1 -> valid? 
+                    1:2 -> valid? 
+                    2:1 -> valid?
+                so 3 distinct? 
+                But the problem says output 3.
+
+            Then update: 1 3 3 -> change zone3 (index2) from current value 2 to 3-1=2? So no change? 
+            Then query: 2 1 5: [0,1,2,1,0] -> distinct:0,1,2 -> frequencies:
+                0:2 -> valid? (<=2) -> yes
+                1:2 -> valid? -> yes
+                2:1 -> valid? -> yes
+                so 3.
+
+        So the output: 1, 3, 3.
+
+ 56. How does our Mo's algorithm handle the first query?
+
+        We start: 
+            arr = [0,1,1,1,0]   (the initial array, after subtracting 1 from each species)
+            Then we have updates = [ (2, 1, 2) ]   # because at the first update: we changed zone3 (index2) from 1 to 2. But note: the initial array at index2 is 1? 
+            Then we have queries: 
+                query0: (time0, l=0, r=3, idx=0)
+                query1: (time1, l=0, r=3, idx=1)
+                query2: (time2, l=0, r=4, idx=2)   # but note: the second update (time1) was applied and then the third operation was an update: so at the time of the third query, the time is 2? 
+                    Actually: 
+                        operation0: query -> time0 -> query0
+                        operation1: update -> so we record update0: (2,1,2) -> then current_arr[2]=2 -> time1
+                        operation2: query -> time1 -> query1
+                        operation3: update: (2,2,2) -> no change? -> update1: (2,2,2) -> time2
+                        operation4: query -> time2 -> query2
+
+        So we have three queries.
+
+        Then we sort the queries by block: 
+            block_size = 5^(2/3) ≈ 3 (but 5^(2/3) is about 2.9 -> so block_size=3? Then:
+            query0: l=0 -> block0, r=3 -> block1 (since 3//3=1), time0 -> (0,1,0)
+            query1: l=0->block0, r=3->block1, time1 -> (0,1,1)
+            query2: l=0->block0, r=4->block1 (4//3=1) -> (0,1,2)
+
+        So order: query0, query1, query2.
+
+        Then we start:
+            current_l=0, current_r=-1, current_time=0
+            Process query0: time0, [0,3]
+                Since current_time=0 and query0.time=0 -> no time change.
+                Then we expand the range: 
+                    current_l=0: we are at 0, then we need to add index0 -> [0,0]
+                    then add index1 -> [0,1]
+                    then add index2 -> [0,2]
+                    then add index3 -> [0,3]
+
+                Then we compute distinct_count and bad_count:
+                    freq[0]=1 -> distinct_count=1, bad_count=0? because 1<=2 -> then distinct_count - bad_count = 1.
+                So answer0=1.
+
+            Then query1: time1, [0,3]
+                We have to apply the update0: (2,1,2) -> so we check: is 2 in [0,3]? yes.
+                    remove_element(2): 
+                        current value at 2: arr[2] = 1 -> remove: 
+                            species=1: 
+                                freq[1] was 3? 
+                                Actually, after adding [0,3]: 
+                                    index0:0 -> freq[0]=1
+                                    index1:1 -> freq[1]=1 -> then becomes 2 -> then 3 at index2? and then 3 at index3? 
+                                Actually, we added:
+                                    index0:0 -> freq[0]=1 -> distinct_count=1, bad_count=0
+                                    index1:1 -> freq[1]=1 -> distinct_count=2, bad_count=0
+                                    index2:1 -> freq[1]=2 -> distinct_count=2, bad_count=0? (because 2<=2 -> not bad)
+                                    index3:1 -> freq[1]=3 -> now becomes bad: so we set bad_count=1? 
+                                So distinct_count=2, bad_count=1 -> then current answer for the state [0,3] is 2-1=1? but we haven't applied the update.
+
+                    Then we remove_element(2): 
+                        species = arr[2] = 1 -> 
+                            freq[1] becomes 2 -> then if it was bad (3->2) then bad_count decreases: so bad_count becomes 0? 
+                            distinct_count remains 2.
+                    Then we set arr[2]=2 -> and then add_element(2): 
+                        species=2: 
+                            freq[2] was 0 -> distinct_count becomes 3, then freq[2]=1 -> not bad.
+                    So after update: distinct_count=3, bad_count=0 -> answer=3.
+
+                Then we record answer1=3.
+
+            Then query2: time2, [0,4]
+                First, we are at time1, we need to go to time2: 
+                    apply_update(updates[1]) -> which is (2,2,2): so no change? 
+                    Then we expand the range: add index4: species=0 -> 
+                         freq[0] becomes 2 -> distinct_count: 0 was already present? Actually, we have:
+                         species0: from index0 and index4 -> becomes 2? -> distinct_count remains 3 (because 0 was already present? no: wait, we had species0 at index0? and we still have it? 
+                         But after the update at index2 we set it to 2, and we still have the array: 
+                             index0:0, index1:1, index2:2, index3:1, index4:0
+                         So when we add index4: species0 -> 
+                             freq[0] was 1 -> becomes 2: distinct_count remains the same? 
+                             bad_count remains 0.
+                         So distinct_count=3, bad_count=0 -> answer=3.
+
+        So we get [1,3,3] -> which matches.
+
+ 57. We'll code accordingly.
+
+ 58. We note: the sample input #2 is provided and we must output accordingly.
+
+ 59. We must be cautious: the updates might change a value to the same value? (like the second update in sample1) -> we do nothing? 
+
+        In our update function: 
+            if current_l<=pos<=current_r: 
+                remove_element(pos)   # which removes the old_val (say x)
+                then set arr[pos]=new_val (which is x) 
+                then add_element(pos) -> which adds x.
+
+        But note: the frequency for x: 
+            we remove: x becomes count-1, then we add: becomes count again -> so the net change is 0? 
+
+        But the distinct_count and bad_count are updated: 
+            remove: 
+                if x was at frequency K+1: then removing one makes it K -> so we remove from bad_count? 
+                then add: then if it becomes K+1 again, we add to bad_count? 
+            so net change? none.
+
+        But if the frequency was not near K, then no change.
+
+        So it's safe.
+
+ 60. Let's code accordingly.
+
+ 61. We'll run the sample input #2 to see if we get the output.
+
+ 62. However, note: the constraints say K up to 100000, and we are using an array for frequencies of size (N+1) -> which is 100001, so it's acceptable.
+
+ 63. We code.
+
+ 64. We must use sys.stdin for fast I/O.
+
+ 65. We hope that the worst-case doesn't TLE in Python.
+
+ 66. Let's code.

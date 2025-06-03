@@ -1,0 +1,1063 @@
+We are given an array P of length N (zones), and we have two types of queries (total M queries) and a parameter K.
+- Query type 1: update the species at a zone to a new species.
+- Query type 2: for a route [A, B] (a contiguous interval), we want the number of distinct species that appear at most K times in the entire interval. However note: if a species appears more than K times in the entire interval, then it is confiscated and does not count.
+
+Important: We are not counting distinct species that appear at least once, but distinct species that appear at least once and at most K times. So if a species appears more than K times, we ignore it.
+
+This is a classic problem that can be solved by offline methods (like Mo's algorithm) but note: there are updates. So we have to support point updates and range queries. Moreover, M, N up to 10^5.
+
+Alternatively, we can use a segment tree / Fenwick tree that supports distinct value queries? But note: our condition is not just distinct, but distinct with a frequency condition.
+
+We can break down the problem:
+
+Let F(s, [l, r]) be the frequency of species s in the interval [l, r]. We want to count the number of species s such that 1 <= F(s, [l, r]) <= K.
+
+But note: the condition is per species: if the frequency of s in [l, r] is in [1, K], then we count s; if it is 0 we don't, and if it is >K we don't.
+
+How to handle updates? And how to answer range queries?
+
+One common idea is to use the DSU on trees (Mo's algorithm with updates might be too slow? M, N up to 10^5 and time 2 seconds).
+
+Alternatively, we can use offline queries and updates with a Fenwick tree? But the condition is about the entire interval.
+
+Another idea: we can use a two-dimensional data structure? Or we can use the idea of "last occurrence" but that is for distinct count without frequency constraints.
+
+We need to consider that the condition (frequency <= K) is global for the entire interval. How about we try to count the distinct species that appear at least once, and then subtract those that appear more than K times? But note: we are only counting those that appear at least once and at most K times. So:
+
+Answer = (number of distinct species in [l, r]) - (number of distinct species in [l, r] that appear more than K times)
+
+But note: the distinct count that appear more than K times is the same as: the number of species that appear at least K+1 times in [l, r]. However, if a species appears more than K times, we don't count it at all.
+
+So we can express:
+  result = (# distinct species) - (# of species that appear > K times)
+
+But wait: we can also express it as the count of species that appear between 1 and K times. So both expressions are equivalent.
+
+But how to compute these two numbers for an arbitrary interval [l, r]? And with updates?
+
+We know how to do distinct count over an interval with a Fenwick tree and storing last occurrence? Actually, the classic distinct count query (without updates) can be done offline. But here we have updates and we also need to account for frequencies.
+
+Alternatively, we can use Mo's algorithm? But with updates we have to use Mo with updates? That would be O(n^(5/3)) which might be borderline for 10^5? And 2 seconds? But worst-case 10^5 queries might be too heavy.
+
+Another idea: we can use a Fenwick tree for each species? But there are up to N species and we have to update ranges? That would be too heavy.
+
+We need a better idea.
+
+Note: we are only interested in frequencies in the interval. We can use a segment tree that stores a frequency array? But that is O(n) per node and too heavy.
+
+Alternatively, we can use a different approach: we can precompute the next occurrence for each element? But updates break that.
+
+Another known approach: we can use a data structure that supports range mode query? But that is not exactly what we want.
+
+We can use a two-layer approach:
+
+We can use a Fenwick tree for distinct count? The classic distinct count query (without the frequency condition) can be done by storing the last occurrence of each element. But we have updates. We can use a set for each species? Then update the last occurrence? But then how to account for the frequency condition?
+
+Alternatively, we can use a segment tree that stores the entire set of frequencies? Not feasible.
+
+We can use the following:
+
+We note that if we fix the interval [l, r], then we want to count the species s such that the frequency of s in [l, r] is in [1, K]. 
+
+We can also note: if a species appears more than K times in [l, r], then we call it "bad". Otherwise, we call it "good".
+
+So the answer is the number of distinct species that are "good".
+
+We can maintain two arrays:
+  total_count = the distinct count in the interval (without the frequency constraint) 
+  bad_count = the count of distinct species that are bad (appear more than K times)
+
+Then answer = total_count - bad_count.
+
+But how to compute total_count? We know how to do that offline without updates: by storing the next occurrence? But with updates, we need a dynamic distinct count structure. There are known structures for distinct count with updates? For example, using a segment tree with a Fenwick tree and storing the next occurrence? 
+
+But note: the classic distinct count in an interval [l, r] with updates can be done by maintaining for each position i, the last occurrence of the element at i. Then the distinct count is the number of i in [l, r] such that last_occurrence[i] < l. 
+
+We can maintain an array last_occurrence[i] for each position i. Then we can use a Fenwick tree to count the number of indices i in [l, r] such that last_occurrence[i] < l? Actually, the distinct count is the number of positions i in [l, r] for which the previous occurrence of the same species is outside [l, r]. The standard way: we define an array prev[i] = the last index j < i such that P[j] = P[i] (if it doesn't exist, set to 0). Then the distinct count in [l, r] is the number of indices i in [l, r] such that prev[i] < l.
+
+So we can maintain an array "prev" and then use a Fenwick tree (or segment tree) to do range queries: for [l, r], we want the count of indices i in [l, r] such that prev[i] < l.
+
+But we also have updates: when we change an element at position i from species x to y, we break the links for the old species and build links for the new species. Specifically, we have to update:
+  - The element at i: it is now y.
+  - The next occurrence of the old species x: the element that was pointing to i (if any) and the element that i was pointing to (if any) need to be updated.
+  - Similarly for the new species y: we have to find the new prev[i] (the last occurrence of y to the left of i) and the next occurrence of y after i (if any) to update their prev.
+
+So we need to maintain for each species a sorted set of indices (like a balanced BST) for the positions of that species. Then we can update the prev and next pointers for the changed element and its neighbors.
+
+Then we can build a Fenwick tree (or segment tree) for the array "prev". For the distinct count, we want: for a query [l, r], count the number of i in [l, r] with prev[i] < l.
+
+We can use a Fenwick tree that supports point updates and range queries? Actually, we want a 2D condition? We can use offline? But we have updates. Alternatively, we can have a Fenwick tree that supports the condition: we have an array A (the prev array) and we want to answer: for a range [l, r] in the array, count the indices i in [l, r] such that A[i] < l.
+
+We can do this with a Fenwick tree that stores the array A? Actually, we can use offline queries? But we have online updates and queries.
+
+Alternatively, we can use a segment tree that stores the array A, and then in each node we store a sorted list of the values and use fractional cascading? Then we can do a range query and then within the range we count the values < l. But building such a segment tree is O(n log n) and each query is O(log^2 n). And we have to update the array A (the prev array) and then update the segment tree. The update would be O(n) per update? That is too heavy.
+
+Another idea: we can use a Fenwick tree for the distinct count? Actually, we can maintain an array B where B[i] = 1 if prev[i] < i (which is always true) but we need to know for the current query. Actually, we are more interested in the condition for the current l. We can do:
+
+We maintain an array "prev" and we also maintain a Fenwick tree (or segment tree) for the array of indicators: for each position i, we want to set it to 1 if prev[i] < l? But l is variable per query.
+
+Alternatively, we can use Mo's algorithm? But with updates? We have up to 10^5 queries and 10^5 updates, so total events M=10^5, which might be acceptable with Mo with updates? But the complexity is O(n^(5/3)) which is about (10^5)^(5/3) ≈ 10^(25/3) ≈ 10^8.33? That might be too high.
+
+But note: M (number of queries and updates) is 10^5. The Mo with updates block size is typically set to n^(2/3). Then the complexity is O(n^(5/3)) per operation? Actually, total operations: O(n * n^(2/3)) = O(n^(5/3)) which is about 10^5 * (10^5)^(2/3) = 10^5 * 10^(10/3) ≈ 10^5 * 10^3.33 ≈ 10^8.33, which is about 2e8? And in worst-case 10^5 events, so 10^5 * 10^(5/3) ≈ 10^(5+5/3) = 10^(20/3) ≈ 10^6.666, which is about 4e6? Actually, let me recast:
+
+The complexity of Mo with updates is O( (n^(1)) * (n^(2/3)) ) = O(n^(5/3)) for one event? Actually, no: the total complexity is O( (n_t) * (n_q) * (n_s))? 
+
+Actually, the standard complexity for Mo with updates is O( (n_u)^(1/3) * n * n^(1/3) )? I'm a bit confused.
+
+Alternatively, we can use a different approach: we note that we need two things:
+  1. The distinct count (which we can get from the prev array and a Fenwick tree for the condition prev[i] < l, over the indices in [l, r]).
+  2. The count of distinct species that are bad (appear more than K times).
+
+But how to compute the bad_count? 
+
+We want to count the distinct species s that appear more than K times in [l, r]. Note: a species s is bad if the frequency of s in [l, r] is at least K+1. And we want to count each such species only once.
+
+But note: we cannot iterate over species. How to count the distinct species that are bad? 
+
+We can use a similar idea as for distinct count? Actually, we can define an array for the bad species? But the bad species condition depends on the entire interval.
+
+Alternatively, we can precompute for each species the positions, and then for a given [l, r], we can check the frequency? But that would be O(1) per species but we have O(n) species.
+
+We need a better idea.
+
+We can note: a species s is bad in [l, r] if and only if the (K+1)-th occurrence of s from the left in the entire array is within [l, r]. 
+
+Let me define for a species s, let positions[s] = sorted list of indices where s appears. Then the frequency in [l, r] is the number of positions in positions[s] that are in [l, r]. We want to know if that count is >= K+1.
+
+But we want to count the distinct species s for which the frequency is >= K+1.
+
+We can try: for each species, we mark the (K+1)-th occurrence. Then a species s is bad in [l, r] if and only if the (K+1)-th occurrence of s is present in [l, r]? Actually, no: if the (K+1)-th occurrence is in [l, r], then the frequency is at least K+1. But note: if the (K+1)-th occurrence is after r, then the frequency is at most K. Similarly, if the (K+1)-th occurrence is before l, then the frequency in [l, r] is at least the entire count from l to r, which might be more than K? Actually, no: if the (K+1)-th occurrence is before l, then the frequency in [l, r] is the entire count from l to r, which is the total count from the first occurrence in [l, r] to the last? But we don't know.
+
+Actually, the condition: the frequency in [l, r] is at least K+1 if and only if the (K+1)-th occurrence of s (counting from the smallest index) is <= r and the (K+1)-th occurrence is at least l? Actually, the (K+1)-th occurrence must be in [l, r] for the frequency to be at least K+1? Not exactly: consider if the (K+1)-th occurrence is at position x, then if x is in [l, r], then there are at least K+1 occurrences (because we have the occurrences from the first up to the (K+1)-th). But if the (K+1)-th occurrence is before l? Then we have at least K+1 occurrences that are <= l-1? Then in [l, r] we have the remaining occurrences (which might be less than K+1). 
+
+Example: species s has positions [1, 2, 3, 4] (K=2). 
+  In [l=3, r=4]: the (K+1)=3-rd occurrence is at 3 which is in [3,4] -> frequency=2 (which is not >=3). Wait, no: the frequency is 2. So the condition is: the (K+1)-th occurrence must be present? Actually, the frequency is the number of occurrences in [l, r]. 
+
+But we can relate: if the (K+1)-th occurrence of s (in the entire array) is in the interval [l, r], then the frequency of s in [l, r] is at least K+1? Not necessarily: the (K+1)-th occurrence is at x, then we know there are K+1 occurrences that are <= x. But if x is in [l, r], then we have at least K+1 occurrences that are <= r (since x<=r). However, we also require that the first occurrence of s in [l, r] is at most x. But note, the (K+1)-th occurrence might be the first occurrence in [l, r]? Only if the first K occurrences are before l. 
+
+Actually, the condition for a species s to have frequency at least K+1 in [l, r] is that the (K+1)-th occurrence of s (counting globally) is <= r, and the (K)-th occurrence of s is at least l? 
+
+Alternatively, we can use: the frequency in [l, r] is the count of occurrences in [l, r]. We can define:
+  Let f = the smallest index such that the frequency of s in [f, r] is exactly K+1. Then the species s is bad in [l, r] if and only if f <= l? 
+
+But note: if we fix s and [l, r], then we can compute the frequency by: 
+  freq = (number of occurrences of s <= r) - (number of occurrences of s <= l-1)
+
+But we want to know if freq >= K+1.
+
+So: (cnt_r - cnt_{l-1}) >= K+1  =>  cnt_r - cnt_{l-1} >= K+1.
+
+But we cannot iterate over species.
+
+We need a data structure that can count, for a given [l, r], the number of species s such that (cnt_r(s) - cnt_{l-1}(s)) >= K+1.
+
+But note: we are counting distinct species. 
+
+Alternatively, we can use the following trick:
+
+We can define an array "occurrence" for each species as before. Then for each species, we can consider the (K+1)-th occurrence. Then the species s is bad in [l, r] if and only if:
+  - It has at least K+1 occurrences in the entire array? Actually, no: we only care about [l, r]. But we can use: the (K+1)-th occurrence of s (in the entire array) must be in [l, r]? This is not sufficient: because the first occurrence might be after l? Actually, if the (K+1)-th occurrence is in [l, r], then there are at least K+1 occurrences that are <= r, and the first occurrence might be before l? 
+
+Actually, the condition for bad is: the species s must have at least K+1 occurrences in [l, r]. This is equivalent to: the (K+1)-th occurrence of s (counting from the beginning) is <= r, and the (K+1)-th occurrence must be >= the first occurrence in [l, r]. But note: the first occurrence in [l, r] might be greater than the (K+1)-th occurrence if the (K+1)-th occurrence is before l? 
+
+Let me define:
+  Let x = the (K+1)-th occurrence of s (if it exists). Then the frequency in [l, r] is at least K+1 if and only if there are at least K+1 occurrences in [l, r]. This is equivalent to: the (K+1)-th occurrence of s in the entire array is <= r, and the next condition: the occurrence that is the first occurrence in [l, r] must be such that there are at least K occurrences after it within [l, r]? 
+
+Actually, a simpler idea: 
+  Let y = the occurrence that is the (K+1)-th from the beginning in the entire array for species s.
+  Then the species s is bad in [l, r] if and only if:
+      y <= r   and   the occurrence that is the y's "preceding" occurrence by K (i.e., the occurrence that is K positions before y in the sorted list for s) is >= l.
+
+But note: the occurrence that is K positions before y is the first occurrence that together with the next K occurrences (including y) form a block of K+1 occurrences. This block must be contained in [l, r]? Actually, no: we only require that the first of these K+1 occurrences is in [l, r]? Actually, we only require that the entire block is in [l, r]? But we don't require the entire block, only that there are K+1 occurrences in [l, r]. 
+
+Actually, we can say: the species s is bad in [l, r] if and only if the (K+1)-th occurrence from the left in the entire array that falls in [l, r] exists. But note: we cannot easily know the (K+1)-th occurrence within [l, r] for each species.
+
+Alternatively, we can use a different approach: we can maintain an array C where for each species s, we have a Fenwick tree for its occurrences. Then for a query [l, r], we can quickly ask for the frequency of s, and then check if it's >= K+1? But then we have to aggregate over species? That would be O(n) per query.
+
+We need a global structure.
+
+Known approach: we can use a Fenwick tree that is indexed by species? But we want to count distinct species that are bad. 
+
+Another idea: we can use an array "first_occurrence" for the bad condition? We can define for each position i, the species s = P[i] and then if i is the (K+1)-th occurrence of s, then we mark it. But then we would count the number of distinct species s for which the marked occurrence (the (K+1)-th) is in [l, r] and also the species s has at least one occurrence in [l, r]? But wait: if the (K+1)-th occurrence is in [l, r], then the species is bad. But is that sufficient? 
+
+Consider: if the (K+1)-th occurrence is in [l, r], then we have at least K+1 occurrences (because the first K+1 are all <= i, and i is in [l, r]). But also, the species s is present in the interval. So then we count species s as bad. 
+
+But what if the species s has more than K+1 occurrences in [l, r]? Then we count it only once, and we only mark the (K+1)-th occurrence. So if we count the distinct species s for which the (K+1)-th occurrence is in [l, r], then that gives exactly the count of bad species.
+
+But what if the species s has exactly the (K+1)-th occurrence at i in [l, r], and then later has more occurrences, but we only mark the (K+1)-th occurrence. So we count it once.
+
+But what if the (K+1)-th occurrence is before l? Then the species might still be bad if there are at least K+1 occurrences in [l, r]? For example, species s has occurrences: [1,2,3,4], K=2, and [l=3, r=4]: then the (K+1)=3-rd occurrence is at 3, which is in [3,4] -> so we mark it and count it as bad. But what if the (K+1)-th occurrence is at 2 (which is < l=3)? Then the species s has two occurrences in [3,4] (which is not >=3), so it is not bad. 
+
+Therefore, the condition: the species s is bad in [l, r] if and only if the (K+1)-th occurrence of s is in [l, r]? 
+  - If the (K+1)-th occurrence is in [l, r], then there are at least K+1 occurrences (because we have the first K+1 occurrences, and the (K+1)-th is in [l, r]), so it is bad.
+  - If the (K+1)-th occurrence is after r, then the frequency in [l, r] is at most K (since only the first K occurrences might be in [l, r]), so not bad.
+  - If the (K+1)-th occurrence is before l, then the frequency in [l, r] is the number of occurrences in [l, r] = (total occurrences up to r) - (occurrences up to l-1). The occurrences up to l-1 include at least the first K+1 occurrences? Not necessarily: the (K+1)-th occurrence is before l, so the occurrences up to l-1 are at least K+1. But then the occurrences in [l, r] could be any number. For example, if there are many occurrences after l, then the frequency in [l, r] might be >= K+1. 
+
+But wait: if the (K+1)-th occurrence is before l, then the first occurrence in [l, r] might be the (K+2)-th? Then the frequency in [l, r] is (total occurrences) - (K+1) (if we assume there are more than K+1 occurrences) but it could be >= K+1. 
+
+Example: species s has occurrences: [1,2,3,4,5] (K=2). 
+  The (K+1)=3-rd occurrence is at 3. 
+  For [l=4, r=5]: the frequency is 2 (not bad). 
+  For [l=2, r=5]: the frequency is 4 (>=3) -> bad.
+
+But in this case, the (K+1)-th occurrence (3) is in [2,5]? Yes. So we count it? But in the query [2,5] we would count the species s because the (K+1)-th occurrence (3) is in [2,5].
+
+But for [l=4, r=5]: the (K+1)-th occurrence (3) is not in [4,5], so we don't count it.
+
+So the condition: species s is bad in [l, r] if and only if the (K+1)-th occurrence of s exists and is in [l, r]? 
+  - This works for the above examples.
+
+But consider: a species s with exactly K+1 occurrences: [a1, a2, ..., a_{K+1}]. Then for an interval [l, r] that contains a_{K+1} and does not contain a1, a2, ... a_K? 
+  - It cannot happen because if a_{K+1} is in [l, r] and a1, a2, ... a_K are not in [l, r], then the occurrences in [l, r] are only one (a_{K+1]), which is not >= K+1. 
+
+But wait: if the first K occurrences are outside [l, r] and the (K+1)-th is inside, then the frequency is 1, not K+1. 
+
+Therefore, the condition is not sufficient.
+
+Let me reformulate: the species s is bad in [l, r] if and only if the number of occurrences in [l, r] is at least K+1. This is equivalent to: the (K+1)-th occurrence of s within the entire array is <= r, and the (K+1)-th occurrence of s is >= l? 
+  - No, because the (K+1)-th occurrence might be before l.
+
+Actually, we want the (K+1)-th occurrence of s in the entire array to be <= r, and the occurrence that is the (last among the first K+1 occurrences) is not before l? But the first K+1 occurrences include ones before l.
+
+The condition is: the (K+1)-th occurrence is <= r, and the (first occurrence of s in [l, r]) is such that the next K occurrences after it (including it) are within [l, r]? That would be expensive.
+
+Alternatively, we can use: species s is bad in [l, r] if and only if the (K+1)-th occurrence counting from the left in the entire array that is >= l is <= r. 
+
+That is: let x = the (K+1)-th occurrence in the sorted list of positions of s that is >= l. Then we require x <= r. And we also require that there are at least K+1 occurrences in the entire array that are >= l? But we can compute x quickly if we have the sorted list for s.
+
+But note: we are counting the distinct species s that satisfy this condition. And we cannot iterate over s.
+
+How to aggregate over s? We can create an array for each position i: if i is the (K+1)-th occurrence in the list of its species when we consider only the occurrences that are >= some l? But l is variable per query.
+
+We need a data structure that can do: for a given [l, r], for each species s, we want to know if the (K+1)-th smallest occurrence in the set { x in positions[s] such that x>=l } is <= r.
+
+Let F(s, l) = the (K+1)-th occurrence in the sorted list of positions of s that is >= l (if it exists). Then we want to count the distinct species s for which F(s, l) exists and F(s, l) <= r.
+
+But note: F(s, l) is the first time that species s has its (K+1)-th occurrence at or after l. This is the same as: the (K+1)-th occurrence overall if the first K occurrences are before l? But not exactly: it is the (K+1)-th occurrence in the entire array, if that occurrence is >= l. If the (K+1)-th occurrence is < l, then we take the next one? Actually, no: we take the (K+1)-th occurrence in the subset that is>=l. This might be the (K + t)-th occurrence in the entire array for some t.
+
+For example, species s has occurrences [1,3,5,7], K=2. 
+  For l=2: the occurrences>=2 are [3,5,7]. The (K+1)=3-rd occurrence in the entire array is 5, but the (K+1)-th occurrence in the subset>=2 is the 3-rd in the subset? But we want the (K+1)-th in the subset, which is the 3-rd smallest in the subset: that is 7.
+
+But we want the (K+1)-th in the subset, not the (K+1)-th in the entire array.
+
+So F(s, l) = the (K+1)-th smallest occurrence in the set { x in positions[s] and x>=l }.
+
+Then the condition for the query [l, r] is: F(s, l) <= r.
+
+And then the answer for the query would be:
+  distinct_count = (number of distinct species in [l, r]) 
+  bad_count = (number of species s in the entire array that have at least K+1 occurrences in [l, r]) = (number of species s for which F(s, l) exists and F(s, l) <= r)
+
+But note: we are only considering species that appear in [l, r]? Actually, if a species s has no occurrence in [l, r], then it doesn't appear in the distinct_count and also F(s, l) would be either not exist or > r, so it doesn't contribute to bad_count.
+
+Therefore, the distinct_count and the bad_count are over the species that appear in [l, r]. 
+
+So the final answer for a query [l, r] is:
+  ans = distinct_count - bad_count
+
+where:
+  distinct_count = count of species with at least one occurrence in [l, r] (which is the standard distinct count)
+  bad_count = count of species s that have at least K+1 occurrences in [l, r] = count of species s for which F(s, l) exists and F(s, l) <= r.
+
+How to compute distinct_count? We can use the method with the array "prev" and a Fenwick tree for the condition: count of i in [l, r] with prev[i] < l.
+
+How to compute bad_count? We can maintain for each species s the sorted list of its occurrences. Then for each query [l, r], we want to count the species s for which the (K+1)-th occurrence in the set of occurrences>=l is <= r.
+
+We can try to create an array for each species s: we store the list of occurrences. Then for a given l, we can binary search to find the first occurrence >= l, and then if there are at least K+1 occurrences after that, then the (K+1)-th is at position = the (index in the sorted list of the first occurrence>=l) + K. Then we have an array of events: for a species s, at the position = that computed occurrence (if it exists), we can add 1 for the species s? But then we want to count for a query [l, r] the species s for which this computed occurrence is in [l, r]? 
+
+But note: the computed occurrence depends on l, which is per query. So we cannot precompute.
+
+Alternatively, we can per query iterate over the species? That is O(n) per query.
+
+We need a data structure that can answer many queries of the form: 
+  Given l and r, count the number of species s such that the (K+1)-th occurrence in the occurrences of s that are >= l is <= r.
+
+This is challenging.
+
+Known solution approach in contest: use offline methods and parallel binary search? Or use a sweep in l.
+
+Alternatively, we can use a segment tree or Fenwick tree indexed by the positions of the (K+1)-th occurrence in the entire array, but again, the (K+1)-th occurrence in the subset>=l is not fixed.
+
+We might be overcomplicating.
+
+Let me read known solutions for similar problems. 
+  - There is a well-known problem: "D-query" for distinct count, and also one for "distinct elements with frequency at most K".
+
+In fact, there is a solution using a sweep-line and a segment tree that stores the frequency of frequencies. 
+
+I recall: we can use a segment tree that for each position stores the frequency of the species at that position in the current sweep. But we also need to update it as we sweep. And then the distinct count of species with frequency between 1 and K? 
+
+Specifically, we can do a offline processing for the queries by sorting by r. But we have updates. 
+
+Alternatively, we can use a data structure that supports the following:
+  - We maintain an array A of the current species in the zones.
+  - We want to answer range queries: count distinct species with frequency in [1, K] in the range [l, r].
+
+And we also support point updates.
+
+There is a solution using a segment tree of Fenwick trees? That would be too heavy.
+
+Another idea: we can use a segment tree that in each node maintains a frequency array and then merge? But then the update is O(n) and query O(1), but memory and time is O(n^2) -> not feasible.
+
+We might use the following: 
+  We maintain an array for the current species.
+  We maintain an array "freq" for the frequency of each species in the entire current array, but that is not per query interval.
+
+We need per-interval frequency.
+
+This is a research-level problem.
+
+In fact, I recall a known data structure: the "segment tree with frequency vector" is not possible. But there is a solution using Mo's algorithm with updates. Given the constraints (10^5) and time 2 seconds, we might hope that a carefully implemented Mo's algorithm with updates (which has O(n^(5/3)) complexity for M=10^5) might pass in 2 seconds.
+
+But 10^5 * 10^(5/3) = 10^5 * (1000) approx = 10^8, but the exponent is not that: the complexity is O( (n)^1 * (n)^ (2/3) ) = O(n^(5/3)) for the entire Mo's with updates. The number of operations is about n_t * (n_q) to the power of 2/3? Actually, the complexity is O( (n_u) * (n_t)^ (2/3) + (n_q) * (n_t)^ (1/3) )? I need to recall.
+
+But there is an implementation of Mo's algorithm with updates for distinct count with frequency constraints. 
+
+Alternatively, we can use a solution from known similar codeforces problems. For example, 
+  - see: https://codeforces.com/problemset/problem/1476/F
+  but not exactly.
+
+ known problem: https://codeforces.com/contest/1476/problem/D? not exactly.
+
+ I recall one: "Can you answer these queries III" but not.
+
+After research, a known approach for distinct count with updates and frequency constraints is to use a combination of BIT and sqrt decomposition. But we have to count distinct species with frequency <= K.
+
+ We can maintain for each species an array of its occurrences. Then for the distinct count, we use the standard method with prev. For the bad_count, we can try: 
+
+  For each species s, we will have to store its occurrences. Then when an update happens, we update the occurrences. Then for a query [l, r], we want to know the species s that have at least K+1 occurrences in [l, r]. 
+
+  We can maintain a global array "last_bad" for each species: the last query that made it bad? Not helpful.
+
+  We can also maintain an array for each species s: the next occurrence after the (K)-th within a segment. Not helpful.
+
+Given the complexity of the problem and the constraints, and that there are known to be solutions with Mo's algorithm with updates, I choose to use that.
+
+Mo's algorithm with updates can be used to that. We maintain:
+  - The current frequency array for the species in the current interval.
+  - A frequency-of-frequency array: let it be cnt_freq, where cnt_freq[i] = the number of species that have frequency i in the current interval.
+
+But we want to count the distinct species with frequency in [1, K]. That is: the number of species that have frequency>=1 and<=K. This is: if we let distinct_count = the number of species with frequency>=1, and then subtract the species with frequency>K, we can also use: 
+  ans = (number of species with frequency>=1) - (number of species with frequency>K)
+
+But in the frequency-of-frequency array, we have:
+  species with frequency>=1: that is the distinct_count, which is also the number of species that appear in the interval.
+  species with frequency>K: we can maintain a variable for that.
+
+Specifically, we can maintain:
+  let freq[i] be the frequency of species i in the current query interval.
+  let cnt_freq[i] = the number of species that have frequency i.
+
+But note: we only care about the current interval.
+
+We also maintain:
+  distinct_count = the number of species with freq[i]>=1.
+  bad_count = the number of species with freq[i] > K.
+
+Then the answer for the query is: ( distinct_count - bad_count )
+
+But distinct_count is just the number of species that appear, and we can also get it by the standard distinct count, but we have it from the frequency array.
+
+Actually, distinct_count = (number of species with freq[i]>=1) = also can be computed as we add/remove elements.
+
+We can maintain:
+  total_distinct = 0
+  bad_count = 0
+
+When we add an element of species s:
+  old_freq = freq[s]
+  new_freq = old_freq + 1
+
+  update cnt_freq[old_freq] -= 1
+  cnt_freq[new_freq] += 1
+
+  If old_freq == 0:
+        total_distinct += 1
+  If old_freq == K: 
+        // because now it is moving from K to K+1, which means this species becomes bad. But note: if old_freq==K, then before it was good (<=K) and now becomes bad.
+        bad_count += 1
+  else if old_freq == K+1:
+        // then we are moving from K+1 to K+2: the species was already bad, and remains bad. So we do nothing for bad_count when moving from K+1 to K+2.
+        // actually, we only care about crossing the boundary at K+1.
+
+  Actually, we can do:
+      if old_freq == K:
+          bad_count += 1   // because now we have one more species that is bad (from freq K to K+1, so it just became bad)
+      if old_freq > K:
+          // then we had one bad species, and after adding it becomes more frequent, but we don't change the count of bad species (it remains bad).
+
+  Then for new_freq:
+      if new_freq == K+1:
+          bad_count += 1
+      if new_freq > K+1:
+          // then the species was already bad, so we don't change.
+
+  Actually, we only need to update when crossing the boundaries at K and K+1.
+
+  Specifically:
+      When we add an element of species s:
+          if freq[s] == K:   // before incrementing
+              then after incrementing it becomes K+1, so we are creating a new bad species.
+              bad_count += 1
+          // otherwise, if it was already bad (freq[s] > K), then after incrementing it remains bad, so bad_count doesn't change.
+
+      When we remove an element of species s:
+          if freq[s] == K+1:   // before decrementing, it was exactly K+1, meaning it was bad. After decrementing, it becomes K, which is not bad.
+              bad_count -= 1
+          // if it was more than K+1, then after decrementing it is still >=K+1, so still bad.
+
+  And for distinct_count:
+      When we add an element of species s that had freq[s]==0:
+          distinct_count += 1
+      When we remove an element of species s and then freq[s] becomes 0:
+          distinct_count -= 1
+
+  Then the answer for the query is: distinct_count - bad_count.
+
+So we can use Mo's algorithm with updates. The only thing is that we have updates in the array.
+
+Mo's with updates: we have a sequence of events: queries and updates. We can  by (l in chunks of n^(2/3), r in chunks of n^(2/3), and then by the time of update (sorted by the index of the update in the sequence).
+
+The total number of  events is M=10^5. The complexity is O(n^(5/3)).
+
+Steps for Mo with updates:
+
+  - We will have a series of update: we store the time (the query index) and the position, the old value and the new value.
+  - We will also have queries: (time, l, r, index)
+
+  - We sort the queries by:
+        l_block = l / block_size
+        r_block = r / block_size
+        then by time
+
+    where block_size = n^(2/3) = (10^5)^(2/3) ≈ 2150, so block_size = 2150.
+
+    Then the number of blocks for l and r is about n / block_size = 46.5.
+
+  - The total number of move is O( (n) * (n)^ (2/3) ) = O(n^(5/3)) = 10^5 * 2150 = 2.15e8, which might be borderline in C++ in 2 seconds, but in Python? The problem says 2 seconds and 1024 MB, but the sample is in C++ typically. However, we are to provide an editorial, so we can assume C++ and hope that the constants are low.
+
+  - But 2e8 might be acceptable in C++.
+
+  - However, M=10^5 events and each event might do a few operations, so total operations could be 10^5 * 10^(5/3) = 10^5 * 2150 = 2.15e8, which is acceptable in C++ in 2 seconds.
+
+  - But in the sample input, we have only 5 queries, so we don't know.
+
+  - We must be cautious: the Mo's with updates might be the intended solution.
+
+  - Steps for the Mo's with updates:
+
+        We maintain:
+          a: the current array.
+          an array freq for the frequency of each species in the current active segment [l, r].
+          distinct_count, bad_count as above.
+
+        Also, we maintain a list of updates.
+
+        We also maintain the current time (number of updates applied).
+
+        We start with l=0, r=-1, time=0.
+
+        For each query (t, l, r, index) in sorted order:
+          while time < t: apply the next update (time++) and if the update position is in [l, r], then we remove the old value and add the new value.
+          while time > t: rollback the last update (time--) and if the update position is in [l, r], then we remove the new value and add the old value.
+
+          while l > current_l: remove an element at current_l and current_l++.
+          while r < current_r: remove an element at current_r and current_r--.
+          while l < current_l: current_l--, add an element at current_l.
+          while r > current_r: current_r++, add an element at current_r.
+
+        Then record the answer = distinct_count - bad_count.
+
+        For an update at position pos from old_value to new_value:
+          We need to know the current value at pos: which might be the new_value from a later update? But we are applying updates in order.
+
+          Specifically, we store the update sequence. We also maintain an array a that is the current array.
+
+          When applying an update at pos from old_value to new_value:
+              if current_l <= pos <= current_r:
+                 remove the old_value at pos (which might not be the very old one, but the one that is being replaced)
+                 add the new_value at pos
+              then set a[pos] = new_value
+
+          When rolling back, we do the reverse.
+
+        How to remove an element of species s at pos:
+            // update the frequency array
+            old_freq = freq[s]
+            new_freq = old_freq - 1
+
+            // update distinct_count and bad_count:
+            if new_freq == 0:
+                distinct_count -= 1
+            if old_freq == K+1: // before removal, it was bad, after removal it becomes K (not bad)
+                bad_count -= 1
+            // also, if old_freq > K+1, then after removal it is still >=K+1, so no change in bad_count.
+
+            // update the frequency array: freq[s] = new_freq
+
+            // Also, if new_freq == K:  // not needed, because when we remove one from a species that had frequency K+1, we already did bad_count-=1 when we hit the condition old_freq==K+1.
+            // and if we are removing from a species that had frequency 1, then distinct_count remains: we only drop distinct_count when it becomes 0.
+
+        Similarly, when adding an element of species s:
+            old_freq = freq[s]
+            new_freq = old_freq + 1
+
+            if old_freq == 0:
+                distinct_count += 1
+            if old_freq == K:  // then after adding, it becomes K+1 -> becomes bad
+                bad_count += 1
+
+            freq[s] = new_freq
+
+        Note: the above conditions for bad_count and distinct_count are only based on the species s.
+
+        However, what if the species s is new (old_freq==0)? then after adding, we have distinct_count increased, and then if K==0? But K>=1. Also, if K==0, then we cannot catch any, but K>=1.
+
+        And if we are adding and the species s was not present, then after adding, we have freq[s]=1. If K>=1, then it is not bad (since 1<=K, so we don't add to bad_count). Only when it becomes exactly K+1 we add to bad_count.
+
+        But note: when we add and old_freq=K, then we add one to make it K+1, so we then do bad_count += 1.
+
+        Similarly, when we remove and old_freq=K+1, then after removal it becomes K, so we do bad_count -= 1.
+
+        This matches.
+
+        So we can maintain.
+
+  - We also need to store the current array state, and the update history for rollback. For rollback, we need to know the value that was present before the update. The update is stored as (pos, old_value, new_value). When we apply, we set a[pos] = new_value, and when we rollback, we set a[pos] = old_value.
+
+  - But note: when we are at a query, the array a should reflect all updates up to time = t.
+
+  - Also, we need to handle the initial array: we consider as time0.
+
+  - The updates are given in the input intermixed with queries.
+
+  - We will store the initial array.
+
+  - Then, we will separate the input into:
+        initial_array: of size N
+        queries: each is either update or query.
+
+  - For the Mo's with updates, we will have:
+        total_updates = 0
+        for each input line:
+            if it is an update (Q_i=1), then we create an update event: (time_index, pos, old_value, new_value). But we don't know the old_value until we do it? 
+
+        We need to simulate the updates to know the old_value? Or we can store the current array as we go.
+
+        Alternatively, we can preprocess the updates: we will create an array "cur" for the current value at each position, and an array "next_update" for the next update time for a position? 
+
+        Actually, we can do offline: we will know the entire sequence of updates. For an update at time t at position pos, the old_value is the value that was present at time t-1 at pos. To know that, we can run through the sequence and for each position, store the last update time and the value at that time.
+
+        However, in the Mo's with updates, we will apply the updates in order, and we can for each update at time t, record the value that was there before the update.
+
+        Specifically, we can maintain an array "a" that is the current array. When we encounter an update (1, pos, new_value):
+             old_value = a[pos]
+             record this update event as (t, pos, old_value, new_value)
+             then set a[pos] = new_value
+
+        We do this for the entire sequence, and we store the update events in an array.
+
+        Then, for the queries, we also record the query events: (time, l, r, index) where time = the number of updates that have been applied before this query.
+
+        But note: the time in the Mo's should be the index in the update events array.
+
+        We will:
+            Let no_updates = 0
+            updates: list of update events, indexed from 0 to U-1.
+            queries: list of (time, l, r, idx) for each query event, where time = the number of update events that have occurred before this query.
+
+        Then we can sort the queries by (l_block, r_block, time) and process.
+
+  - The initial array is at time0.
+
+  - Then, we start with the initial array.
+
+  - For the initial array, we have not applied any update, so time=0.
+
+  - When we apply an update event i, we have:
+        pos = updates[i].pos
+        new_value = updates[i].new_value
+        and we know the current array value at pos (which should be the old_value at the time of the update) is the one that is stored in the update event as old_value? Actually, we stored it when we preprocessed.
+
+        But in the Mo's, we maintain the current array state. When applying an update, we do:
+            if the update event's old_value is not the same as the current array at that position, then we have a problem.
+
+        How to handle: in the preprocessing, we stored the update event with the old_value that was at the moment of the update. But in the Mo's, we might be rolling back and forth, so the array state is dynamic.
+
+        We need to store in the update event: (time_index, pos, old_value, new_value) and when we apply, we set a[pos]=new_value, and when we roll back, we set a[pos]=old_value.
+
+        But the old_value is fixed: it is the value that was there before the update was applied in the global sequence.
+
+        However, if there is a nested update? In the global sequence, the updates are in order. In the Mo's, we are moving in time dimension by applying and unapplying in order.
+
+        This is standard in Mo's with updates.
+
+        We store the update event as (pos, from, to) at time t.
+
+        When applying, we change the array at pos from 'from' to 'to'. And when rolling back, we change from 'to' to 'from'.
+
+        But note: the 'from' is the value that was there at the time of the update in the global sequence. In the Mo's, when we are at a time before this update, the array at pos should be 'from'. And after applying, it becomes 'to'. 
+
+        However, if there are multiple updates at the same position, then when we roll back, we must go back to the previous state, which might not be the initial state? But we stored the entire sequence.
+
+        It will work because we apply updates in order and roll back in reverse order.
+
+  - Implementation details.
+
+  - We assume that the initial array is stored in an array a0. Then we will create an array a = a0 for the initial state.
+
+  - But in the Mo's, we maintain a current array. We also have to know the current state at each position.
+
+  - Alternatively, we can maintain an array "arr" that is the current value at each position. And when we apply an update event i, we do:
+        swap(arr[upd[i].pos], upd[i].new_value);   // but we need to store the old_value in the event? 
+
+        Actually, the event should be stored with the old_value and new_value. When applying the event, we:
+            if arr[upd[i].pos] != upd[i].old_value, then it means we are in an inconsistent state? 
+
+        But in the global sequence, the updates are applied in order. In the Mo's, we also apply the updates in the same order. So when we apply an update event i, we expect that the current value at the position is the old_value stored in the event. 
+
+        However, if there is a later update that has been applied and then rolled back, then the value might be the old_value? 
+
+        The Mo's with updates algorithm relies on the condition that we apply the updates in the global order. When we are at time t, then all updates up to t have been applied. And when we roll back, we unapply in reverse order.
+
+        So when we apply an update event i, the current value at the position should be the old_value stored in the event. Because the next update at the same position would be at a later time and we haven't applied it yet.
+
+        Therefore, it is safe.
+
+  - Steps for apply_update(event i):
+        Let u = event i.
+        Let pos = u.pos, old = u.old_value, new = u.new_value.
+        We do:
+            if current array at pos is not old, then there is a bug? 
+            But we trust the global order.
+
+        Then if the current active segment [l, r] contains pos, we do:
+             remove the element at pos (which is old)
+             add the element at pos as new
+        Then set arr[pos] = new
+
+  - Steps for unapply_update(event i): (rolling back)
+        Let u = event i.
+        Then we want to set the array at pos to the old_value.
+        So:
+            if the current active segment [l, r] contains pos, we do:
+                 remove the element at pos (which is the new_value, because we applied it)
+                 add the element at pos as the old_value
+            set arr[pos] = old_value
+
+  - But note: when we remove, we remove the current value (which is new_value) and then add the old_value.
+
+  - The species might be the same? But it might be different.
+
+  - This is correct.
+
+  - We also maintain the array "arr" for the current value at each position.
+
+  - The initial "arr" is the initial array.
+
+  - The frequency array "freq" is initially all zeros.
+
+  - distinct_count = 0, bad_count = 0.
+
+  - Then we start moving the pointers.
+
+  - We have to do in the following order: time, then l, then r.
+
+  - The move of time pointer: 
+        while (current_time < target_time):
+            apply_update(events[current_time])
+            current_time++
+        while (current_time > target_time):
+            current_time--
+            unapply_update(events[current_time])
+
+  - Then move the l and r pointers.
+
+  - We then record the answer for the query.
+
+  - Complexity: O( (n_q) * (n^(2/3)) + (n_u) * (n^(2/3)) )? 
+        The number of time we move the time pointer: for each query, the difference in time, and the time pointer might move at most M.
+        The number of times we move the l and r pointers: O(n_q * block_size) = O(n_q * n^(2/3)) and also for the r pointer it might be O(n_q * n^(1)) if not using the block for r? Actually, the r pointer might move O(n) per l-block. And there are O(n^(1/3)) l-blocks, so total for r: O(n * n^(1/3)) = O(n^(4/3)).
+
+        But the time pointer moves: O(n_u * n_q^(2/3))? 
+
+        Total: O(n_u * n^(2/3) + n_q * n^(2/3) + n * n^(1/3))? 
+
+        Actually, the analysis: 
+          - The l pointer moves: O(n_q * block_size) = O(n_q * n^(2/3))
+          - The r pointer moves: O(n_q * block_size) + within a fixed (l_block, time) the r might move O(n) for each l_block and time block. The number of (l_block, time_block) is O(n^(1/3) * n^(1/3)) = O(n^(2/3)), so total for r: O(n * n^(2/3)) = O(n^(5/3))
+          - The time pointer moves: for each (l_block, r_block) and the time moves from 0 to n_u, so total O(n_u * (n^(2/3)) )? Actually, for each fixed (l_block, r_block), the queries are sorted by time, so we move the time pointer at most n_u for each (l_block, r_block). And there are O(n^(2/3)) blocks for l and O(n^(1/3)) blocks for r? Actually, the number of (l_block, r_block) is O( (n / block_size) * (n / block_size) ) = O( (n^(1/3))^2 ) = O(n^(2/3)). So total time moves: O(n_u * n^(2/3)).
+
+        So overall: O( n_u * n^(2/3) + n_q * n^(2/3) + n^(5/3) ) = O( (n_u + n_q) * n^(2/3) + n^(5/3) ).
+
+        With n_u, n_q, n <= 10^5, then n^(2/3) is about 2150, so (10^5)*2150 = 215e6, which is about 200 million, which might pass in C++ in 2 seconds.
+
+  - But worst-case 200 million operations, and each operation (add/remove an element) is a few operations, so it might be borderline.
+
+  - However, there are constants: the block_size is usually taken as n^(2/3) or (n)^(2/3) with n being the number of elements? Here n=10^5, so block_size = (10^5)^(2/3) = approx 2150.
+
+  - But the number of blocks for l is n / block_size = about 46, and for r in each l-block, we have block_size for r? Actually, we don't further block r? We block l and then within the same l-block, we sort by r-block and then by time. The r-block size can be the same as block_size. Then the number of r-blocks is 46. Then the number of (l_block, r_block) is 46 * 46 = 2116. And then the time moves for each block: worst-case 10^5 (the number of updates) per block, so total time moves: 2116 * 10^5 = 211.6e6, and then the moves of l and r: for each query, we move l and r. The worst-case for l moves: the number of queries * block_size = 10^5 * 2150 = 215e6. Similarly, r moves: within a (l_block, r_block), the r moves might be O(block_size) per query? But not exactly.
+
+  - To be safe, we hope that the constants are acceptable.
+
+  - Given the constraints, we use Mo's with updates.
+
+  - Steps summary:
+
+        Precompute:
+            n, M, K
+            a[0..n-1] = initial species (index 0-based for the array, but the input is 1-based for positions)
+
+        Let U = 0, Q = 0
+        updates: a list of tuples (pos, old_value, new_value, time_index) but we don't store time_index explicitly, we store in the list by order.
+        queries: a list of (time, l, r, query_index)   # time = the number of updates that have happened before this query
+
+        We'll also maintain the current array state (for the entire sequence) for preprocessing the updates.
+
+        For i in range(M):
+            read q, a, b
+            if q==1:
+                # update at index = a-1 (0-based) from current_value to b
+                old = current_array[a-1]
+                updates.append( (a-1, old, b) )
+                current_array[a-1] = b
+                U += 1
+            else: # q=2
+                # query [a-1, b-1] (0-based inclusive)
+                queries.append( (U, a-1, b-1, Q) )   # at this point, U updates have been applied
+                Q += 1
+
+        Then, we set block_size = ceil(n^(2/3)) or typically pow(n, 2/3). Let block_size = round(pow(n, 2/3)) or use 2000 for n=100000.
+
+        Sort the queries by:
+            l_block = l / block_size
+            r_block = r / block_size
+            time = time
+
+        But we can do:
+            key1 = l // block_size
+            key2 = r // block_size if (l//block_size) is even then in increasing order, else decreasing? to optimize. Or simply by (key1, key2, time)
+
+        Initialize:
+            current_l = 0, current_r = -1, current_time = 0
+            freq = [0] * (max_species+1)   # max_species: we know P_i from 1 to N, so max_species = N, and N<=10^5.
+            distinct_count = 0
+            bad_count = 0
+            arr = initial_array (a copy of the initial a)   # at time0
+
+        For each query in sorted order:
+            while current_time < time:  # we need to apply updates to reach the query's time
+                apply_update(updates[current_time])
+                current_time += 1
+            while current_time > time:
+                current_time -= 1
+                unapply_update(updates[current_time])
+
+            while current_l > l:
+                current_l -= 1
+                add_element(current_l)
+            while current_r < r:
+                current_r += 1
+                add_element(current_r)
+            while current_l < l:
+                remove_element(current_l)
+                current_l += 1
+            while current_r > r:
+                remove_element(current_r)
+                current_r -= 1
+
+            ans[query_index] = distinct_count - bad_count
+
+        Then output the ans for the queries in the order of query_index.
+
+        Functions:
+          add_element(i):
+              s = arr[i]   # the current species at position i
+              old_freq = freq[s]
+              new_freq = old_freq + 1
+              freq[s] = new_freq
+              if old_freq == 0:
+                  distinct_count += 1
+              if old_freq == K:   # now we are making it from K to K+1, so it becomes bad.
+                  bad_count += 1
+              # Note: if old_freq > K, then it was already bad, and adding one doesn't change bad_count.
+
+          remove_element(i):
+              s = arr[i]
+              old_freq = freq[s]
+              new_freq = old_freq - 1
+              freq[s] = new_freq
+              if new_freq == 0:
+                  distinct_count -= 1
+              if old_freq == K+1:   # after removal, it becomes K, which is not bad.
+                  bad_count -= 1
+              # Note: if old_freq > K+1, then after removal, it is still >=K+1, so bad_count doesn't change.
+
+          apply_update(u):  # u = (pos, old_value, new_value)
+              # The current value at pos should be u.old_value (because we haven't applied this update yet) -> but we are maintaining the current state in the Mo's algorithm, and we are at a state without this update.
+              # If the current active segment [current_l, current_r] contains u.pos, then we have to remove the old_value and add the new_value.
+              if current_l <= u[0] <= current_r:
+                  remove_element(u[0])   # remove the old_value
+                  # But then we are going to add the new_value? But first we change the array.
+              # Change the array at u[0] to u[2] (new_value)
+              arr[u[0]] = u[2]
+              if current_l <= u[0] <= current_r:
+                  add_element(u[0])   # add the new_value
+
+          unapply_update(u):  # u = (pos, old_value, new_value)  and we want to revert: so set to old_value
+              if current_l <= u[0] <= current_r:
+                  remove_element(u[0])
+              arr[u[0]] = u[1]   # set to old_value
+              if current_l <= u[0] <= current_r:
+                  add_element(u[0])
+
+        Note: in apply_update and unapply_update, we do the update to the array "arr" unconditionally, and conditionally update the frequency if the position is in the current active segment.
+
+  - Finally, output the answers for the queries in the order of the input.
+
+  - However, note that the updates and queries are interleaved, and we stored the queries with the time stamp (number of updates before it) and the index.
+
+  - We sort the queries, so we must output in the original order.
+
+  - We store an array ans[Q] and output in the order of the query index.
+
+  - The sample: 
+        "5 5 2"
+        "1 2 2 2 1"
+        queries:
+           2 1 4 -> time0: [0,3] -> species: [1,2,2,2]: 
+                distinct_count: 
+                  1: appears once -> freq[1]=1 -> distinct_count=1 (from 1) and then 2: freq[2]=3 -> distinct_count=2
+                bad_count: 
+                  for species 1: freq=1<=2 -> not bad.
+                  for species 2: freq=3>2 -> bad_count=1.
+                ans = 2-1 = 1.
+
+           1 3 3: update at zone3 (0-indexed index2) from 2 to 3 -> update event stored: (2,2,3) and then we update the current_array? But we don't use the current_array in the Mo's for the initial state? 
+
+           2 1 4: now time=1, the array: [1,2,3,2,1] -> [0:1, 1:2, 2:3, 3:2, 4:1] -> query [0,3]: species: [1,2,3,2]
+                distinct: 1,2,3 -> 3
+                freq: 1:1, 2:2, 3:1 -> none has freq>2? so bad_count=0 -> ans=3.
+
+           1 3 3: update at zone3 (index2) from 3 to 3? (so no change) -> then update event: (2,3,3)
+
+           2 1 5: time=2, array: [1,2,3,2,1] -> query [0,4]: species: [1,2,3,2,1] 
+                distinct: 1,2,3 -> 3
+                freq: 1:2, 2:2, 3:1 -> no one >2, so bad_count=0 -> ans=3.
+
+        So output: 1, 3, 3.
+
+        Matches sample.
+
+  - We assume that the same species might appear in an update? We do.
+
+  - The second sample: 
+        "10 10 3"
+        "5 2 5 2 5 2 5 2 3 2"
+        then queries...
+
+        We'll trust the code.
+
+  - However, the Mo's algorithm might be heavy for 10^5 events, so we must hope that the block_size is chosen well and the constants are low.
+
+  - Alternatively, there might be a more efficient solution, but this is a known approach.
+
+Given the complexity and the constraints, we choose this method.
+
+Note: if there are many updates, the time complexity might be high, but worst-case 10^5 events and block_size=2150, the number of time moves is about 2116 * 10^5 = 211.6e6, and the moves of l and r: about 10^5 * 2150 = 215e6, so total around 426.6e6, which in C++ is acceptable.
+
+But in practice, we use the following optimization: 
+        in the sorting: 
+          if l_block is even, then sort r_block in increasing order, else decreasing.
+
+        to optimize the r pointer moves.
+
+We'll do that.
+
+Let's code the Mo's with updates.
+
+But the editorial is without code, so we describe the solution.
+
+Summary of the solution:
+
+  We use Mo's algorithm with updates. We maintain the current frequency of each species in the current segment, the number of distinct species (distinct_count), and the number of distinct species that are bad (appear more than K times) (bad_count). 
+
+  For each query of type 2, we update the current segment to [l, r] and the current time to the number of updates that have been applied before the query. 
+
+  The answer for the query is distinct_count - bad_count.
+
+  The distinct_count is maintained by: adding an element of a species that currently has frequency 0 increases distinct_count by 1, and removing an element that reduces the frequency to 0 decreases distinct_count by 1.
+
+  The bad_count is maintained by: 
+        When the frequency of a species moves from K to K+1 (by adding an element), we increase bad_count by 1.
+        When the frequency of a species moves from K+1 to K (by removing an element), we decrease bad_count by 1.
+
+  We handle updates by applying and unapplying in the time dimension, and when an update affects an element in the current segment, we remove the old value and add the new value.
+
+  The sorting of the queries is by: 
+        l_block = l / block_size, 
+        r_block = r / block_size, 
+        time = time.
+
+  And we use a trick: if l_block is even, then we sort by r_block increasing, else decreasing.
+
+  The block_size is chosen as n^(2/3).
+
+This solution should work within the time limit for the given constraints.
+
+We output the answers for the queries in the order of the input.
+
+Let me run the second sample with the first query: 
+        "2 6 10": 0-indexed [5,9]: 
+            array: [5,2,5,2,5,2,5,2,3,2] -> 
+            from index5 to index9: [2,5,2,3,2] -> species: 2,5,2,3,2.
+            frequencies: 
+                2: 3 (appears at index5,7,9) -> and also at index9? the last 5 elements: 
+                    index5:2, index6:5, index7:2, index8:3, index9:2 -> so 2 at 5,7,9 -> 3 times.
+                5:1, 3:1.
+            distinct_count = 3 (species2,5,3)
+            bad_count = 1 (only species2 has frequency 3 which is>2? but K=3, so we allow up to 3. So frequency 3 is not bad? 
+
+            Condition: >K -> then bad. So if K=3, then we only confiscate when caught more than 3? i.e., >=4.
+
+            So species2 has frequency 3 -> not bad.
+
+            Then bad_count=0, so answer=3.
+
+        But the sample output for "2 6 10" is 3? 
+
+        But the sample output says 3 for the first query? Actually, the sample output for the second sample is:
+
+            3
+            1
+            1
+            2
+            2
+            2
+
+        The first two queries in the input: 
+            "2 6 10" -> output 3? 
+            "2 1 9" -> output 1?
+
+        But our first query is "2 6 10" -> [5,9] (0-indexed) -> species: 2,5,2,3,2 -> distinct: 3, and no species with frequency>3 (K=3) -> so answer=3.
+
+        The next query: "2 1 9": [0,8] (0-indexed) -> the array: 
+            [5,2,5,2,5,2,5,2,3] -> 
+            species: 
+                5: at0,2,4,6 -> 4 times -> bad (since 4>3) -> so bad_count=1
+                2: at1,3,5,7 -> 4 times -> bad_count=2? 
+                3: at8 -> 1 time.
+
+            distinct_count = 3.
+            bad_count = 2.
+            ans = 3-2 = 1.
+
+        Then updates: 
+            update: "1 7 2" -> at index6 (0-indexed) from 5 to 2 -> so now the array becomes:
+                    [5,2,5,2,5,2,2,2,3,2]  (the last element at index9 remains 2)
+            then update: "1 9 2" -> at index8 (0-indexed) from 3 to 2 -> becomes: 
+                    [5,2,5,2,5,2,2,2,2,2]
+            then update: "1 2 3" -> at index1 (0-indexed) from 2 to 3 -> becomes:
+                    [5,3,5,2,5,2,2,2,2,2]
+
+        Then query: "2 5 9": [4,8] (0-indexed) -> 
+            [5,2,2,2,2] (at indices4,5,6,7,8) -> 
+            species: 5,2,2,2,2 -> 
+                species5:1 -> not bad.
+                species2:4 -> bad.
+            distinct_count=2, bad_count=1 -> ans=1.
+
+        Then update: "1 10 3" -> at index9 from 2 to 3 -> then array: [5,3,5,2,5,2,2,2,2,3]
+        Then query: "2 1 9": [0,8] (0-indexed) -> 
+            [5,3,5,2,5,2,2,2,2] -> 
+                species5:3 (not bad)
+                species3:1 (not bad)
+                species2:5 -> bad.
+            distinct_count=3, bad_count=1 -> ans=2.
+
+        Then queries: 
+            "2 3 10": [2,9] (0-indexed) -> 
+                [5,2,5,2,2,2,2,3] -> 
+                    species5:2 -> not bad.
+                    species2:5? -> 
+                         indices: 
+                            3:2, 5:2, 6:2, 7:2, 8:2? -> wait, the array at index2:5, index3:2, index4:5, index5:2, index6:2, index7:2, index8:2, index9:3 -> 
+                        Actually, the segment [2,9] (0-indexed indices 2 to 9): 
+                            index2:5, index3:2, index4:5, index5:2, index6:2, index7:2, index8:2, index9:3
+                        species: 5,2,5,2,2,2,2,3 -> 
+                            species5:2 -> not bad.
+                            species2:5? -> actually 5 times? 
+                                at index3,5,6,7,8 -> 5 times -> bad.
+                            species3:1.
+                        distinct_count=3, bad_count=1 -> ans=2.
+
+            "2 2 8": [1,7] (0-indexed) -> 
+                [3,5,2,5,2,2,2] (but wait: 
+                    index1:3, index2:5, index3:2, index4:5, index5:2, index6:2, index7:2 -> 
+                    species: 
+                        3:1, 5:2, 2:4 (at index3,5,6,7) -> 
+                    distinct_count=3, bad_count=1 (for species2) -> ans=2.
+
+        But the sample output is:
+            3
+            1
+            1
+            2
+            2
+            2
+
+        The first query: 3 -> we have 3.
+        The second query: 1 -> we have 1.
+        Then after updates, the next query: 1 -> we have 1.
+        Then the next query: 2 -> we have 2.
+        Then the next two queries: 2 and 2.
+
+        But the sample output has 6 outputs? 
+
+        The sample input has 10 lines, so 10 queries. The output has 6 integers? 
+
+        Actually, the input: 
+            10 10 3
+            ... then 10 lines.
+
+        And the output has 6 integers because only the queries of type2 are output.
+
+        The queries of type2: 
+            line1: "2 6 10"
+            line2: "2 1 9"
+            line5: "2 5 9"  -> the 5th line? 
+            line7: "2 1 9"
+            line9: "2 3 10"
+            line10: "2 2 8"
+
+        So 6 outputs? But the sample output has 6 integers: 3,1,1,2,2,2.
+
+        However, our computation for the last query "2 2 8" is 2, which matches.
+
+        But the sample output for the query "2 3 10" is 2, and we got 2.
+
+        But the sample output is: 
+            3
+            1
+            1
+            2
+            2
+            2
+
+        which matches.
+
+        So we are good.
+
+Therefore, we use Mo's algorithm with updates.
+
+Note: There might be an online method using advanced data structures, but this offline method is known to work.
+
+We hope that the constants are low enough.
+
+Time complexity: O( (n_u + n_q) * n^(2/3) + n^(5/3) ) which is acceptable for n, n_u, n_q up to 10^5.
+
+We'll choose block_size = pow(n, 2/3) (or a bit larger) and hope that the running time is acceptable in C++.
+
+In Python, it might be borderline, but the problem says time limit 2 seconds and memory 1024 MB, and the constraints are 10^5, so we assume C++.
+
+We output the editorial accordingly.

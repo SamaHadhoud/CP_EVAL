@@ -1,0 +1,5 @@
+We maintain an ordered set $S$ which contains the cats currently in the line, and an integer $\text{ans}$ which is the current sum of discontentment. For implementation convenience, we can add $\infty$ and $-\infty$ to $S$ without affecting the answer. Define a function $\text{count}(i)$ where $i \in S$ which returns one of ${3, 32, 323, 3233}$ as according to the problem statement.
+
+Suppose we are going to remove $x \in S$. Let $u = \max{i \in S : i < x}$ and $v = \min{i \in S : x < i}$. Then, we decrease $\text{ans}$ by $\text{count}(u) + \text{count}(v) + \text{count}(x)$, remove $x$, then increase $\text{ans}$ by $\text{count}(u) + \text{count}(v)$.
+
+Suppose we are going to insert $x \notin S$. Let $u = \max{i \in S : i < x}$ and $v = \min{i \in S : x < i}$. Then, we decrease $\text{ans}$ by $\text{count}(u) + \text{count}(v)$, insert $x$, then increase $\text{ans}$ by $\text{count}(u) + \text{count}(v) + \text{count}(x)$.

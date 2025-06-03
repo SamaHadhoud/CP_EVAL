@@ -1,0 +1,14 @@
+To count the number of occurrences of the string $S_i$ in the grid, we can try each character position on $S_i$ as a turning point. So, the total number of tries are $\sum_{i=1}^Q |S_i| \leq 200000$. Let us choose $j^{th}$ character position as the turning point, then the string $S_i$ is consisted of a horizontal string $H$ and a vertical string $V$. The string $H$ is $S_{i1}S_{i2}\ldots S_{ij}$ and the string $V$ is $S_{ij}S_{ij+1}\ldots S_{i|S_i|}$. To make the explanation become easier, we will reverse the string $H$ as $S_{ij}S_{ij-1}\ldots S_{i1}$.
+
+For case $|H| = 1$, we can ignore $H$ and count the number of occurrences of string $V$ vertically with a suffix array. The suffix array will sort every cell $(r, c)$ based on the suffix string $G_{r,c}G_{r+1,c}\ldots G_{R,c}$. So, every vertical occurrences of string $V$ on the grid will be adjacent each other in the suffix array, so we can count the number of occurrences of string $V$ based on the longest common prefix of every adjacent indices on suffix array and use binary search with the help of data structure such as range minimum query to find the range of the occurrences of string $V$. We can insert all query strings to the suffix array before so that we can know the starting position to do the binary search.
+
+The equivalent process is also applicable for case $|V| = 1$, i.e. we can find the number of occurrences of string $H$ horizontally with suffix array by sorting every cell $(r, c)$ based on the suffix string $G_{r,c}G_{r,c-1}\ldots G_{r,1}$.
+
+If $|V| \ne 1$ and $|H| \ne 1$, then we can combine those 2 suffix arrays. Suppose the position of cell $(r, c)$ on the first suffix array (based on vertical suffix) is $X_{r,c}$ and the position of cell $(r, c)$ on the second suffix array (based on horizontal suffix) is $Y_{r,c}$. Since every occurrences of string $V$ are adjacent on first suffix array (e.g. it starts from $L_V$ until $R_V$) and every occurrences of string $H$ are adjacent on second suffix array (e.g. it starts from $L_H$ until $R_H$), then to combine $V$ and $H$ become together, we need to count how many cell $(r, c)$ that satisfying $L_V \le X_{r,c} \le R_V$ and $L_H \le Y_{r,c} \le R_H$.
+
+We can model the rest problem as 2-D Cartesian coordinates. Each cell will be modeled as a point $(X_{r,c}, Y_{r,c})$ and each try on choosing the turning point will become a rectangle from point $(L_V, L_H)$ until point $(R_V, R_H)$. So, the rest problem is to count how many points inside each rectangle. This problem can be solved by data structure such as range tree or we can also use line sweep technique and use range sum query data structure such as BIT or segment tree.
+
+The time-complexity of this solution is:
+$$
+O((R \times C + \sum_{i=1}^Q |S_i|) \times \log(R \times C + \sum_{i=1}^Q |S_i|)).
+$$

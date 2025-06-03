@@ -1,0 +1,219 @@
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <set>
+#include <cctype>
+#include <string>
+
+using namespace std;
+
+int main() {
+    int t;
+    cin >> t;
+
+    while (t--) {
+        int a, p;
+        string S, E;
+        cin >> a >> p >> S >> E;
+
+        int A_i = 0, P_i = 0;
+        for (char c : S) {
+            if (c == 'A') A_i++;
+            else if (c == 'P') P_i++;
+        }
+        int A_g = 0, P_g = 0;
+        for (char c : E) {
+            if (c == 'A') A_g++;
+            else if (c == 'P') P_g++;
+        }
+
+        long long x_val = -1, y_val = -1;
+        int rA_found = -1, rP_found = -1;
+        bool found_counts = false;
+        for (int rA = 0; rA <= 20; rA++) {
+            long long tempA = A_g - A_i + a * rA;
+            if (tempA < 0) continue;
+            if (tempA % 2 != 0) continue;
+            x_val = tempA / 2;
+            for (int rP = 0; rP <= 20; rP++) {
+                long long tempP = P_g - P_i + p * rP;
+                if (tempP < 0) continue;
+                if (tempP % 2 != 0) continue;
+                y_val = tempP / 2;
+                if (x_val >= 0 && y_val >= 0) {
+                    found_counts = true;
+                    rA_found = rA;
+                    rP_found = rP;
+                    break;
+                }
+            }
+            if (found_counts) break;
+        }
+
+        if (!found_counts) {
+            cout << "-1\n";
+            continue;
+        }
+
+        vector<string> operations;
+        string current = S;
+
+        auto find_rightmost = [](const string& s, char c) {
+            int pos = -1;
+            for (int i = 0; i < s.size(); i++) {
+                if (s[i] == c) {
+                    pos = i;
+                }
+            }
+            return pos;
+        };
+
+        for (int i = 0; i < x_val; i++) {
+            int pos = find_rightmost(current, 'P');
+            if (pos == -1) {
+                break;
+            }
+            operations.push_back("+P " + to_string(pos+1));
+            current = current.substr(0, pos) + "APA" + current.substr(pos+1);
+        }
+
+        for (int i = 0; i < y_val; i++) {
+            int pos = find_rightmost(current, 'A');
+            if (pos == -1) {
+                break;
+            }
+            operations.push_back("+A " + to_string(pos+1));
+            current = current.substr(0, pos) + "PAP" + current.substr(pos+1);
+        }
+
+        vector<int> matched_indices;
+        int j = 0;
+        for (int i = 0; i < current.size() && j < E.size(); i++) {
+            if (current[i] == E[j]) {
+                matched_indices.push_back(i);
+                j++;
+            }
+        }
+
+        if (j < E.size()) {
+            matched_indices.clear();
+            j = E.size() - 1;
+            for (int i = current.size()-1; i >= 0 && j >= 0; i--) {
+                if (current[i] == E[j]) {
+                    matched_indices.push_back(i);
+                    j--;
+                }
+            }
+            reverse(matched_indices.begin(), matched_indices.end());
+        }
+
+        if (j < E.size()) {
+            int n = current.size(), m = E.size();
+            vector<vector<bool>> dp(n+1, vector<bool>(m+1, false));
+            for (int i = 0; i <= n; i++) {
+                dp[i][0] = true;
+            }
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    dp[i][j] = dp[i-1][j] || (dp[i-1][j-1] && current[i-1] == E[j-1]);
+                }
+            }
+            if (!dp[n][m]) {
+                cout << "-1\n";
+                continue;
+            }
+
+            matched_indices.clear();
+            int i_index = n, j_index = m;
+            while (j_index > 0) {
+                if (i_index > 0 && dp[i_index-1][j_index]) {
+                    i_index--;
+                } else if (i_index > 0 && j_index > 0 && dp[i_index-1][j_index-1] && current[i_index-1] == E[j_index-1]) {
+                    matched_indices.push_back(i_index-1);
+                    i_index--;
+                    j_index--;
+                } else {
+                    break;
+                }
+            }
+            reverse(matched_indices.begin(), matched_indices.end());
+            if (j_index > 0) {
+                cout << "-1\n";
+                continue;
+            }
+        }
+
+        vector<bool> in_matched(current.size(), false);
+        for (int idx : matched_indices) {
+            if (idx < current.size()) {
+                in_matched[idx] = true;
+            }
+        }
+
+        vector<pair<int, int>> segments;
+        int idx = 0;
+        while (idx < current.size()) {
+            if (!in_matched[idx]) {
+                int start = idx;
+                while (idx < current.size() && !in_matched[idx]) {
+                    idx++;
+                }
+                int end = idx - 1;
+                segments.push_back({start, end});
+            } else {
+                idx++;
+            }
+        }
+
+        sort(segments.begin(), segments.end(), [](const pair<int, int>& a, const pair<int, int>& b) {
+            return a.first > b.first;
+        });
+
+        bool valid = true;
+        for (auto& seg : segments) {
+            int start = seg.first;
+            int end = seg.second;
+            int len = end - start + 1;
+            char c = current[start];
+            for (int i = start+1; i <= end; i++) {
+                if (current[i] != c) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid) break;
+
+            if (c == 'A') {
+                if (len % a != 0) {
+                    valid = false;
+                    break;
+                }
+                int times = len / a;
+                for (int k = 0; k < times; k++) {
+                    operations.push_back("-A " + to_string(start+1));
+                }
+            } else if (c == 'P') {
+                if (len % p != 0) {
+                    valid = false;
+                    break;
+                }
+                int times = len / p;
+                for (int k = 0; k < times; k++) {
+                    operations.push_back("-P " + to_string(start+1));
+                }
+            }
+        }
+
+        if (!valid) {
+            cout << "-1\n";
+            continue;
+        }
+
+        cout << operations.size() << "\n";
+        for (string op : operations) {
+            cout << op << "\n";
+        }
+    }
+
+    return 0;
+}

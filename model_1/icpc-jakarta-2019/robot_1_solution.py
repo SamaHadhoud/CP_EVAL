@@ -1,0 +1,102 @@
+mod = 1000000007
+
+identity = (1, 0, 0, 1)
+
+def mat_mult(m1, m2):
+    a1, b1, c1, d1 = m1
+    a2, b2, c2, d2 = m2
+    a = (a1 * a2 + b1 * c2) % mod
+    b = (a1 * b2 + b1 * d2) % mod
+    c = (c1 * a2 + d1 * c2) % mod
+    d = (c1 * b2 + d1 * d2) % mod
+    return (a, b, c, d)
+
+def mat_toggle(m):
+    a, b, c, d = m
+    return (d, c, b, a)
+
+class SegmentTree:
+    def __init__(self, s):
+        self.n = len(s)
+        self.s = s
+        self.size = 4 * self.n
+        self.tree = [identity] * self.size
+        self.lazy = [0] * self.size
+        self._build(0, 0, self.n-1)
+    
+    def _build(self, idx, l, r):
+        if l == r:
+            if self.s[l] == 'A':
+                self.tree[idx] = (1, 1, 0, 1)
+            else:
+                self.tree[idx] = (1, 0, 1, 1)
+        else:
+            mid = (l + r) // 2
+            self._build(2*idx+1, l, mid)
+            self._build(2*idx+2, mid+1, r)
+            self.tree[idx] = mat_mult(self.tree[2*idx+2], self.tree[2*idx+1])
+    
+    def _push(self, idx, l, r):
+        if self.lazy[idx]:
+            if l != r:
+                self.lazy[2*idx+1] ^= 1
+                self.lazy[2*idx+2] ^= 1
+                self.tree[2*idx+1] = mat_toggle(self.tree[2*idx+1])
+                self.tree[2*idx+2] = mat_toggle(self.tree[2*idx+2])
+            self.lazy[idx] = 0
+
+    def update(self, idx, l, r, ql, qr):
+        self._push(idx, l, r)
+        if qr < l or r < ql:
+            return
+        if ql <= l and r <= qr:
+            self.tree[idx] = mat_toggle(self.tree[idx])
+            if l != r:
+                self.lazy[2*idx+1] ^= 1
+                self.lazy[2*idx+2] ^= 1
+            return
+        mid = (l + r) // 2
+        self.update(2*idx+1, l, mid, ql, qr)
+        self.update(2*idx+2, mid+1, r, ql, qr)
+        self.tree[idx] = mat_mult(self.tree[2*idx+2], self.tree[2*idx+1])
+    
+    def query(self, idx, l, r, ql, qr):
+        self._push(idx, l, r)
+        if qr < l or r < ql:
+            return identity
+        if ql <= l and r <= qr:
+            return self.tree[idx]
+        mid = (l + r) // 2
+        left_mat = self.query(2*idx+1, l, mid, ql, qr)
+        right_mat = self.query(2*idx+2, mid+1, r, ql, qr)
+        if left_mat == identity:
+            return right_mat
+        if right_mat == identity:
+            return left_mat
+        return mat_mult(right_mat, left_mat)
+
+def main():
+    import sys
+    data = sys.stdin.read().split()
+    n = int(data[0])
+    q = int(data[1])
+    s = data[2].strip()
+    st = SegmentTree(s)
+    index = 3
+    out_lines = []
+    for _ in range(q):
+        t = int(data[index]); index += 1
+        if t == 1:
+            L = int(data[index]); R = int(data[index+1]); index += 2
+            st.update(0, 0, n-1, L-1, R-1)
+        else:
+            L = int(data[index]); R = int(data[index+1]); A0 = int(data[index+2]); B0 = int(data[index+3]); index += 4
+            M = st.query(0, 0, n-1, L-1, R-1)
+            a, b, c, d = M
+            A_final = (A0 * a + B0 * b) % mod
+            B_final = (A0 * c + B0 * d) % mod
+            out_lines.append(f"{A_final} {B_final}")
+    print("\n".join(out_lines))
+
+if __name__ == '__main__':
+    main()

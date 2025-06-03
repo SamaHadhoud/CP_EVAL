@@ -1,0 +1,722 @@
+ We are given up to 15 strings, each of length up to 15.
+ Steps:
+ 1. Precompute for each string all distinct non-empty subsequences. We use bitmasking and then a set to remove duplicates.
+ 2. For each string, sort the list of distinct subsequences lexicographically.
+ 3. Use dynamic programming over the children (i from 0 to N-1). 
+    Let dp[i][j] = maximum total length for the first i+1 children, where the i-th child uses the j-th subsequence (in lex order) from the i-th string.
+
+ 4. For the first string (i=0): dp[0][j] = len(subseq_j) for each subsequence j.
+
+ 5. For i>=1:
+      Let A = sorted list of subsequences for string i-1 (previous string).
+      Let B = sorted list of subsequences for string i (current string).
+
+      We want for each subsequence s in B: 
+        dp[i][s] = max_{t in A such that t < s} { dp[i-1][t] } + len(s)
+
+      To do this efficiently:
+        - Precompute a prefix maximum array for the dp[i-1] array over the sorted list A.
+        - For each subsequence s in B, we find the position where s would be inserted in A (which gives the first index at which the subsequence is >= s). Then, the best value from A for which the subsequence is strictly less than s is at position (pos-1) in the prefix_max array.
+
+ 6. After processing all children, the answer is the maximum value in dp for the last child. If that maximum is negative (or if at any step we have no valid sequence for a child), we output -1.
+
+ However, note: We break early if at any step the current_dp has no valid value (all negative) and then at the end we check the last dp array.
+
+ Important: It is possible that for a subsequence s in the current string, there is no t in the previous string that is less than s. Then we set dp[i][s] to a very small number (negative infinity). Then if all are negative, we break and eventually output -1.
+
+ Implementation:
+   We maintain a list `dp_prev` for the previous child (which is an array of dp values for each subsequence of the previous string, and the array is aligned with the sorted order of those subsequences).
+
+   For the next child, we:
+      - Sort the current string's subsequences to get list `current_A`.
+      - Create an array `current_dp` of the same length as `current_A`, initialized to a very small number (e.g., -10**9).
+      - Build a prefix maximum array for `dp_prev` (which corresponds to the sorted list of the previous string's subsequences).
+      - For each subsequence `subseq` in `current_A` (with index j in `current_A`):
+            pos = bisect.bisect_left(A_prev, subseq)   # where A_prev is the sorted list of the previous string's subsequences.
+            If pos == 0, then there is no subsequence in the previous string that is < subseq -> skip (leave as -10**9).
+            Else, we take prefix_max[pos-1] (which is the maximum dp value for the previous child for all subsequences that are < subseq) and then set:
+                 current_dp[j] = prefix_max[pos-1] + len(subseq)
+
+      - Then set `dp_prev = current_dp` for the next iteration.
+
+ 7. After processing all children, if `dp_prev` is empty at any point we break and then output -1? Actually, we break only if `dp_prev` becomes empty? But note: we break after the first child if the next child has no valid? Actually, we break the loop when i from 1 to N-1, but if in the middle we have no valid for the current child, then `dp_prev` for the next will be an array of negative values. Then we continue? But then at the end we check: if the maximum in the last dp_prev is negative -> output -1.
+
+ 8. However, we must note: It's possible that for the first string, there is at least one subsequence (so we start). Then for the second string, if no subsequence is valid (all subsequences in the second string are <= every subsequence in the first), then we set all current_dp to negative, but we still go to the next child? Then for the next child, we try to use the previous dp (which is all negative) and then we do the same: we build prefix_max for the previous child (which is an array of negative values). Then for the next child, if we can find a subsequence that is greater than at least one subsequence in the previous string, then we add the length to the best negative value? But that might be negative still. At the end, if the maximum total length is negative, we output -1.
+
+ 9. Therefore, we do not break the loop early. We process all children. Then at the end, if the max value in the last dp_prev is negative, we output -1.
+
+ 10. But note: It is possible that at a child i, the set of subsequences is empty? Actually, we generate non-empty subsequences, so each string has at least one subsequence. So the set for each string is non-empty.
+
+ However, what if for a string we generate an empty subsequence? We avoid that by starting the mask from 1 (not 0). So each list A_list[i] is non-empty.
+
+ But then why break? Actually, we don't break because of empty A_list, but if we break the loop when we set `if not dp_prev: break`? Actually, we set `if not dp_prev: break` only after the first child? That condition is actually not necessary because each A_list is non-empty. So we can remove that.
+
+ However, we have:
+      After processing the first child, `dp_prev` is a list of positive integers (lengths of subsequences). Then for the next children, we build `current_dp` which might become an array of negative values if no valid sequence is found for the current child. Then we set `dp_prev = current_dp` and move on. Then for the next child, we use that `dp_prev` (which has negative values) to build the prefix_max. The prefix_max for the next child (which is the current_dp of the previous step) is built as:
+
+          prefix_max[0] = dp_prev[0]   (a negative number)
+          then for j from 1: prefix_max[j] = max(prefix_max[j-1], dp_prev[j])
+
+      So the prefix_max array will be the running maximum of negative numbers (so it will be the least negative? Actually, we want the maximum value, which might be -10**9 or a higher negative). Then for the next string, if we have a subsequence that is lexicographically greater than at least one subsequence in the previous string, we take prefix_max[pos-1] (which is the best value from the previous child) and then add the length. But if the previous best is -10**9, then we get a very negative number. 
+
+ 11. We do not break the loop. We process all children. Then at the end, we check the maximum of the last dp_prev.
+
+ Let me test with sample 2: 
+        N=2, strings: ["ZORO", "ANDI"]
+
+        For "ZORO": subsequences (many), including "Z", "O", ... "ZORO", etc. -> all start with 'Z' or 'O'? Actually, the letters: Z, O, R, O (so duplicates: but set will remove duplicate subsequences? However, the subsequences are generated and distinct.
+
+        For "ANDI": subsequences: all start with 'A' (since the first letter is 'A').
+
+        Now, note: any subsequence from "ZORO" must start with a letter >= 'A'. But actually, the letters in "ZORO" are 'Z','O','R','O'. The smallest subsequence is "O" (if we take a single 'O')? But note: "A" (from "ANDI") is lexicographically less than "O"? Because 'A' < 'O'. So actually, the problem says: the first child must have a name that is a subsequence of "ZORO", and the second child must have a name that is a subsequence of "ANDI", and the second must be lex larger than the first.
+
+        But note: the lexicographic order: 
+          The smallest subsequence of "ZORO" is "O" (because we skip the 'Z' and take the first 'O')? Actually, we can have "A" only in the second string? The first string has no 'A'. 
+
+        Actually, the string "ZORO" does not contain 'A'. So the first child's name must be a subsequence of "ZORO", which does not contain any letter less than 'O'? Actually, the letters are Z, O, R, O. The smallest letter is 'O'. So the smallest subsequence is "O". The second child's name must be a subsequence of "ANDI", which can be "A". But "O" is greater than "A" because 'A' < 'O'. Therefore, we cannot have the second child's name being "A" and the first being "O" because "A" < "O", but we require the second child's name to be greater than the first. 
+
+        However, we can have the first child's name as "O" and the second as "AN", which is "AN" > "O" because 'A' < 'O'? Actually, no: lex order: 
+          Compare first character: 'A' vs 'O': 'A' < 'O', so "AN" < "O". 
+
+        How about the first child's name as "Z" and the second as "AN": then "AN" < "Z" because 'A'<'Z'. 
+
+        How about the second child's name as "N"? Then "O" < "N"? -> no, because 'O' < 'N' is false. Actually, 'N' is greater than 'O'? No, 'O' is the 15th letter and 'N' is the 14th -> so 'N' < 'O'. So "N" < "O". 
+
+        How about the second child's name as "Z"? But the second string is "ANDI", which does not contain 'Z'. 
+
+        Therefore, indeed no valid sequence.
+
+        How does our algorithm handle this?
+          First child: we have a list of subsequences for "ZORO". The dp_prev for the first child is an array of the lengths of each subsequence.
+
+          Second child: 
+            We build the prefix_max for the first child: which is the running maximum of the dp_prev (which are the lengths) for the sorted subsequences of the first string.
+
+            Now, we consider each subsequence s in the second string's list (which are subsequences of "ANDI"). For each s, we find its position in the sorted list of the first string's subsequences.
+
+            Since the first string's subsequences all start with a letter from {'O','R','Z'} (which are all greater than 'A'), then any subsequence from the second string that starts with 'A' will be lexicographically smaller than every subsequence of the first string that starts with a letter >= 'O'. So when we do:
+
+                pos = bisect.bisect_left(prev_list, s)
+
+            for a subsequence s from the second string (which starts with 'A'), it will be inserted at the beginning? So pos=0. Then we cannot take any subsequence from the previous string that is < s (because there is none). Therefore, we set current_dp for s to -10**9.
+
+            Also, what about a subsequence from the second string that does not start with 'A'? The string "ANDI" has only letters A, N, D, I. The only starting letter is 'A' (if we take a non-empty subsequence). So every subsequence of the second string starts with 'A'. Therefore, all current_dp for the second child are -10**9.
+
+          Then at the end, the maximum of the last dp_prev (for the second child) is negative -> we output -1.
+
+ 12. Therefore, the code should work.
+
+ 13. One more note: we are generating distinct subsequences. However, the problem does not say that the names must be distinct. But note: the lexicographic order condition requires strict increasing. Therefore, we cannot have two equal names. But even if we generate duplicates, we remove them by using a set. Then we sort.
+
+ 14. However, what if two different subsequences are the same? Then they are duplicates and we remove one. But that's okay because we only need distinct subsequences? Actually, the problem says: the name must be a subsequence. And if we have two different ways to form the same string, we only need one copy.
+
+ 15. But note: the problem does not require the names to be distinct. However, if we have two identical subsequences, then we cannot use them for two children because then the condition (strictly increasing) would be violated (since two equal strings are not lexicographically larger). So we are forced to choose distinct names. But also, we are generating distinct subsequences per string. However, the same subsequence can appear in different strings? But that's allowed? Actually, the condition is that the i-th child's name must be a subsequence of the i-th string. And if the same name appears in two different strings, that's okay. But in our algorithm, for each string we generate the distinct subsequences. Then we sort each list independently.
+
+ 16. But note: the condition is that the entire sequence must be strictly increasing. Therefore, if we choose the same name for two consecutive children, that would break the condition. So we must avoid that. However, our algorithm only considers one subsequence per string. For two different children, they are from different strings. And when we compare a subsequence from the first string and a subsequence from the second string, we compare the strings. Even if they are the same, that would break the condition. So we don't want that. And our algorithm sets for the second child: we only take a subsequence that is strictly greater than at least one subsequence from the first string? Actually, we require that the second child's subsequence is greater than the first child's subsequence. But note: we are not forcing the first child's subsequence to be a particular one. We are taking the maximum over all choices for the first child that are less than the second.
+
+ 17. However, if the second child's subsequence is "A", then we require that the first child's subsequence must be less than "A". But if there is no first child subsequence less than "A", then we cannot use "A" for the second child. So we skip it.
+
+ 18. Therefore, the algorithm is correct.
+
+ 19. We'll run the sample input 3: 
+        N=3, strings: ["KARIM", "PARBUDI", "CHANDRA"]
+
+        We expect output 16.
+
+ 20. How to optimize: 
+        The worst-case number of distinct subsequences per string is 2^L, which is 2^15 = 32768. And N=15, so we do 15 * 32768 * (log(32768) ~ 15 * 32768 * 15 = about 7.37e6, which is acceptable in Python? But worst-case distinct subsequences might be less because of duplicates? However, worst-case (all distinct) we get 32768 per string.
+
+ 21. But note: the length of the string is at most 15, so 32768 * 15 = 491520 per string for generation. Then for N=15, total generation is 15 * 491520 = 7372800, which is acceptable in Pyton? Maybe, but we can optimize by using bit masks and then storing the subsequences as we generate.
+
+ 22. However, the problem constraints are small (N, L <= 15). We'll generate all distinct subsequences for each string.
+
+ Implementation details:
+
+   For each string s:
+        n = len(s)
+        use a set to collect the subsequences
+        for mask in range(1, 1<<n):
+            build the subsequence by iterating over j in range(n) and if the j-th bit is set, append s[j]
+            then add the string to the set.
+
+        Then convert the set to a sorted list.
+
+   Then we do the DP as described.
+
+ 23. Let's code accordingly.
+
+ 24. Edge: if N=0, we output 0? But the problem states N>=1.
+
+ 25. We'll code accordingly.
+
+ 26. We'll test with the provided examples.
+
+ 27. Sample Input 3: 
+        7
+        HAVE
+        FUN
+        IN
+        ICPC
+        JAKARTA
+        TWENTY
+        EIGHTEEN
+
+     Expected output: 25.
+
+ 28. We'll run the code on the sample inputs to check.
+
+ However, due to the complexity and the fact that we are generating all distinct subsequences, we hope that the worst-case does not hit 32768 per string too often? But worst-case for a string of 15 distinct characters: 2^15 = 32768 distinct subsequences. Then for 15 strings, we have 15 * 32768 = 491520 subsequences in total. Then the DP loop: for each child i (from 1 to 14) we do: 
+        sort the list of the previous string (which is 32768 elements) -> already done in the precomputation.
+        build a prefix maximum array: O(32768)
+        then for the current string: for each subsequence in its list (32768), we do a binary search in the previous list (log2(32768)=15) -> 32768 * 15 = 491520 per child.
+
+     Then for 14 children: 14 * 491520 = 6,881,280 operations, which is acceptable in Pyton in 1 second? Probably, because each operation is a comparison of strings? But the binary search compares strings. The length of the strings is at most 15, so each comparison is O(15). Then the total cost for the binary searches: 14 * 32768 * 15 * 15 = 14 * 32768 * 225 = about 14 * 7.37e6 = 103.2e6 operations? This might be borderline in Pyton.
+
+ 29. We must optimize the binary search: we are comparing strings of length up to 15, and we have 32768 * 15 comparisons per child? Actually, the binary search for one element in the previous list: log2(32768)=15 comparisons, each comparison worst-case 15 character comparisons -> 225 per element. Then 32768 elements per current child: 32768 * 225 = 7.37e6 per child. Then 14 children: 14 * 7.37e6 = 103.2e6 comparisons, each comparison of two characters? Actually, worst-case when comparing two strings: we compare character by character until a difference, but worst-case the entire string (15 characters). 
+
+     But 103.2e6 * 15? That would be 1.55e9 comparisons? That might be too slow in Python.
+
+ 30. We need to optimize. How?
+
+     Alternative: Precompute the entire list of subsequences for each string and sort. Then, for the previous string, we have the list A_prev (sorted) and we have the current list B (sorted). We want for each element b in B: 
+          max{ dp_prev for a in A_prev such that a < b }
+
+     We can do a two-pointer technique? Or we can merge the two sorted lists? 
+
+     Actually, we can do:
+
+        Let A_prev = sorted list of subsequences for the previous string, and we have dp_prev for each element in A_prev.
+        Then we build an array of (a, dp_prev_value) for a in A_prev, and we sort by a (which we already have).
+
+        Then we traverse the current list B (sorted) and simultaneously traverse A_prev to update the best dp_prev_value for all a < b.
+
+        Specifically:
+            j = 0   (pointer for A_prev)
+            best = -10**9
+            for i in range(len(B)):
+                while j < len(A_prev) and A_prev[j] < B[i]:
+                    best = max(best, dp_prev[j])
+                    j += 1
+                Then current_dp[i] = best + len(B[i])
+
+        This is O(|A_prev| + |B|).
+
+     Then the total cost per child is O(2^L + 2^L) = O(2^L). Then for 14 children: 14 * (2^15) = 14 * 32768 = 458752, which is acceptable.
+
+ 31. We change the inner loop to use a two-pointer.
+
+ Steps for the DP for i>=1:
+
+        current_A = A_list[i]   # sorted list of distinct subsequences for the current string
+        prev_A = A_list[i-1]    # sorted list of distinct subsequences for the previous string
+        dp_prev = the dp array for the previous string (aligned with prev_A: so dp_prev[k] corresponds to prev_A[k])
+
+        We initialize:
+            j = 0
+            best_so_far = -10**9
+            current_dp = [-10**9] * len(current_A)
+
+        Then for idx in range(len(current_A)):
+            current_subseq = current_A[idx]
+            # Advance j over all elements in prev_A that are < current_subseq
+            while j < len(prev_A) and prev_A[j] < current_subseq:
+                if dp_prev[j] > best_so_far:
+                    best_so_far = dp_prev[j]
+                j += 1
+            # Now, best_so_far is the maximum dp_prev value for all a in prev_A that are < current_subseq.
+            if best_so_far != -10**9:
+                current_dp[idx] = best_so_far + len(current_subseq)
+            # Note: if no element, best_so_far remains -10**9, so we leave current_dp[idx] as -10**9.
+
+        But note: what if the current_subseq is the same as the next one? Then we do not advance j? Actually, we are using strict <, so if we have duplicates in different strings? But we are traversing the current_A in increasing order. And we advance j until we hit a value that is not less than the current_subseq. Then for the next current_subseq, we start from the same j? Actually, the current list is sorted, so the next current_subseq is at least as big as the current one. Therefore, we do not reset j.
+
+        However, what if the current list has duplicates? But we generated distinct subsequences per string, so current_A has no duplicates. Similarly for prev_A.
+
+        But note: it is possible that two consecutive current_subseq are the same? Then we skip? Actually, distinct so no.
+
+        However, what if the same subsequence appears twice? We removed duplicates. So we are safe.
+
+        But note: the condition: we traverse the current_A in increasing order. The while condition: we advance j for all prev_A that are less than the current current_subseq. Then for the next current_subseq (which is >= the current one), we don't need to reset.
+
+        However, what if the next current_subseq is the same? Then we don't advance j and use the same best_so_far? But distinct so no same.
+
+        But what if the next current_subseq is greater? Then we might have more prev_A elements that are less than the next current_subseq? But we have advanced j only up to the current_subseq. Then for the next one, we start from the current j and advance further.
+
+        This is correct.
+
+        However, note: the while condition: 
+            while j < len(prev_A) and prev_A[j] < current_subseq:
+
+        Then we update best_so_far with dp_prev[j] and then j++.
+
+        But what if we have multiple current_subseq that are the same? They are distinct, so skip.
+
+ 32. But note: the list prev_A and current_A are sorted lexicographically. And we are traversing current_A in increasing order. The j pointer moves forward and never goes back.
+
+ 33. Then we set dp_prev = current_dp for the next iteration.
+
+ 34. We must note: the two-pointer method only works because both lists are sorted. And the condition of lex order is consistent.
+
+ 35. Let's test with two small lists:
+
+        prev_A = ['A', 'B', 'C']
+        dp_prev = [1, 2, 3]
+
+        current_A = ['B', 'C', 'D']
+
+        Process:
+            j=0, best_so_far = -10**9
+            current_subseq = 'B': 
+                while j<3 and prev_A[j] < 'B': 
+                    j=0: 'A'<'B' -> best_so_far = max(-10**9, 1) = 1; j=1.
+                    j=1: 'B' is not < 'B' -> break.
+                then current_dp[0] = 1 + 1 = 2? (because len('B')=1) -> 2.
+
+            Then current_subseq='C':
+                while j<3 and prev_A[j] < 'C': 
+                    j=1: 'B'<'C' -> best_so_far = max(1, 2)=2; j=2.
+                    j=2: 'C' is not < 'C' -> break.
+                current_dp[1] = 2 + 1 = 3? (len('C')=1) -> 3.
+
+            Then current_subseq='D':
+                while j<3 and prev_A[j] < 'D': 
+                    j=2: 'C'<'D' -> best_so_far = max(2,3)=3; j=3 -> break.
+                current_dp[2] = 3 + 1 = 4.
+
+        Then total length = 2+3+4? But actually, we are building the total length: 
+            For the first child we had one of the previous: then we add the current. But the dp_prev for the previous child was [1,2,3] meaning the total length for the first child (if we chose that subsequence) is 1,2, or 3. Then for the second child, we add the length of the chosen subsequence.
+
+        In our example, the total length for the three children would be: 
+            first child: we must choose a subsequence that is less than 'B'. The best we can get from the first child for the subsequences less than 'B' is 1 (from 'A'). Then the second child chooses 'B' -> total=1+1=2.
+            then the third child: from the second child we have the state for the second child: 2. Then we add the third child: we get 2 (from the second child) + 3 (from the third child's 'C')? Actually, no: we are doing:
+
+            Actually, the state for the second child when choosing 'B' is 1 (from the first child) + 1 (for 'B') = 2.
+
+            Then for the third child, we are considering the second child's state: we look for the best state from the second child that is less than the current third child's subsequence. The second child's choices: 
+                We have for the second child: 
+                    subsequence 'B': state=2
+                    subsequence 'C': state=3   (but we haven't processed the third child with the second child's state for 'C'? Actually, we are processing the third child independently.
+
+            But note: the state for the second child is stored per subsequence. Then for the third child, we look at the entire second child's states? But in our two-pointer we are traversing the entire second child's list? Actually, we are using the entire list of the second child? 
+
+            Correction: 
+                We are storing for the second child: 
+                    We have a list of subsequences for the second child and the dp_prev for the second child is an array of the total length for the first two children for each choice.
+
+                Then for the third child, we are using the second child's state (which is stored as a list of states per subsequence, and we have the list of subsequences for the second child? Actually, no: in the two-pointer for the third child, we are using the previous string (which is the second string) and the previous dp_prev (which is the state for the second child). 
+
+            How do we store the state for the second child? We have an array `dp_prev` of length = number of subsequences for the second string. The state for the second child is independent of the third. Then we traverse the third string's subsequences and we consider the entire second child's states for the second string.
+
+            Therefore, the two-pointer method is over the entire second string's subsequences (which we call prev_A) and the current third string's subsequences (current_A).
+
+        So the example above is for the second child? Actually, we did two children? 
+
+        Let me clarify:
+
+            i=0: first child (first string) -> state: dp_prev = [1,2,3] for subsequences ['A','B','C'].
+
+            i=1: second child (second string) -> we have current_A = ['B','C','D'] (for the second string) and we use the state from the first child. Then we get for the second child: 
+                for 'B': 1 (from the first child's 'A') + 1 = 2
+                for 'C': 2 (from the first child's 'B') + 1 = 3   -> wait, but note: we can also use the first child's 'A' for 'C': then 1+1=2, but we have a better 2 (from the first child's 'B')? Actually, we take the best from the first child for any subsequence less than the current. For 'C', the first child can be 'A' (1) or 'B' (2) -> best is 2. Then 2+1=3.
+                for 'D': 3 (from the first child's 'C') + 1 = 4.
+
+            Then the state for the second child becomes [2,3,4].
+
+            Then for the third child (i=2): we use the second child's state and the third string. Suppose the third string has subsequences: ['A','B','C','D'] -> but we'll generate distinct ones. Then for the third child, we do:
+
+                prev_A = ['B','C','D'] (the second string's subsequences) and dp_prev = [2,3,4] for these.
+
+                current_A = sorted distinct subsequences for the third string: say ['A','B','C','D'].
+
+                j=0, best_so_far = -10**9
+                For current_subseq='A': 
+                    while j<3 and prev_A[j] < 'A': ... none, because the smallest in prev_A is 'B' which is > 'A'. So j remains 0, best_so_far remains -10**9 -> state=-10**9.
+
+                For 'B':
+                    while j<3 and prev_A[j] < 'B': 
+                         j=0: 'B' is not < 'B' -> break.
+                    so state=-10**9.
+
+                For 'C':
+                    while j<3 and prev_A[j] < 'C': 
+                         j=0: 'B'<'C' -> best_so_far = max(-10**9, 2)=2; j=1.
+                         j=1: 'C' is not < 'C' -> break.
+                    state = 2 + len('C') = 2+1=3.
+
+                For 'D':
+                    while j<3 and prev_A[j] < 'D': 
+                         j=1: 'C'<'D' -> best_so_far = max(2,3)=3; j=2.
+                         j=2: 'D' is not < 'D' -> break.
+                    state = 3 + 1 = 4.
+
+                Then the state for the third child: [ -10**9, -10**9, 3, 4]. Then the maximum is 4.
+
+            Total length for the three children: 4? But if we choose:
+                first child: 'C' -> length=3
+                second child: 'D' -> length=1 -> total 3+1=4? Then third child: we choose 'D'? Then total 4+1=5? 
+
+            Actually, the state for the third child is the total length for three children. So the maximum is 4? How did we get 4? 
+
+            For the third child: 
+                We get 3 for the choice 'C': which comes from the second child's state for the subsequence 'B' (which was 2) and then add 1 for 'C' -> 2+1=3? 
+                But the second child's state for 'B' is 2, which is the total for the first two children: first child's 'A' (length1) and second child's 'B' (length1) -> total 2. Then the third child's 'C' adds 1 -> total 3.
+
+            And for the choice 'D': 3 (from the second child's state for 'C') + 1 = 4: 
+                second child's state for 'C': 3 -> that came from: first child's 'B' (length1) and second child's 'C' (length1) -> total 2? Then why was the state for the second child's 'C' 3? 
+
+            Correction: I see an error: in the second child, the state for the subsequence 'C' is 3: which is the total length for the first two children: 3? But how? 
+                The first child: we have the subsequence 'B' (which we said had state 2) -> but wait, the state for the first child's 'B' was 2? Actually, the state for the first child is the length of the subsequence: so for the first child, the state for 'B' is 1 (the length) -> then the second child: we take the state from the first child: the best state for a subsequence less than 'C' is 2? That 2 came from the first child's state for 'B'? But the state for the first child's 'B' is 1? Then we add the length of the second child's 'C' (which is 1) -> total 1+1=2. 
+
+            How did we get 3? 
+
+            I think I made a mistake in the example: 
+                For the second child, when processing the subsequence 'C', we take the best state from the first child for any subsequence less than 'C'. The first child's states: 
+                    'A': state=1
+                    'B': state=1? (because the length of 'B' is 1) -> but wait, the state for the first child is the length? 
+                Actually, the state for the first child is the length of the subsequence. So the state for the first child: 
+                    subsequence 'A': state = 1
+                    subsequence 'B': state = 1
+                    subsequence 'C': state = 1
+
+                Then for the second child:
+                    for 'B': we take the best state from the first child for a subsequence less than 'B' -> which is 'A': state=1 -> then state for second child for 'B' = 1 + 1 (for 'B') = 2.
+                    for 'C': we take the best state from the first child for a subsequence less than 'C' -> both 'A' and 'B' (but the best is 1) -> then state = 1+1=2.
+                    for 'D': we take the best state from the first child for a subsequence less than 'D' -> all: best=1 -> state=1+1=2.
+
+                Then the state for the second child: [2,2,2].
+
+            Then for the third child:
+                for 'C': we take the best state from the second child for a subsequence less than 'C' -> which are the subsequences in the second child that are less than 'C': 
+                    The second child's subsequences: ['B','C','D'] -> only 'B' is less than 'C'. The state for 'B' is 2 -> then state for third child for 'C' = 2 + 1 = 3.
+
+            And for 'D': we take the best state from the second child for a subsequence less than 'D' -> which are 'B','C'. The best state: max(2,2)=2 -> then state=2+1=3.
+
+            Then the maximum total length is 3.
+
+            How to get 4? 
+                We have to choose the first child: 'C' (state=1), then the second child: choose a subsequence that is greater than 'C'. But the second child's subsequences: only 'D'? Then state for second child: 1 (from first child's 'C') + 1 (for 'D') = 2. Then the third child: choose a subsequence that is greater than 'D'? But the third string has no subsequence greater than 'D'? 
+
+            Actually, the third string has the subsequence 'D'? But then we require the third child's name to be greater than the second child's name? And if the second child is 'D', then the third child must be greater than 'D'. The third string has no letter greater than 'D'? Then we cannot choose one? So the state for the third child for a subsequence that is greater than 'D' is not updated? 
+
+            How about: 
+                first child: 'C' -> length=1
+                second child: 'D' -> length=1 -> total=2
+                third child: we choose a subsequence that is longer than 1? But the subsequence must be greater lexicographically. The only possibility is a subsequence starting with a letter after 'D'? But the third string only has 'A','B','C','D'. Then we cannot choose a subsequence that is lex greater than 'D'. 
+
+            Therefore, the maximum total length is 3.
+
+            But in our two-pointer we got 3 for the choice 'C' and 3 for the choice 'D'? Then 3.
+
+ 36. Therefore, the example above was flawed. But the algorithm is correct.
+
+ 37. We'll implement the two-pointer method to avoid the O(15 * 2^15 * log(2^15)) * 15 factor (which was too high).
+
+ Revised code:
+
+        Precomputation: same.
+
+        Then for i from 1 to N-1:
+
+            prev_list = A_list[i-1]   # sorted list of subsequences for the previous string
+            current_list = A_list[i]   # sorted list of subsequences for the current string
+
+            j = 0
+            best_prev = -10**9
+            current_dp = [-10**9] * len(current_list)
+
+            for idx in range(len(current_list)):
+                s = current_list[idx]
+                # Advance j: while j < len(prev_list) and prev_list[j] < s
+                while j < len(prev_list) and prev_list[j] < s:
+                    if dp_prev[j] > best_prev:
+                        best_prev = dp_prev[j]
+                    j += 1
+                # Now, best_prev is the maximum dp_prev value for all elements in prev_list that are < s
+                if best_prev != -10**9:
+                    current_dp[idx] = best_prev + len(s)
+                # Otherwise, leave as -10**9
+
+            dp_prev = current_dp   # move to next
+
+        Then answer = max(dp_prev) if max(dp_prev) >= 0 else -1? But we output -1 if the max is negative.
+
+        However, note: it is possible that for the first child, we have positive values. Then for the second child, we might get negative. Then the third child: we use the negative state? Then the total might become positive? 
+
+        Example: 
+            first child: state = [1, 2]   -> then second child: we get [-10**9, 1+3=4] for two subsequences. Then third child: we use the state [ -10**9, 4] for the second child. Then for the third child, we might have a subsequence that is greater than the second child's subsequence that has state 4: then we get 4 + len(s) -> positive.
+
+        So we don't break. We process all children.
+
+        At the end, if the maximum total length (max in the last dp_prev) is negative, we output -1. Otherwise, output the maximum.
+
+ 38. But note: what if the entire sequence is negative? Then we output -1.
+
+ 39. We'll test with sample 2: 
+        After the first child: dp_prev = [positive values] (for the first string)
+        Then for the second child: we get an array of -10**9 (because no valid previous state for any subsequence of the second string). Then the state for the second child is all negative. Then the third child: we use that state? Then we do:
+
+            For the third child: 
+                We traverse the third list. For each s, we look at the second child's state: we advance j in the second child's list? But the second child's list of subsequences is non-empty. We traverse the third child's list in increasing order. For the smallest s, we try to advance j over the second child's subsequences that are < s. But the second child's state values are all -10**9. Then best_prev becomes the maximum of these negative numbers? Then we set current_dp = best_prev + len(s) -> which is negative. 
+
+        Then the last state is negative -> output -1.
+
+ 40. Therefore, we do:
+
+        After the DP for the last child, 
+            ans = max(dp_prev)
+            if ans < 0:
+                print(-1)
+            else:
+                print(ans)
+
+ 41. But note: the state for the first child: we set dp_prev for the first child as the length of the subsequence (positive). Then the state for the first child is positive. Then the second child: if we get all negative, then the state for the second child is negative. Then the third child: we start with best_prev = -10**9 and then we traverse the second child's list? 
+
+        Actually, for the third child, we are looking at the second child's state. The second child's state is stored as an array of values (which are negative). Then when we do:
+
+            while j < len(prev_list) and prev_list[j] < s:
+                if dp_prev[j] > best_prev:
+                    best_prev = dp_prev[j]
+
+        Then best_prev becomes the maximum negative value? 
+
+        Then current_dp = best_prev + len(s) -> which is a negative number plus a positive number. It might become positive? 
+
+        Example: 
+            second child: state = [-100, -200]   (for two subsequences, both negative because no valid first child connection? Actually, no: the second child's state is computed as: for each subsequence s2, we take the best from the first child that is < s2. If there is none, we set to -10**9. Then the state for the second child is all -10**9? 
+
+        Actually, we set to -10**9. So the second child's state is an array of -10**9. Then when we process the third child:
+
+            We start: best_prev = -10**9
+            Then for each subsequence s in the third list: 
+                we advance j: 
+                    while j < len(prev_list) and prev_list[j] < s:
+                        we update best_prev = max(best_prev, -10**9) -> remains -10**9? 
+                Then current_dp = -10**9 + len(s) -> which is still -10**9 (because len(s) is at most 15, and -10**9 is very negative).
+
+        Therefore, we do:
+
+            We set a very negative value: -10**9. Then we add the length (which is at most 15) -> we get a value around -10**9+15, which is still negative.
+
+        Then at the end, the maximum is negative -> output -1.
+
+ 42. Therefore, the code is:
+
+        We precompute A_list: for each string, distinct non-empty subsequences, sorted.
+
+        If N==0: print(0) and return.
+
+        dp_prev = [len(subseq) for subseq in A_list[0]]
+
+        For i in range(1, N):
+            prev_list = A_list[i-1]   # the list for the previous string
+            current_list = A_list[i]   # the list for the current string
+
+            # Build the state for the previous child: we have dp_prev (aligned with prev_list)
+
+            j = 0
+            best_prev = -10**9
+            current_dp = [-10**9] * len(current_list)
+
+            # Sort the prev_list? It is already sorted.
+
+            for idx in range(len(current_list)):
+                s = current_list[idx]
+                # Advance j over all elements in prev_list that are < s
+                while j < len(prev_list) and prev_list[j] < s:
+                    if dp_prev[j] > best_prev:
+                        best_prev = dp_prev[j]
+                    j += 1
+
+                if best_prev != -10**9:
+                    current_dp[idx] = best_prev + len(s)
+                # If we never updated best_prev, then we leave as -10**9
+
+            dp_prev = current_dp
+
+        ans = max(dp_prev) if max(dp_prev) >= 0 else -1
+
+        But wait: what if the maximum is negative? Then we output -1. But if the maximum is non-negative, we output the maximum.
+
+        However, what if the maximum is 0? The problem: names are non-empty, so the length is at least 1. Then the total length for one child is at least 1. Then for multiple children, the total length is at least N (>=1). So we won't get 0. But if we get a negative maximum, we output -1.
+
+        But note: the state for the first child: positive. Then the next states: we are adding positive numbers? So the total length is the sum of the lengths of the chosen names. Then it must be at least N (which is at least 1). Therefore, if we get a negative state at the end, it means that there is no valid sequence.
+
+        However, we set the state to -10**9 when there is no valid sequence for that child. Then the total for the last child is negative. Then we output -1.
+
+        But we are doing: 
+            ans = max(dp_prev)
+            if ans < 0: print(-1)
+            else: print(ans)
+
+ 43. However, what if the entire sequence is valid? Then we have positive numbers. So we output the maximum positive.
+
+ 44. Let's run the first sample: 
+        N=3, strings: ["KARIM", "PARBUDI", "CHANDRA"]
+
+        We expect 16.
+
+        How do we get 16? 
+          One solution: [ "AIM", "ARBUDI", "CHANDRA"] -> 3+6+7=16.
+
+        How is the state computed for the third child?
+
+        We do:
+
+          First child: 
+             subsequences of "KARIM": including "AIM" (which we choose) -> state: length=3.
+
+          Second child: 
+             We have to choose a subsequence that is lex greater than "AIM". One candidate is "ARBUDI". 
+                 How do we get the state for "ARBUDI": 
+                    We look at the first child: we need the best state for a subsequence < "ARBUDI". 
+                    The subsequence "AIM" is < "ARBUDI"? 
+                         Compare: first character: 'A' vs 'A' -> equal.
+                         second character: 'I' vs 'R': 'I'<'R' -> so "AIM" < "ARBUDI". 
+                    Then we take the state for the first child for "AIM": 3, then add 6 (for "ARBUDI") -> 9.
+
+          Then third child: 
+             We choose "CHANDRA" (length=7). Then we look at the second child: we need the best state for a subsequence < "CHANDRA". 
+                 The subsequence "ARBUDI" is < "CHANDRA"? 
+                         First character: 'A' vs 'C': 'A'<'C' -> so yes.
+                    Then we take the state for "ARBUDI" (which is 9) and add 7 -> 16.
+
+        Therefore, we get 16.
+
+ 45. We'll code accordingly.
+
+ 46. But note: we are not forcing to choose "AIM" for the first child. We take the best total length. So for the first child, we might have a longer subsequence that is less than "ARBUDI"? But if we choose a longer subsequence that is still less than "ARBUDI", then we get a larger state.
+
+        For example: 
+            first child: "ARIM" (length=4) is a subsequence? 
+                "KARIM": we can take A, then R, then I, then M -> "ARIM". 
+                Then state for first child: 4.
+            Then for the second child: "ARBUDI": 
+                we can use the state 4 -> then state for second child: 4+6=10.
+
+            Then for the third child: we use 10+7=17? -> but 17 is larger than 16.
+
+        But wait: is "ARIM" < "ARBUDI"? 
+            Compare: 
+                "ARIM" vs "ARBUDI": 
+                  'A'=='A'
+                  'R'=='R'
+                  then next: 'I' vs 'B': 'I'<'B'? Actually, 'I' is 9th letter, 'B' is 2nd -> no: 'I' > 'B'. So "ARIM" is greater than "ARBUDI"? 
+
+        How is the lex order? 
+            We compare character by character until a difference. 
+            First two are the same: "AR" 
+            Then the third: "ARIM" has 'I' and "ARBUDI" has 'B'. Since 'B' < 'I', then "ARBUDI" < "ARIM". 
+
+        Therefore, we cannot use "ARIM" for the first child and then "ARBUDI" for the second child because the second child's name must be greater than the first, but "ARBUDI" < "ARIM". 
+
+        How about the first child: "A" (length=1) and then "ARBUDI" (length=6): 
+            Then state for the second child: 1+6=7.
+            Then the third child: 7+7=14.
+
+        How about the first child: "K" (length=1) and then "ARBUDI": 
+            "K" > "A" -> then "ARBUDI" is greater than "K"? 
+                'A'<'K' -> so "ARBUDI" > "K" -> valid.
+            Then state for second child: 1 (for "K") + 6 = 7.
+
+        Then the third child: 7+7=14.
+
+        But we know that 16 is achievable.
+
+        The solution that achieves 16: 
+            first child: "AIM" (length=3) 
+            second child: "ARBUDI" (length=6) -> state=3+6=9
+            third child: "CHANDRA" (length=7) -> state=9+7=16.
+
+        How about a longer first child? 
+            We can have "AIM" (3) and then a longer second child? 
+            The solution "ARBUDI" is 6, but we can have "PARBUDI" without the first P? Actually, the subsequence must be from "PARBUDI". The solution "ARBUDI" is 6.
+
+        But note: we can have "ARBUDI" is the same as "ARBUDI" but we cannot have a longer one? Actually, the entire string is 7? But "PARBUDI" has 7 letters? 
+            The entire string: "PARBUDI" -> we can take all: "PARBUDI", length=7. 
+            Then state for second child: 3+7=10.
+            Then third child: 10+7=17.
+
+        But is "AIM" < "PARBUDI"? 
+            Compare: first character: 'A' vs 'P': 'A'<'P' -> so yes. 
+            Then state for the second child: 3+7=10.
+
+        Then third child: we require a subsequence of "CHANDRA" that is greater than "PARBUDI". 
+            The first character: 'C' vs 'P': 'C'<'P', so "CHANDRA" is less than "PARBUDI"? 
+
+            Actually: 
+                "CHANDRA": first char 'C'
+                "PARBUDI": first char 'P'
+                Since 'C'<'P', then "CHANDRA" < "PARBUDI". 
+
+        Therefore, we cannot use "CHANDRA" for the third child if the second child is "PARBUDI".
+
+        How about the third child: the entire string "CHANDRA" is 7 letters, but we cannot choose a subsequence that starts with a letter after 'P'? The string "CHANDRA" has no letter greater than 'P'? 
+
+        Then we cannot use the entire "PARBUDI" for the second child? 
+
+        But we can use a subsequence of "CHANDRA" that is greater than "PARBUDI"? 
+            The only possibility: a subsequence that starts with a letter greater than 'P'? But the string has only 'C','H','A','N','D','R','A'. The largest letter is 'R', which is less than 'P'? Actually, 'R' is 18, 'P' is 16 -> 'R' > 'P'. 
+
+        How about: 
+            We take the subsequence "RA" from "CHANDRA": 
+                But "RA": first character 'R' > 'P', so "RA" > "PARBUDI". 
+
+            Then the state for the third child: 10 + 2 = 12.
+
+        Then total length=12, which is less than 16.
+
+        Another candidate for the third child: "R" (length=1) -> state=10+1=11.
+
+        Or "NDRA" (length=4) -> state=10+4=14.
+
+        But 14<16.
+
+        How about "CHANDRA" without the first letter? Then "HANDRA": 
+            Compare: first letter 'H' vs 'P': 'H'<'P' -> then "HANDRA" < "PARBUDI" -> not valid.
+
+        How about starting with 'R'? Then we can take "R" and then add letters? But the letters after 'R' are 'A' (which is smaller). Then we can take "RA" (which we did) or "R" alone.
+
+        Therefore, the solution 16 is better.
+
+        So we hope that the algorithm will pick the 16.
+
+        How? 
+            For the third child, we consider the subsequence "CHANDRA" (the entire string). 
+                We require that there is a subsequence in the second string that is < "CHANDRA". 
+                The second string: we have the subsequence "ARBUDI" (which is 6) and the state for that is 3+6=9. 
+                Now, is "ARBUDI" < "CHANDRA"? 
+                    Compare: 'A' vs 'C': 'A'<'C' -> yes. 
+                Then we can use the state 9 for "ARBUDI" and then add 7 -> 16.
+
+            But note: we might also have a better state for the second child: 
+                We have the state for "ARBUDI"=9, but we also have the state for "K" (from the first child) and then a subsequence of the second string that is greater than "K", and then use that for the third child? 
+
+            However, the algorithm for the third child: 
+                We traverse the current_list (subsequences of "CHANDRA") in increasing order. 
+                When we get to "CHANDRA", we have advanced j over all subsequences in the second string that are < "CHANDRA". 
+                We update best_prev to be the maximum state value for the second child for any subsequence < "CHANDRA". 
+                Since "ARBUDI" is < "CHANDRA", we will have updated best_prev to at least 9 (and possibly more if there is a better one). 
+
+            Therefore, the state for the third child for the subsequence "CHANDRA" is 9+7=16.
+
+        So the algorithm should return 16.
+
+ 47. Therefore, we code with the two-pointer.
+
+ 48. One more note: the two-pointer method relies on the lists being sorted. We sort the distinct subsequences lexicographically.
+
+ 49. We'll run the sample input 3: 
+        7
+        HAVE
+        FUN
+        IN
+        ICPC
+        JAKARTA
+        TWENTY
+        EIGHTEEN
+
+     Expected: 25.
+
+ 50. We trust the algorithm.
+
+ Let's code accordingly.

@@ -1,0 +1,611 @@
+ We are going to do two passes:
+ 1. Backward pass: determine for each position i, the interval [low[i], high[i]] that B[i] must lie in so that the entire suffix starting at i can be satisfied.
+ 2. Forward pass: assign the lexicographically smallest value for each note, starting from the first.
+
+ Steps for backward propagation (from last note to first):
+   For the last note (i = n-1): 
+        low[n-1] = L, high[n-1] = R.
+
+   For i from n-2 down to 0:
+        If A[i] < A[i+1]:
+            Then we require: B[i] < B[i+1] and |B[i] - B[i+1]| <= K.
+            Since B[i] < B[i+1], we have B[i+1] - B[i] <= K and B[i+1] - B[i] >= 1.
+            Therefore, B[i] must be at least B[i+1] - K and at most B[i+1] - 1.
+            So: 
+                low[i] = max(L, low[i+1] - K)
+                high[i] = min(R, high[i+1] - 1)
+
+        If A[i] == A[i+1]:
+            Then B[i] = B[i+1]. So the interval for B[i] is the same as for B[i+1] (but must also be in [L,R]).
+                low[i] = max(L, low[i+1])
+                high[i] = min(R, high[i+1])
+
+        If A[i] > A[i+1]:
+            Then we require: B[i] > B[i+1] and |B[i] - B[i+1]| <= K.
+            So B[i] must be at least B[i+1] + 1 and at most B[i+1] + K.
+                low[i] = max(L, low[i+1] + 1)
+                high[i] = min(R, high[i+1] + K)
+
+   If at any step, low[i] > high[i], then we output -1.
+
+ Steps for forward propagation (from first note to last):
+   We want the lexicographically smallest sequence.
+
+   Start: 
+        B[0] = low[0]   (the smallest possible value for the first note)
+
+   Then for i from 0 to n-2:
+        If A[i] < A[i+1]:
+            We require B[i+1] > B[i] and |B[i+1] - B[i]| <= K.
+            The smallest possible B[i+1] is max(low[i+1], B[i] + 1). However, note that we must also not exceed high[i+1].
+            But we are constrained by the backward pass: we know that low[i+1] to high[i+1] is the feasible range.
+
+        If A[i] == A[i+1]:
+            Then B[i+1] = B[i]. However, we must check that B[i] is in [low[i+1], high[i+1]]? 
+            Actually, we have from backward that the entire suffix is feasible. But note: we set B[i] and then we set B[i+1] = B[i]. 
+            However, we must ensure that B[i] is in [low[i+1], high[i+1]]? Actually, the backward pass for i (which considered i+1) used the constraints for the suffix starting at i. So when we set B[i] we have that it must be in [low[i], high[i]], and then for the next note we have the constraint that it must be the same. But note: the backward pass for i (with A[i]==A[i+1]) set:
+                low[i] = max(L, low[i+1])
+                high[i] = min(R, high[i+1])
+            Therefore, if we set B[i] to some value in [low[i], high[i]], then that same value must be in [low[i+1], high[i+1]]? 
+            Actually, the backward pass for i forced that [low[i], high[i]] is contained in [low[i+1], high[i+1]]? Not exactly: 
+                low[i] = max(L, low[i+1]) -> so low[i] >= low[i+1]
+                high[i] = min(R, high[i+1]) -> so high[i] <= high[i+1]
+            Therefore, [low[i], high[i]] ⊆ [low[i+1], high[i+1]]. So if we set B[i] to a value in [low[i], high[i]], then that value is in [low[i+1], high[i+1]] and we can set B[i+1] = B[i].
+
+        If A[i] > A[i+1]:
+            Then the next note must be less than the current and at least B[i] - K, but also must be at least low[i+1]. 
+            The smallest possible value for B[i+1] would be low[i+1]. However, we also require that B[i] > B[i+1] and the difference is at most K, so B[i] - B[i+1] <= K -> B[i+1] >= B[i] - K.
+            Therefore, we set: 
+                B[i+1] = max(low[i+1], B[i] - K)
+            But note: we also require that B[i+1] < B[i]. So if we set B[i+1] = max(low[i+1], B[i] - K), then if this value is not less than B[i], it would be invalid? Actually, note that the backward pass already ensures that the interval [low[i+1], high[i+1]] is such that there exists a value less than B[i] (if the backward pass was done correctly). However, we must check that the value we assign is less than B[i]. 
+
+            But observe: 
+                In the backward pass for i (when A[i] > A[i+1]), we set:
+                    low[i] = max(L, low[i+1] + 1)
+                    high[i] = min(R, high[i+1] + K)
+                Then in the forward pass, we set B[i] to at least low[i] (which is at least low[i+1]+1) and then we set B[i+1] = max(low[i+1], B[i]-K). 
+
+            We must have: 
+                B[i+1] < B[i] 
+                => max(low[i+1], B[i]-K) < B[i]
+
+            This holds because:
+                If we use low[i+1]: then from backward pass, we have low[i] >= low[i+1]+1, so B[i] >= low[i] >= low[i+1]+1, thus low[i+1] < B[i].
+                If we use B[i]-K: then clearly B[i]-K < B[i].
+
+            Therefore, it is safe.
+
+ However, note: in the forward pass, we are constructing the sequence. We start by setting the first note to the smallest possible value (low[0]). Then we set each next note as the smallest possible that satisfies the constraints and the backward interval.
+
+ But one more constraint: we must not exceed the backward interval. However, we set the next note to at least low[i+1] and at most ... but we don't set beyond high[i+1] because we are taking the smallest and we know the backward interval is feasible.
+
+ However, there is a catch: in the forward pass we might break the constraints for the future? Actually, the backward propagation already ensures that if we choose a value in [low[i], high[i]] then the entire suffix can be satisfied. Then in the forward pass we assign the smallest value we can for each note (within its backward interval) and then use that to constrain the next.
+
+ Therefore, the forward pass is:
+
+   res[0] = low[0]   (because we want lexicographically smallest)
+
+   for i in range(0, n-1):
+        if A[i] < A[i+1]:
+            # We must have: res[i+1] > res[i] and res[i+1] <= res[i] + K, and also res[i+1] in [low[i+1], high[i+1]]
+            candidate = res[i] + 1
+            # But we cannot assign below low[i+1] and we must not exceed high[i+1]
+            if candidate > high[i+1]:
+                # Then we have to assign at least candidate, but it's too high? -> This should not happen because the backward pass should have ensured that there is a value? 
+                # Actually, the backward pass ensures that the entire sequence is feasible. However, we are making greedy choices. 
+                # But note: the backward pass computed an interval for the entire suffix. Our choice of res[i] might be low[0] for the first, but then for the next we require at least res[i]+1. 
+                # But the backward pass for i (which was the first note) would have taken into account the constraint for the next? 
+                # Specifically: for the first note (i=0) we have:
+                #   low[0] = ... computed from the backward pass that included the entire sequence.
+                #   Then we set res[0]=low[0]. Then for the next note we require at least low[0]+1. 
+                #   And the backward pass for the next note (i+1) is [low[1], high[1]]. 
+                #   How did we compute low[0]? 
+                #      If A[0] < A[1]: 
+                #          low[0] = max(L, low[1]-K)
+                #          high[0] = min(R, high[1]-1)
+                #   Then we set res[0] = low[0] = max(L, low[1]-K). Then we require res[1] to be at least res[0]+1 = max(L, low[1]-K) + 1.
+                #   Also, res[1] must be at least low[1]. 
+                #   We then set: res[1] = max(low[1], res[0]+1) = max(low[1], max(L, low[1]-K)+1).
+                #   But note: if low[1] <= max(L, low[1]-K)+1? 
+                #      If low[1] <= max(L, low[1]-K)+1, then we use max(L, low[1]-K)+1. Otherwise we use low[1].
+                #   However, the backward pass for the first note ensures that low[0] = max(L, low[1]-K) is at most high[0] = min(R, high[1]-1). 
+                #   And we set res[0]=low[0]. Then we require res[1] to be at least res[0]+1. 
+                #   But what if res[0]+1 > high[1]? Then we break. 
+                #   However, the backward pass for the first note also set high[0] = min(R, high[1]-1). Then we have:
+                #        res[0] = low[0] <= min(R, high[1]-1) = high[0]
+                #        Then res[0]+1 <= min(R, high[1]-1) + 1 <= high[1]? 
+                #        But note: min(R, high[1]-1) + 1 <= high[1]? 
+                #           If min(R, high[1]-1) = high[1]-1, then +1 gives high[1]. 
+                #           But if min(R, high[1]-1) = R, then R+1 might be greater than high[1]? 
+                #        However, we also have the constraint that the entire note must be in [L,R]. So R is the maximum. And high[1] is at most R? 
+                #        Actually, high[1] is computed as min(R, ...) in the backward pass? 
+                #        So high[1] <= R. Then if min(R, high[1]-1) = R, then we have R <= high[1]-1? That would imply R+1<=high[1]? But high[1] <= R -> contradiction. 
+                #        Therefore, min(R, high[1]-1) must be <= R and also <= high[1]-1. Then res[0]+1 <= (high[1]-1)+1 = high[1]. 
+                #   Therefore, res[0]+1 <= high[1]. So candidate = res[0]+1 is at most high[1]. 
+                #   And we also have candidate = res[0]+1 >= low[0]+1 = max(L, low[1]-K)+1. 
+                #        But we must have max(L, low[1]-K)+1 >= low[1]? 
+                #        If low[1]-K >= L, then candidate = low[1]-K+1, and we need low[1]-K+1 >= low[1] -> which implies -K+1>=0 -> 1>=K? But K>=1. 
+                #        Actually, if K=1, then candidate = low[1]-1+1 = low[1]. 
+                #        If K>1, then candidate = low[1]-K+1 might be < low[1]. 
+                #        Therefore, we take max(low[1], candidate). 
+                #   So we do: res[1] = max(low[1], res[0]+1). 
+                #   And we know that res[0]+1 <= high[1] (as argued above) and low[1]<=high[1]. Therefore, res[1] is in [low[1], high[1]].
+
+            So we set: 
+                res[i+1] = max(low[i+1], res[i] + 1)
+
+        if A[i] == A[i+1]:
+            res[i+1] = res[i]
+
+        if A[i] > A[i+1]:
+            res[i+1] = max(low[i+1], res[i] - K)
+
+ However, note: in the decreasing case, we require that res[i+1] < res[i]. And we have:
+        res[i+1] = max(low[i+1], res[i]-K)
+        We know from the backward pass that low[i] = max(L, low[i+1]+1) and we set res[i] at least low[i] (which is at least low[i+1]+1). 
+        Then res[i] >= low[i] >= low[i+1]+1 -> so low[i+1] <= res[i]-1. Therefore, the value we assign for res[i+1] is at most res[i]-1? 
+        Actually, we have two possibilities:
+          - If we use res[i]-K: then if res[i]-K <= res[i]-1? yes, because K>=1.
+          - If we use low[i+1]: then we have low[i+1] <= res[i]-1 (because res[i] >= low[i+1]+1). 
+        So in either case, res[i+1] < res[i].
+
+ Therefore, the forward pass is as above.
+
+ However, one more thing: what if in the forward pass we assign a value that is too high? 
+    For example, in the increasing case: we set res[i+1] = max(low[i+1], res[i]+1). 
+    But we must also ensure that res[i+1] <= high[i+1]. 
+    Why is that? 
+        The backward pass computed [low[i+1], high[i+1]] as the interval for note i+1. 
+        We know that the value we assign must be in that interval. 
+        But note: the backward pass for note i (from which we computed the interval for i) already ensured that the value we set for i (which is in [low[i], high[i]]) leads to a feasible suffix. 
+        Specifically, for the increasing case: 
+            We have: 
+                low[i] = max(L, low[i+1]-K)
+                high[i] = min(R, high[i+1]-1)
+            Then we set res[i] to low[i] (the smallest value for i). Then we set res[i+1] = max(low[i+1], res[i]+1). 
+            Now, note: 
+                res[i] >= low[i] = max(L, low[i+1]-K) -> so res[i] >= low[i+1]-K -> res[i]+1 >= low[i+1]-K+1, which is not necessarily above low[i+1]? 
+                But we take the max with low[i+1]. So we have res[i+1] >= low[i+1] (by construction).
+
+            Also, we have:
+                res[i] <= high[i] = min(R, high[i+1]-1) -> then res[i]+1 <= min(R, high[i+1]-1)+1 <= high[i+1] (because min(R, high[i+1]-1) <= high[i+1]-1, then +1 <= high[i+1]).
+            Therefore, res[i+1] = max(low[i+1], res[i]+1) <= high[i+1]? 
+                We have two cases:
+                  Case 1: if res[i]+1 >= low[i+1], then res[i+1]=res[i]+1 <= high[i+1] (as above).
+                  Case 2: if res[i]+1 < low[i+1], then we set res[i+1]=low[i+1] which by definition is <= high[i+1] (since the backward interval is [low[i+1], high[i+1]]).
+
+        Similarly, for the decreasing case: 
+            We set res[i+1] = max(low[i+1], res[i]-K). 
+            We have to check that this is <= high[i+1]. 
+            From the backward pass for i (decreasing): 
+                low[i] = max(L, low[i+1]+1)
+                high[i] = min(R, high[i+1]+K)
+            Then we set res[i] = ... but in the forward pass we start at the low of the first note and then propagate. 
+            However, note: the backward pass for i+1: 
+                We know that the entire suffix from i+1 is feasible, and the backward pass for i: 
+                    high[i] = min(R, high[i+1]+K) -> so res[i] <= min(R, high[i+1]+K) -> then res[i]-K <= min(R, high[i+1]+K)-K <= high[i+1] (because min(R, high[i+1]+K) <= high[i+1]+K, then subtracting K gives <= high[i+1]? Actually, min(R, high[i+1]+K) <= high[i+1]+K, then res[i]-K <= high[i+1]? 
+                But note: we are taking max(low[i+1], res[i]-K). Then if we take res[i]-K, we have res[i]-K <= high[i+1]? 
+                    Since res[i] <= min(R, high[i+1]+K), then:
+                      if min(R, high[i+1]+K) = R, then res[i] <= R, and then res[i]-K might be below R-K? but we don't know about high[i+1]. 
+                    However, we also have: 
+                         res[i] <= high[i] = min(R, high[i+1]+K)
+                         => res[i]-K <= min(R, high[i+1]+K) - K <= high[i+1]? 
+                         If min(R, high[i+1]+K) = R, then R-K might be greater than high[i+1]? 
+                         But note: the backward pass for i+1: high[i+1] is at most R? 
+                         Actually, high[i+1] is computed with min(R, ...) in every backward step? 
+                         So high[i+1] <= R. Then R-K might be less than high[i+1]? 
+                         For example: R=10, K=1, high[i+1]=10 -> then R-K = 9 <= 10 -> okay.
+                         But if R=10, K=5, high[i+1]=10, then R-K=5 <= 10 -> okay.
+
+                However, we must have: 
+                    res[i] <= min(R, high[i+1]+K) 
+                    => res[i]-K <= min(R, high[i+1]+K) - K 
+                    But note: min(R, high[i+1]+K) - K <= high[i+1]? 
+                      If min(R, high[i+1]+K) = R, then we have R <= high[i+1]+K? -> but R is at least high[i+1] (because high[i+1] <= R). Then R-K <= high[i+1]? 
+                         But that is not necessarily true: for example, if R=10, K=1, high[i+1]=10, then R-K=9 <=10 -> true.
+                         But if R=10, K=2, high[i+1]=9, then R-K=8, which is <=9 -> true.
+                         Actually, we have: 
+                            R <= high[i+1] + K   [because min(R, high[i+1]+K) = R only if R<=high[i+1]+K] 
+                            => R - K <= high[i+1]
+                    Therefore, in this case, res[i]-K <= high[i+1].
+
+                Then if we use the candidate res[i]-K, it is <= high[i+1]. 
+                If we use low[i+1], then it is <= high[i+1] by the backward interval.
+
+            So the assignment in the decreasing case is also within the backward interval.
+
+        Therefore, we do not need to check the upper bound in the forward assignment? 
+
+ But wait: what if the backward pass interval for the next note is [low[i+1], high[i+1]] and we set res[i+1]=max(low[i+1], ...) and then we have ... might be above high[i+1]? 
+    In the increasing case, we argued that res[i]+1 <= high[i+1] (because from the backward pass for i: res[i] <= high[i] = min(R, high[i+1]-1) -> then res[i]+1 <= min(R, high[i+1]-1)+1 <= high[i+1]).
+    In the decreasing case: we argued that res[i]-K <= high[i+1]. 
+
+    Therefore, the assignment in the forward pass will always be in [low[i+1], high[i+1]].
+
+ However, one more constraint: the entire note must be in [L,R]. But note:
+    The backward pass for each note starts with [L,R] for the last and propagates backward. Then in the forward pass we set the first note to low[0] which is at least L and at most R? 
+        Actually, the backward pass sets:
+            low[0] = ... computed and then we set low[0] = max(L, ...) so low[0]>=L, and high[0]=min(R, ...) so high[0]<=R.
+        Then we set res[0]=low[0] which is in [L,R]. 
+        Then for the next notes: 
+            In the increasing case: 
+                res[i+1] = max(low[i+1], res[i]+1) 
+                and we know low[i+1]>=L (from backward) and res[i]>=L -> res[i]+1>=L+1>=L? 
+            Similarly, decreasing: 
+                res[i+1] = max(low[i+1], res[i]-K) 
+                and low[i+1]>=L, and res[i]-K might be below L? Then we take max with low[i+1] (which is at least L) so it's at least L.
+
+        Also, we argued that they are at most high[i+1] which is <= R.
+
+ Therefore, the entire sequence is in [L,R].
+
+ Implementation:
+
+   Steps:
+      Read input.
+      Backward pass: 
+          low[n-1] = L, high[n-1] = R.
+          for i from n-2 down to 0:
+             if A[i] < A[i+1]:
+                 low[i] = max(L, low[i+1]-K)
+                 high[i] = min(R, high[i+1]-1)
+             elif A[i] == A[i+1]:
+                 low[i] = max(L, low[i+1])
+                 high[i] = min(R, high[i+1])
+             else: # A[i] > A[i+1]
+                 low[i] = max(L, low[i+1]+1)
+                 high[i] = min(R, high[i+1]+K)
+
+             If at any i, low[i] > high[i]: print -1 and return.
+
+      Then forward pass:
+          res = [0]*n
+          res[0] = low[0]
+          for i in range(0, n-1):
+             if A[i] < A[i+1]:
+                 res[i+1] = max(low[i+1], res[i] + 1)
+             elif A[i] == A[i+1]:
+                 res[i+1] = res[i]
+             else:
+                 res[i+1] = max(low[i+1], res[i] - K)
+
+          Then output res.
+
+ However, note: the problem constraints are large (n up to 100,000; values up to 10^9) so we do two passes which is O(n). 
+
+ Let's test with the sample: 
+   Input: "16 1 8 6" and the melody [1,3,5,6,7,8,9,10,3,7,8,9,10,11,12,12]
+
+   Backward pass for the last note (index 15): 
+        low[15]=1, high[15]=8.
+
+   For index 14: A[14]=12, A[15]=12 -> equal -> 
+        low[14]=max(1, low[15]) = max(1,1)=1
+        high[14]=min(8, high[15])=min(8,8)=8
+
+   For index 13: A[13]=11, A[14]=12 -> decreasing? Actually, 11<12 -> increasing? 
+        But the sample says: 
+            ... 12,12 (last two) -> then the note before the last two is 12? Actually the last two are 12,12? 
+            The sample input: 1 3 5 6 7 8 9 10 3 7 8 9 10 11 12 12 -> so the last two are 12 and 12.
+
+        Actually, the last note is index 15: 12, and the previous is index 14: 12 -> so equal.
+
+        Then index 13: 11, then index 14:12 -> increasing: 
+            low[13] = max(1, low[14]-6) = max(1, 1-6) = max(1,-5)=1
+            high[13] = min(8, high[14]-1) = min(8,8-1)=7
+
+        Then index 12: 10, then index 13:11 -> increasing: 
+            low[12] = max(1, low[13]-6)=max(1,1-6)=1
+            high[12] = min(8,7-1)=6
+
+        Then index 11:9, index12:10 -> increasing: 
+            low[11]=max(1,1-6)=1
+            high[11]=min(8,6-1)=5
+
+        Then index10:8, index11:9 -> increasing: 
+            low[10]=max(1,1-6)=1
+            high[10]=min(8,5-1)=4
+
+        Then index9:7, index10:8 -> increasing: 
+            low[9]=max(1,1-6)=1
+            high[9]=min(8,4-1)=3
+
+        Then index8:3, index9:7 -> increasing: 
+            low[8]=max(1,1-6)=1
+            high[8]=min(8,3-1)=2
+
+        Then index7:10, index8:3 -> decreasing (10>3): 
+            low[7]=max(1, low[8]+1)=max(1,1+1)=2
+            high[7]=min(8, high[8]+6)=min(8,2+6)=8
+
+        Then index6:9, index7:10 -> increasing: 
+            low[6]=max(1,2-6)=max(1,-4)=1
+            high[6]=min(8,8-1)=7
+
+        Then index5:8, index6:9 -> increasing: 
+            low[5]=max(1,1-6)=1
+            high[5]=min(8,7-1)=6
+
+        Then index4:7, index5:8 -> increasing: 
+            low[4]=max(1,1-6)=1
+            high[4]=min(8,6-1)=5
+
+        Then index3:6, index4:7 -> increasing: 
+            low[3]=max(1,1-6)=1
+            high[3]=min(8,5-1)=4
+
+        Then index2:5, index3:6 -> increasing: 
+            low[2]=max(1,1-6)=1
+            high[2]=min(8,4-1)=3
+
+        Then index1:3, index2:5 -> increasing: 
+            low[1]=max(1,1-6)=1
+            high[1]=min(8,3-1)=2
+
+        Then index0:1, index1:3 -> increasing: 
+            low[0]=max(1,1-6)=1
+            high[0]=min(8,2-1)=1
+
+   Then in the forward pass:
+        res[0]=low[0]=1
+        i=0: A[0]=1, A[1]=3 -> increasing: res[1]=max(low[1], 1+1)=max(1,2)=2
+        i=1: increasing: res[2]=max(1,2+1)=3
+        i=2: increasing: res[3]=max(1,3+1)=4
+        i=3: increasing: res[4]=max(1,4+1)=5
+        i=4: increasing: res[5]=max(1,5+1)=6
+        i=5: increasing: res[6]=max(1,6+1)=7
+        i=6: increasing: res[7]=max(2,7+1)=8   [Note: for i=7: we have from backward: low[7]=2, so we can set to 8? But 8 is within [2,8]? yes.
+        i=7: decreasing: A[7]=10, A[8]=3 -> decreasing: res[8]=max(low[8]=1, 8-6)=max(1,2)=2
+        i=8: increasing: A[8]=3, A[9]=7: increasing -> res[9]=max(low[9]=1, 2+1)=3
+        i=9: increasing: res[10]=max(1,3+1)=4
+        i=10: increasing: res[11]=max(1,4+1)=5
+        i=11: increasing: res[12]=max(1,5+1)=6
+        i=12: increasing: res[13]=max(1,6+1)=7
+        i=13: increasing: res[14]=max(1,7+1)=8
+        i=14: equal: res[15]=res[14]=8
+
+        Then the melody: 
+          1,2,3,4,5,6,7,8,2,3,4,5,6,7,8,8 -> matches the sample.
+
+   Now, sample input 2: 
+        "16 1 8 6
+         1 3 5 6 7 8 9 10 3 7 8 9 10 11 12 13"
+
+        The only difference: the last note is 13 (not 12). 
+        Then for the last note (index15): low[15]=1, high[15]=8.
+
+        Then index14: A[14]=12, A[15]=13 -> increasing: 
+            low[14]=max(1, low[15]-6)=max(1,1-6)=1
+            high[14]=min(8,8-1)=7
+
+        Then index13:11->12: increasing: 
+            low[13]=max(1,1-6)=1
+            high[13]=min(8,7-1)=6
+
+        Then index12:10->11: increasing: 
+            low[12]=max(1,1-6)=1
+            high[12]=min(8,6-1)=5
+
+        ... until index8:3->7: increasing: 
+            low[8]=max(1,1-6)=1
+            high[8]=min(8, ...) we'll compute backwards until index7: 
+                index7:10->3: decreasing -> 
+                    low[7]=max(1, low[8]+1)=max(1,1+1)=2
+                    high[7]=min(8, high[8]+6) -> but we don't have high[8] yet? 
+
+        Actually, we go backwards from the last. Let's compute step by step:
+
+          i=15: [1,8]
+          i=14: increasing -> [max(1,1-6)=1, min(8,8-1)=7]
+          i=13: increasing -> [max(1,1-6)=1, min(8,7-1)=6]
+          i=12: increasing -> [1, min(8,6-1)=5]
+          i=11: increasing -> [1, min(8,5-1)=4]
+          i=10: increasing -> [1, min(8,4-1)=3]
+          i=9: increasing -> [1, min(8,3-1)=2]
+          i=8: increasing -> [1, min(8,2-1)=1]
+
+          Then i=7: decreasing (10>3) -> 
+                low[7]=max(1, low[8]+1)=max(1,1+1)=2
+                high[7]=min(8, high[8]+6)=min(8,1+6)=7
+
+          Then i=6: increasing (9->10) -> 
+                low[6]=max(1, low[7]-6)=max(1,2-6)=1
+                high[6]=min(8, high[7]-1)=min(8,7-1)=6
+          ... then we continue until i=0: 
+                i=0: increasing (1->3) -> 
+                    low[0]=max(1, low[1]-6) ... but we need to compute i=1 to i=6.
+
+          Actually, we have to compute all backwards. 
+
+          But at index8: we have low[8]=1, high[8]=1 -> then for index7: [2,7] -> then index6: [1,6] -> index5: [1,5] -> index4: [1,4] -> index3: [1,3] -> index2: [1,2] -> index1: [1,1] -> index0: [max(1,1-6)=1, min(8,1-1)=0] -> then low[0]=1, high[0]=0 -> 1>0 -> impossible -> output -1.
+
+        Therefore, we output -1.
+
+   Sample input 3: 
+        "16 1 10 10
+         1 3 5 6 7 8 9 10 3 7 8 9 1 11 12 13"
+
+        We'll do the backward pass:
+
+        Start at i=15: low[15]=1, high[15]=10.
+
+        i=14: A[14]=13, A[15]=13? Actually the last note is 13? 
+            The input: ... 12,13 -> so A[14]=12, A[15]=13? 
+            Actually, the input: "1 3 5 6 7 8 9 10 3 7 8 9 1 11 12 13" -> 
+                indices: 
+                  0:1, 1:3, 2:5, 3:6, 4:7, 5:8, 6:9, 7:10, 8:3, 9:7, 10:8, 11:9, 12:1, 13:11, 14:12, 15:13.
+
+        Then for i=14: A[14]=12, A[15]=13: increasing -> 
+            low[14]=max(1, low[15]-10)=max(1,1-10)=1
+            high[14]=min(10,10-1)=9
+
+        i=13: 11->12: increasing: 
+            low[13]=max(1,1-10)=1
+            high[13]=min(10,9-1)=8
+
+        i=12: 1->11: increasing: 
+            low[12]=max(1,1-10)=1
+            high[12]=min(10,8-1)=7
+
+        i=11:9->1: decreasing? 
+            A[11]=9, A[12]=1 -> decreasing: 
+            low[11]=max(1, low[12]+1)=max(1,1+1)=2
+            high[11]=min(10, high[12]+10)=min(10,7+10)=10
+
+        i=10:8->9: increasing: 
+            low[10]=max(1, low[11]-10)=max(1,2-10)=1
+            high[10]=min(10,10-1)=9
+
+        i=9:7->8: increasing: 
+            low[9]=max(1,1-10)=1
+            high[9]=min(10,9-1)=8
+
+        i=8:3->7: increasing: 
+            low[8]=max(1,1-10)=1
+            high[8]=min(10,8-1)=7
+
+        i=7:10->3: decreasing: 
+            low[7]=max(1, low[8]+1)=max(1,1+1)=2
+            high[7]=min(10,7+10)=min(10,17)=10
+
+        i=6:9->10: increasing: 
+            low[6]=max(1,2-10)=1
+            high[6]=min(10,10-1)=9
+
+        i=5:8->9: increasing: 
+            low[5]=max(1,1-10)=1
+            high[5]=min(10,9-1)=8
+
+        i=4:7->8: increasing: 
+            low[4]=max(1,1-10)=1
+            high[4]=min(10,8-1)=7
+
+        i=3:6->7: increasing: 
+            low[3]=max(1,1-10)=1
+            high[3]=min(10,7-1)=6
+
+        i=2:5->6: increasing: 
+            low[2]=max(1,1-10)=1
+            high[2]=min(10,6-1)=5
+
+        i=1:3->5: increasing: 
+            low[1]=max(1,1-10)=1
+            high[1]=min(10,5-1)=4
+
+        i=0:1->3: increasing: 
+            low[0]=max(1,1-10)=1
+            high[0]=min(10,4-1)=3
+
+        Then forward pass:
+            res[0]=1
+            i0: increasing -> res[1]=max(low[1]=1, 1+1)=max(1,2)=2
+            i1: increasing -> res[2]=max(1,2+1)=3
+            i2: increasing -> res[3]=max(1,3+1)=4
+            i3: increasing -> res[4]=max(1,4+1)=5
+            i4: increasing -> res[5]=max(1,5+1)=6
+            i5: increasing -> res[6]=max(1,6+1)=7
+            i6: increasing -> res[7]=max(2,7+1)=8   [since low[7]=2]
+            i7: decreasing -> res[8]=max(low[8]=1, 8-10)=max(1,-2)=1
+            i8: increasing -> res[9]=max(low[9]=1, 1+1)=2
+            i9: increasing -> res[10]=max(1,2+1)=3
+            i10: increasing -> res[11]=max(2,3+1)=4   [low[11]=2? yes, from backward: low[11]=2]
+            i11: decreasing? -> actually, A[11]=9, A[12]=1 -> decreasing: 
+                 res[12]=max(low[12]=1, 4-10)=max(1,-6)=1
+            i12: increasing? A[12]=1, A[13]=11: increasing -> 
+                 res[13]=max(low[13]=1, 1+1)=2
+            i13: increasing: res[14]=max(1,2+1)=3
+            i14: increasing: res[15]=max(1,3+1)=4
+
+        Then output: 1 2 3 4 5 6 7 8 1 2 3 4 1 2 3 4
+
+        The sample output is: 1 2 3 4 5 6 7 8 1 2 3 4 1 2 3 4 -> matches.
+
+ Therefore, we write the code accordingly.
+
+ However, note: the backward pass for the decreasing case: 
+        low[i] = max(L, low[i+1] + 1)
+        high[i] = min(R, high[i+1] + K)
+
+ But note: the constraint for decreasing is that B[i] > B[i+1] and |B[i] - B[i+1]| <= K -> which implies 1 <= B[i] - B[i+1] <= K.
+        => B[i] >= B[i+1] + 1 and B[i] <= B[i+1] + K.
+
+        Therefore, the backward propagation for the decreasing case is:
+            We know that for the next note, the value is in [low[i+1], high[i+1]]. Then for the current note, the value must be in:
+                [min_value, max_value] = [low[i+1]+1, high[i+1]+K]   (but then intersect with [L,R])
+
+        This is correct.
+
+ Implementation:
+
+   We'll do:
+
+      n, L, R, K = map(int, ...)
+      A = list of n integers
+
+      low = [0]*n
+      high = [0]*n
+
+      low[-1] = L
+      high[-1] = R
+
+      for i in range(n-2, -1, -1):
+          if A[i] < A[i+1]:
+              low[i] = max(L, low[i+1] - K)
+              high[i] = min(R, high[i+1] - 1)
+          elif A[i] == A[i+1]:
+              low[i] = max(L, low[i+1])
+              high[i] = min(R, high[i+1])
+          else: 
+              low[i] = max(L, low[i+1] + 1)
+              high[i] = min(R, high[i+1] + K)
+
+          if low[i] > high[i]:
+              print(-1)
+              return
+
+      Then:
+          res = [0]*n
+          res[0] = low[0]
+
+          for i in range(0, n-1):
+              if A[i] < A[i+1]:
+                  res[i+1] = max(low[i+1], res[i] + 1)
+              elif A[i] == A[i+1]:
+                  res[i+1] = res[i]
+              else:
+                  res[i+1] = max(low[i+1], res[i] - K)
+
+          print(" ".join(map(str, res)))
+
+ Let's code accordingly.
+
+ Note: We must be cautious of the indices (0-indexed).
+
+ However, note: the constraints on K (up to 10^9) and the values (up to 10^9) so the arithmetic is safe.
+
+ But note: in the backward pass for decreasing: we do high[i] = min(R, high[i+1] + K) -> if high[i+1] + K is huge, but we take min with R so it's safe.
+
+ Similarly, in increasing: low[i] = max(L, low[i+1]-K) -> if low[i+1]-K is negative, we take max with L (which is at least 1) so it becomes L.
+
+ Therefore, we are safe.
+
+ Let's run the code on the sample inputs.
+
+ However, note: the sample input 2: we found that the backward pass fails at the first note (low[0]=1, high[0]=0) -> then we output -1.
+
+ We'll code accordingly.
+
+ But note: the problem says "Note that it might be possible that the lexicographically smallest melody which satisfies all the requirements to be the same as the original melody." -> but we are not using the original melody values? 
+   Our solution only uses the constraints and the relations. It does not require the original melody values to be in [L,R]? Actually, the problem does not require that the new melody has the same note values as the original, only the relative relations.
+
+ However, the constraints on the new melody: 
+   - The relative relations (increasing, equal, decreasing) must match the original.
+   - The absolute values must be in [L,R] and adjacent difference <= K.
+
+ Therefore, the original melody might be outside [L,R]? Then we cannot use it. Our solution does not rely on the original melody values for the new melody, only for the relations.
+
+ We are only using the array A for the relations.
+
+ Therefore, the code is as above.
+
+ We'll write the code accordingly.

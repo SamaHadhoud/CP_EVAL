@@ -1,0 +1,1182 @@
+We are given multiple test cases. The sum of n across test cases <= 10^6.
+ Steps:
+ 1. Precompute divisors for all numbers up to 1000000 (maxN=10^6).
+ 2. For each test case:
+    a. Read n and a1, then the list of n-1 integers (a2 to an).
+    b. Get divisors of n (only k>1 and k divides n).
+    c. For each divisor k (which is the number of groups):
+        - We note that the groups are determined by residues modulo k. The captain (a1) can be inserted at any position from 0 to n-1 (0: before the first, then between the first and second, ... until after the last).
+        - We can simulate the effect of moving the captain from position 0 to position n-1. Notice that moving the captain from position i-1 to position i only affects two residues: 
+            residue1 = (i-1) % k   [because the captain leaves this residue and an ordinary student (arr[i-1]) enters]
+            residue2 = i % k         [because the captain enters and the ordinary student leaves]
+        - We maintain an array `current_value` of length k for the current group sums.
+        - We also maintain two heaps: a min-heap for the group sums and a max-heap (using negatives) for the group sums, but note that we are updating two groups per move. However, we cannot update the heaps without knowing which entries are outdated. So we use a lazy deletion technique: when popping the top of the heap, we check if the stored value for that group index is still the same.
+
+    d. Algorithm for a fixed k:
+        Step 1: Start with the captain at position 0.
+            - Then the sequence is: [a1, a2, a3, ..., an-1] (the given array for the other students is a2 to an, but note: the list we read for the other students has n-1 integers: from index0 to index n-2 representing a2 to an)
+            - So, group r (0-indexed) gets:
+                a1 (if r==0) and then every k-th element starting at r.
+            - For residue r, we start with a1 if r==0? Actually, the first element is at position0: residue0 = (0 % k) -> gets a1. Then the next element a2 is at position1: residue1 = (1 % k) -> gets a2, and so on.
+
+        Step 2: Initialize:
+            current_value[r] = 0 for all r in [0, k-1]
+            Then, for i from 0 to n-2 (0-indexed in the list `arr` of n-1 elements) we do:
+                residue = (i+1) % k   because the first element (the captain) is at position0 -> residue0, then the next (a2) is at position1 -> residue1, then a3 at position2 -> residue2, ... 
+                But note: when we insert the captain at position0, the entire sequence of n students is:
+                    position0: a1 -> residue0
+                    position1: a2 -> residue1
+                    ...
+                    position n-1: a_n -> residue (n-1) % k
+
+            However, we are going to simulate moving the captain to the next positions. So we start with the captain at position0.
+
+        Step 3: Actually, we can build the initial state for captain at position0 as:
+            current_value[0] = a1   (because the captain is at position0 -> residue0)
+            Then for i from 0 to n-2:
+                residue = (i+1) % k   -> add arr[i] to residue (i+1)%k.
+
+        Step 4: Then we set up two heaps: 
+            min_heap: (current_value[r], r) for r in [0, k-1]
+            max_heap: (-current_value[r], r) for r in [0, k-1]
+
+        Step 5: Then we traverse the insertion positions from 0 to n-1? Actually we started at 0, then we move the captain to positions 1, 2, ..., n-1.
+
+        Step 6: For each move from insertion position i-1 to i (for i from 1 to n-1), we:
+            - Remove the captain from residue r1 = (i-1) % k and put the ordinary student (arr[i-1]) in that residue -> so we subtract a1 and add arr[i-1] to residue r1.
+            - Remove the ordinary student (arr[i-1]) from residue r2 = i % k and put the captain (a1) in that residue -> so we subtract arr[i-1] and add a1 to residue r2.
+
+            Therefore, update:
+                current_value[r1] = current_value[r1] - a1 + arr[i-1]
+                current_value[r2] = current_value[r2] - arr[i-1] + a1
+
+            Then push the new values for r1 and r2 into both heaps (with the index so we can lazy delete later).
+
+        Step 7: After updating, we clean the heaps: 
+            For min_heap: while the top element's value is not equal to the current_value for that residue, pop.
+            Similarly for max_heap.
+
+        Step 8: Then the current min group sum = min_heap[0][0], and the current max group sum = -max_heap[0][0].
+            We compute the ratio = max_sum / min_sum, but we want to avoid floating points? We can store as (max_sum, min_sum) and then compare ratios by cross-multiplying.
+
+        Step 9: For this k, we track the minimal ratio (i.e., the smallest max_sum/min_sum) over all insertion positions.
+
+    e. After processing all divisors, we have the best ratio (as a reduced fraction) for the test case.
+
+ 3. However, note: the total n across test cases is <= 10^6, but the divisors of n for each test case might be up to ~100 (for n<=10^6) and the inner loop for a divisor k runs n times. Then the total work per test case might be O(d(n) * n) which in worst-case d(n) is about 100, so worst-case total n across test cases is 10^6, but note: the divisors we iterate are for each distinct n. However, the problem states the sum of n across test cases <= 10^6. But note: if we have 10 test cases each with n=100000, then the divisors for each n (say 100 divisors each) and then each divisor processing takes O(n), then total work would be 10 * 100 * 100000 = 100e6, which is acceptable? Actually, worst-case the divisors of a number is about 144 (for numbers around 1e6). And the sum of n is 10^6, but we are iterating for each divisor of each distinct n? Actually, the problem says: "The sum of n across all test cases in one input file does not exceed 10^6". So we can do:
+
+        total_work = 0
+        for each test case:
+            n = ... 
+            divisors = divisors_of(n)   (say d divisors)
+            for each divisor k in divisors:
+                work for this k: O(n)   (because we do n insertion positions)
+
+        Then total_work = (sum_{test cases} [ d(n_i) * n_i ])
+
+        But note: the same n might appear multiple times? We can precompute divisors for all n up to 10^6, but then the worst-case total_work might be: for each distinct n, we do d(n)*n * (frequency of n). However, the constraint says the sum of n across test cases <= 10^6. But the worst-case might be: one test case with n=10^6 -> then divisors (d(n)=144) -> work = 144 * 10^6 = 14.4e6, which is acceptable? Actually, 14.4e6 is acceptable in C++ in 1 test case? Then we have t test cases, but the sum of n is 10^6, so the worst-case is one test case with n=10^6 and then we do 144 * 10^6 operations (about 144e6) which is acceptable in 5 seconds? 
+
+        However, worst-case total n is 10^6, but the total work over test cases is the sum over test cases of (d(n_i)*n_i). And the maximum d(n) for n<=1e6 is about 200? Actually, the maximum is 240 for numbers like 720720. But worst-case: if we have 10 test cases, each with n=720720 (but the sum of n would be 10*720720 = 7.2e6, which is acceptable? but the work for one test case: 240 * 720720 ~ 172e6, then 10 test cases: 1720e6 = 1.72e9 operations, which might be borderline in C++ in 5 seconds? 
+
+        Alternatively, note: the constraint says the sum of n (the n of each test case) across test cases <= 10^6. So worst-case we have 10 test cases each with n=100000, then the total n is 1e6, but the work for one test case: d(n) * n = 144 * 100000 = 14.4e6, then 10 test cases: 144e6, which is acceptable.
+
+ 4. Implementation details for heaps: we use lazy deletion. We update the current_value array for two residues per move. Then we push the new values for these residues into the heaps. Then we clean the top of the heaps until the top is current.
+
+ 5. However, we must note: when updating the two residues, the old values in the heaps become outdated. We do not remove them immediately, but we mark them as outdated by checking the current_value array.
+
+ 6. We must also note: the initial state is for insertion at position0. Then we move the captain to positions 1 to n-1 (so n-1 moves). Therefore, we have n insertion positions (from 0 to n-1).
+
+ 7. We must compare ratios without floating point: we have two fractions: (max1, min1) and (max2, min2). We want to compare max1/min1 and max2/min2? We can compare max1 * min2 and max2 * min1? But note: we want the minimal ratio. However, we are tracking the best ratio for a fixed k? Then we compare the ratio at the current state to the best ratio so far for this k.
+
+        Let best_ratio = (max_so_far, min_so_far) for this k? Actually, we can store the current candidate ratio as (max_val, min_val) and then we want to minimize (max_val / min_val). How to compare two ratios (a/b) and (c/d)? 
+            a/b < c/d   <=> a*d < c*b   (if b,d>0)
+
+        So for the current state (max_val, min_val) and the best state for k (best_max, best_min), we do:
+            if max_val * best_min < best_max * min_val:
+                then update best = (max_val, min_val)
+
+        But note: if we are minimizing the ratio, we want the smallest possible ratio.
+
+ 8. After processing all divisors, we have the best ratio (as a pair (max_sum, min_sum)) for the entire test case. Then we reduce the fraction (max_sum, min_sum) by dividing by gcd. But note: the ratio is max_sum / min_sum? So we output p = max_sum/g, q = min_sum/g? Actually, no: the ratio is max_sum/min_sum, so we output p = max_sum/g and q = min_sum/g? But then p and q are coprime.
+
+ 9. However, note: we are comparing ratios by cross-multiplying, but when storing the candidate we store the actual max_sum and min_sum (which are integers). Then at the end we form the fraction.
+
+ 10. Important: It is possible that the group sums become zero? The problem says the skill levels are at least 1. Since each group must have at least one student (because k>1 and k divides n, then each group has n/k>=1) and the captain's skill is at least 1, so min_sum>=1. So no division by zero.
+
+ 11. But note: the captain is one of the students. And the other students have at least 1. So all group sums are at least 1.
+
+ 12. Implementation: We precompute the divisors for all numbers up to 10^6.
+
+ 13. However, the worst-case total work: the sum over test cases of (d(n_i)*n_i) might be large. We need to optimize. 
+
+    Alternative approach: Instead of iterating over every divisor for each test case and then for each insertion position, we can try to optimize by noting that the total sum of n_i * d(n_i) over test cases might be too high? But the constraint says the sum of n across test cases <= 10^6. How about the total of d(n_i)*n_i? 
+
+        Let T = total n across test cases = 10^6.
+        But the divisors we iterate are for each distinct n_i. However, if the same n appears multiple times, we can cache the divisors? But the divisors are already precomputed.
+
+        The problem: the inner loop for a divisor k for a test case with n_i: we do O(n_i) work. Then the total work is the sum over test cases of (number of divisors of n_i * n_i). But note: the same n_i might appear multiple times. We cannot avoid because the list of divisors for each n_i is known.
+
+        Worst-case: if we have one test case with n=10^6, then d(10^6)= 49 divisors? Actually, 10^6 = 2^6 * 5^6 -> (6+1)*(6+1)=49. Then work = 49 * 10^6 = 49e6.
+
+        But worst-case n in terms of divisors: the number with the most divisors below 10^6 has about 200 divisors? Then worst-case: 200 * 10^6 = 200e6 per test case? And if we have one test case with n=10^6 and 200 divisors, then 200e6 operations is acceptable in C++? Yes, in 5 seconds (about 0.2 seconds for 200e6 operations).
+
+        However, the constraint says the sum of n across test cases <= 10^6. So worst-case we could have 10 test cases each with n=100000 (so total n=10*100000=1e6) and each n=100000 has d(100000)= 32 divisors? Then total work = 10 * 32 * 100000 = 32e6.
+
+        So overall, worst-case total work is about 200e6 (if one test case with n=10^6 and 200 divisors) and 200e6 is acceptable.
+
+ 14. Implementation in C++:
+
+        Precomputation of divisors for numbers up to 1000000.
+
+        Then:
+          int t; cin >> t;
+          while (t--) {
+              int n; 
+              long long a1;
+              cin >> n >> a1;
+              vector<long long> arr(n-1);
+              for (int i=0; i<n-1; i++) {
+                  cin >> arr[i];
+              }
+
+              vector<int> divisors = precomputed_divisors[n];   // but we precomputed a global divisors_list for all numbers
+
+          }
+
+        Then for each divisor k (that is a divisor of n and k>1) we do:
+
+          vector<long long> current_value(k, 0);
+          // Start with insertion position0: captain at the front.
+          current_value[0] = a1;
+          for (int i=0; i<n-1; i++) {
+              int r = (i+1) % k;
+              current_value[r] += arr[i];
+          }
+
+          // Set up heaps: we'll use priority_queue for min and max? Actually, we need a min-heap and a max-heap. We can use:
+          // min_heap: priority_queue<long long, vector<long long>, greater<long long>> -> but we also need to know the index to check validity? Actually, we need to know which group it is? So we store (value, index) and we also need lazy deletion: so we store the current_value for that index separately and then when we pop, we check.
+
+          Instead, we can do:
+
+          priority_queue<pair<long long, int>> max_heap;   // pair: (-value, index) OR (value, index) but we want max: then we store (value, index) and use max-heap? Actually, for max we do: store (value, index) and then the top is the maximum? But by default the max-heap uses the first element? So we can do:
+
+          For min_heap: 
+             priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<pair<long long, int>>> min_heap;
+          For max_heap:
+             priority_queue<pair<long long, int>> max_heap;
+
+          But we have to update two residues per move. And then we push the updated values. Then we clean by:
+
+          while (!min_heap.empty() && min_heap.top().first != current_value[min_heap.top().second]) 
+              min_heap.pop();
+
+          Similarly for max_heap: while (!max_heap.empty() && max_heap.top().first != current_value[max_heap.top().second]) 
+              max_heap.pop();
+
+          However, note: it is possible that the same residue appears multiple times? But we are pushing every time we update. And we are only updating two residues per move. Then we push two more entries. So the heap may grow to O(k + 2*n) which is acceptable? k<=n and n<=10^6, so worst-case 2*n per divisor? Then total for one divisor k: we do n moves -> 2*n pushes per heap -> 2*n entries per heap. Then the lazy deletion will not remove the outdated ones until we pop. The total number of pushes per divisor k: 2*n. Then the total memory and operations per divisor k: O(n log n). 
+
+          Steps for one divisor k:
+
+            Step 1: Initialize current_value and then push all k initial values? Actually, we start with k groups. Then we push all k? But then we update two per move and push two per move? Actually, we can start by pushing all k groups:
+
+            for (int r=0; r<k; r++) {
+                min_heap.push({current_value[r], r});
+                max_heap.push({current_value[r], r});
+            }
+
+            Then we clean the heaps? Actually, we haven't updated yet so they are current.
+
+            Then we get:
+                min_val = min_heap.top().first;
+                max_val = max_heap.top().first;
+
+            Then we set best_ratio_this_k = (max_val, min_val)   [as a pair: (max_val, min_val)]
+
+            Then for insertion position from 1 to n-1 (n-1 moves):
+
+                r1 = (pos-1) % k   [because the captain is leaving residue r1 and being replaced by the student at arr[pos-1] (which was at position pos-1 in the entire sequence? note: the sequence without the captain: arr[0] to arr[n-2] for the other students). Actually, when we move the captain from position0 to position1, we are swapping the captain (a1) that was at position0 with the student at position1? Actually, we are shifting the captain one position to the right. Then:
+
+                    The residue that contained the captain (at position0: residue0) now gets the student that was at position1 (arr[0]).
+                    The residue that contained the student at position1 (residue1) now gets the captain.
+
+                But note: the entire sequence changes? Actually, the sequence of n students:
+
+                    Before move: positions: [0: captain, 1: arr[0], 2: arr[1], ...]
+                    After moving the captain to between arr[0] and arr[1]: 
+                         positions: [0: arr[0], 1: captain, 2: arr[1], ...]
+
+                How does this affect the residues?
+
+                    The residue of position0 (which was residue0) originally had the captain. Now it has arr[0]. 
+                    The residue of position1 (which was residue1) originally had arr[0]. Now it has the captain.
+
+                Therefore, residue0 loses a1 and gains arr[0].
+                residue1 loses arr[0] and gains a1.
+
+                So update:
+                    current_value[0] = current_value[0] - a1 + arr[0]
+                    current_value[1] = current_value[1] - arr[0] + a1
+
+                Then we push the new values for residue0 and residue1 into the heaps.
+
+                Then clean the heaps.
+
+                Then update the best_ratio_this_k.
+
+            Note: when moving to the next position, we use the next element in `arr`? Actually, the array `arr` is the list of the other students: a2 to an. And when the captain is at position0, the sequence is: [a1, a2, a3, ..., an] -> but the given arr is [a2, a3, ..., an]? Actually, the input: 
+                n and a1, then n-1 integers: a2, a3, ..., an.
+
+            So the array `arr` has:
+                arr[0] = a2
+                arr[1] = a3
+                ...
+                arr[n-2] = an
+
+            And when the captain is at position0, the entire sequence is:
+                position0: a1
+                position1: a2 -> arr[0]
+                position2: a3 -> arr[1]
+                ...
+
+            When we move the captain to position1 (between the first and second student), the sequence becomes:
+                position0: a2 (arr[0])
+                position1: a1
+                position2: a3 (arr[1])
+                ...
+
+            Then when moving to position2 (between the second and third), we swap the captain (which was at position1) with the student at position2? Actually, the captain moves to the next position. So:
+
+                residue0: gets the student at position0: a2 -> unchanged? Actually, we are shifting the captain one position to the right. The residue0 is (0 mod k) -> position0, residue1 is (1 mod k) -> position1, residue2 is (2 mod k) -> position2.
+
+            So the update for moving the captain from position i to position i+1:
+
+                We are removing the captain from residue (i mod k) and replacing it with the student that was at position i+1 (which is arr[i] in the array? because the student at position i+1 in the entire sequence is the student that was at index i in the array `arr`). And we are removing that student from residue (i+1 mod k) and replacing it with the captain.
+
+            Therefore, for move at step `pos` (which we are moving the captain from its previous position to the next, so the new insertion position is `pos` (0-indexed, meaning the captain is now at position `pos`)), we update:
+
+                residue1 = (pos-1) % k   [the old position of the captain: but note when we are at step `pos`, the captain was at position `pos-1`? Actually, we start at insertion position0 (captain at0). Then we move to insertion position1: then the captain moves from0 to1. So at step `pos` (which we are about to update to insertion position `pos`), the captain is leaving residue r1 = (pos-1) % k and going to residue r2 = pos % k.
+
+                Update:
+                    current_value[r1] = current_value[r1] - a1 + arr[pos-1];
+                    current_value[r2] = current_value[r2] - arr[pos-1] + a1;
+
+            Then push these two residues.
+
+            Then clean the heaps.
+
+            Then update the best_ratio_this_k.
+
+ 15. But note: when moving the captain, we are effectively swapping the captain with the next student? Actually, we are shifting the captain one position to the right. The student that was at the position we are moving the captain to is displaced? And then we move the captain again? The displaced student then moves to the position the captain left? Actually, the entire sequence shifts? 
+
+        Example: 
+          Original: [C, A, B]   (C: captain, A: student2, B: student3)
+          Move captain to between A and B: becomes [A, C, B]
+
+          How did we get there? 
+            We remove the captain from the front and insert it after A. Then the sequence becomes: [A, C, B].
+
+          Then if we move again: becomes [A, B, C]
+
+        So we are not swapping, we are removing the captain from its current position and inserting it after the next student? Then the student that was after the captain moves forward? Actually, the entire block of students from the captain's old position to the new position shifts left by one? 
+
+        However, note: the problem says: "You can choose to stand in between any two students, to the left of student 2, or to the right of student n". So the captain is inserted at a position. The order of the other students remains fixed. Therefore, the sequence of the other students is fixed: [a2, a3, ..., an]. The captain can be inserted at any gap. The groups are formed by the entire sequence.
+
+        The effect on the group sums: the captain is at a specific position. Then the residues are determined by the entire sequence.
+
+        Therefore, the update formula above is correct: when the captain moves from position i to position i+1, we are effectively:
+
+          At position i: the captain is replaced by the student that was at position i+1 (which is arr[i] in the array of the other students? but note: the array `arr` has the other students in order: a2 at index0, a3 at index1, ... an at index n-2).
+
+          And the captain then goes to position i+1, so the student that was at position i+1 is replaced by the captain.
+
+          Therefore, the group that contains position i (residue r1 = i mod k) loses the captain and gains the student arr[i] (which is the student that was at position i+1).
+          The group that contains position i+1 (residue r2 = (i+1) mod k) loses the student arr[i] and gains the captain.
+
+        But note: the residue of a position is determined by the entire sequence? Yes, the j-th student (0-indexed) goes to residue (j mod k).
+
+        However, when we move the captain, the positions of the students to the right of the captain shift? Actually, the captain is moving from position i to position i+1. This causes the student that was at position i+1 to move to position i. Then the student that was at position i+2 moves to i+1? ... until the end? 
+
+        But note: we are forming the entire sequence. The sequence is:
+
+          Before: [ ... (at i: captain) , (at i+1: arr[i]) , (at i+2: arr[i+1]) ... ]
+
+          After: [ ... (at i: arr[i]), (at i+1: captain), (at i+2: arr[i+1]) ... ]
+
+        So only two elements change: the element at position i and the element at position i+1.
+
+        Therefore, the update is only two residues: residue (i mod k) and residue ((i+1) mod k).
+
+        So the update formula is:
+
+          residue1 = i % k
+          residue2 = (i+1) % k
+
+          current_value[residue1] = current_value[residue1] - a1 + arr[i]
+          current_value[residue2] = current_value[residue2] - arr[i] + a1
+
+        Then we push the new values for residue1 and residue2.
+
+ 16. Implementation:
+
+        We precompute divisors for all numbers up to 1000000.
+
+        Then for each test case:
+
+          vector<int> divs = divisors_list[n];   // divisors_list[n] contains all divisors of n. Then we filter: k>1.
+
+          long long best_max = -1, best_min = -1;   // we'll store the best (max_sum, min_sum) for the entire test case.
+
+          for each k in divs (with k>1):
+
+            vector<long long> cur(k, 0);
+            // initial insertion position0: captain at position0.
+            cur[0] = a1;
+            for (int i=0; i<n-1; i++) {
+                int r = (i+1) % k;
+                cur[r] += arr[i];
+            }
+
+            // Heaps: min_heap and max_heap. We'll use:
+            priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<pair<long long, int>>> min_heap;
+            priority_queue<pair<long long, int>> max_heap;
+
+            for (int r=0; r<k; r++) {
+                min_heap.push({cur[r], r});
+                max_heap.push({cur[r], r});
+            }
+
+            // Clean the heaps? Actually, they are fresh, but we do lazy deletion: we only clean when we pop and if outdated.
+            auto clean_heaps = [&]() {
+                while (!min_heap.empty() && min_heap.top().first != cur[min_heap.top().second])
+                    min_heap.pop();
+                while (!max_heap.empty() && max_heap.top().first != cur[max_heap.top().second])
+                    max_heap.pop();
+            };
+
+            clean_heaps();
+
+            long long current_min = min_heap.top().first;
+            long long current_max = max_heap.top().first;
+            // best_ratio_this_k: we start with this state (insertion0)
+            long long best_max_k = current_max;
+            long long best_min_k = current_min;
+
+            // Now try insertion positions from 1 to n-1 (n-1 moves)
+            for (int pos = 1; pos < n; pos++) {
+                // The captain moves from position pos-1 to position pos.
+                int r1 = (pos-1) % k;
+                int r2 = pos % k;
+
+                // Update: remove captain from r1 and add the student that was at position pos (which is arr[pos-1]? because the array `arr` has n-1 elements: index0 to n-2, and the student at the position we are moving to is at index pos-1 in `arr`)
+                // Why? In the initial sequence (captain at0) the positions are:
+                //   position0: captain
+                //   position1: arr[0]   -> index0 in arr
+                //   position2: arr[1]   -> index1 in arr
+                //   ... 
+                //   position i: arr[i-1] for i>=1.
+
+                // When the captain is at position0, then we are going to move it to position1: then we update:
+                //   r1 = (1-1)%k = 0%k -> residue0: loses captain (a1) and gains arr[0] (the student at position1 originally)
+                //   r2 = 1%k: loses arr[0] and gains captain (a1)
+
+                cur[r1] = cur[r1] - a1 + arr[pos-1];
+                cur[r2] = cur[r2] - arr[pos-1] + a1;
+
+                // Push the updated residues to the heaps.
+                min_heap.push({cur[r1], r1});
+                min_heap.push({cur[r2], r2});
+                max_heap.push({cur[r1], r1});
+                max_heap.push({cur[r2], r2});
+
+                clean_heaps();
+                if (min_heap.empty() || max_heap.empty()) 
+                    continue;   // shouldn't happen
+
+                current_min = min_heap.top().first;
+                current_max = max_heap.top().first;
+
+                // Compare (current_max, current_min) with (best_max_k, best_min_k) for this divisor k: we want to minimize the ratio = current_max/current_min.
+                // How to compare: 
+                //   if (current_max * best_min_k < best_max_k * current_min) -> then the ratio is smaller? 
+                //   Actually, we want the minimal ratio. So we want to minimize (max/min). 
+                //   But note: we are comparing two ratios: r1 = current_max/current_min and r2 = best_max_k/best_min_k.
+                //   Then r1 < r2  <=> current_max * best_min_k < best_max_k * current_min   (because all positive)
+
+                if (current_max * best_min_k < best_max_k * current_min) {
+                    best_max_k = current_max;
+                    best_min_k = current_min;
+                }
+            }
+
+            // Now, we have the best ratio for this k: (best_max_k, best_min_k) -> ratio = best_max_k / best_min_k.
+
+            // Now, we compare this ratio with the global best ratio for the entire test case (over divisors k).
+            if (best_max == -1) {
+                best_max = best_max_k;
+                best_min = best_min_k;
+            } else {
+                // Compare (best_max_k / best_min_k) and (best_max / best_min)
+                if (best_max_k * best_min < best_max * best_min_k) {
+                    best_max = best_max_k;
+                    best_min = best_min_k;
+                }
+            }
+
+          } // end for each divisor k
+
+          Then reduce the fraction (best_max, best_min) to irreducible? Actually, the ratio is best_max / best_min? So we output p = best_max / g, q = best_min / g, where g = gcd(best_max, best_min).
+
+          But note: the fraction is best_max / best_min? So we output p = best_max/g, q = best_min/g.
+
+ 17. However, note: the above update for the entire test case: we are storing the best (max_sum, min_sum) for the entire test case. Then we reduce that fraction.
+
+ 18. But what if there are no divisors? k>1 and divisor of n. If n is prime? then divisors are only k=n. Then we do one divisor.
+
+ 19. Important: The group sums can be large: n<=10^6, a_i up to 1000, so the maximum group sum <= 10^6 * 1000 = 1e9 -> long long is safe.
+
+ 20. However, worst-case performance: if one test case has n=10^6 and k=2, then we do n moves (10^6) and each move we update two residues and push 4 values (2 per heap) and then clean the heaps. The cleaning might be O(1) amortized? because each push is O(log n) and the total pushes per divisor k is 2*n, so the total heap operations per divisor k is O(n log k) (since each push is O(log k) and we push 2 per move -> 2*n pushes). Then the lazy deletion: the total pops might be at most the pushes? So worst-case total operations per divisor k: O(n log k). Then overall for one test case: O( d(n) * n * log k )? 
+
+        For n=10^6, d(n)=144, and log k <= log(10^6) ~ 20, then 144 * 10^6 * 20 = 28800e6 = 28.8e9 -> too slow in C++.
+
+ 21. We must optimize. The issue is that the lazy deletion might lead to many outdated entries. We are pushing two entries per move per heap, so over n moves we push 2*n per heap -> total 4*n entries per divisor k. Then the heap operations per move: cleaning might pop many times? But note: we only pop until we get a current top. The number of pops per move might be O(1) amortized? But worst-case we might have O(n) per move? 
+
+        Actually, the total number of pushes is 2*n per heap (for one divisor k). Then the total number of pops cannot exceed the pushes. So the total heap operations (push and pop) is O(n) per heap per divisor k. And each operation is O(log n). Then the total for one divisor k: O(n log n). Then overall: O(d(n) * n log n). For n=10^6, d(n)=144, then 144 * 10^6 * log2(10^6) ~ 144 * 10^6 * 20 = 2.88e9 -> which is borderline in C++ (might run in 5 seconds? but worst-case 5 seconds for 2.88e9 operations is tight).
+
+ 22. Alternative: Instead of using heaps, we can update two values and then we know the current min and max? But we need the min and max of the entire array of k elements. We can maintain the min and max in a multiset? Then we remove the old values for the two residues and insert the new ones. Then the min = *multiset.begin(), max = *multiset.rbegin(). 
+
+        This would be O(log k) per update (two removals and two insertions) and then we update the min and max. The total for one divisor k: O(n log k) which is O(n log n) since k<=n. But log k is about 20, so 20 * n per divisor k. Then total for one test case: d(n)*20*n. For n=10^6, d(n)=144 -> 144*20*10^6 = 288e6 -> 288 million operations, which is acceptable in C++.
+
+ 23. We can use a multiset (or set) but we need to update two residues. Steps:
+
+        multiset<long long> mset;
+        for (int r=0; r<k; r++) {
+            mset.insert(cur[r]);
+        }
+
+        Then for each move:
+
+            Remove the old values for r1 and r2 from mset: 
+                auto it1 = mset.find(old_value_r1); mset.erase(it1);
+                similarly for r2.
+
+            Then update cur[r1] and cur[r2] (with the new values) and insert the new values.
+
+            Then min = *mset.begin(), max = *mset.rbegin().
+
+        But how to get the old values? We have the array `cur` but we are updating it. So we must store the old values for r1 and r2 before updating? 
+
+        Actually, we can do:
+
+            long long old_r1 = cur[r1];
+            long long old_r2 = cur[r2];
+
+            // Update the values:
+            cur[r1] = cur[r1] - a1 + arr[pos-1];
+            cur[r2] = cur[r2] - arr[pos-1] + a1;
+
+            // Then remove the old values and insert the new ones.
+
+            mset.erase(mset.find(old_r1));
+            mset.erase(mset.find(old_r2));
+            mset.insert(cur[r1]);
+            mset.insert(cur[r2]);
+
+        However, note: it is possible that r1 == r2? Only when k=1? but k>=2, and if k==1 we skip. Also, (pos-1) mod k and pos mod k are distinct? Because (pos-1) mod k != pos mod k? Actually, they are consecutive, so unless k=1, they are distinct. So we remove two distinct values.
+
+        But what if the same value appears multiple times? The multiset can handle multiple same values.
+
+        However, if we have multiple same values, then we must remove only one occurrence of the old value. That is why we use `mset.find(old_value)` -> but note: if there are duplicates, we remove the first occurrence we find? Actually, we should remove one occurrence. 
+
+        But the set does not store duplicates? Actually, multiset does. We are using multiset.
+
+        But the problem: if we have two groups with the same value, then we remove one occurrence of the old value for r1 and one for r2. Then we insert two new values.
+
+        This is correct.
+
+        Then we update the best ratio for this k.
+
+        This approach per move: O(log k) for the two removals and two insertions -> O(1) per move? Actually, each operation is O(log k). So total per divisor k: O(n log k). Then overall for one test case: O( d(n) * n * log k ). 
+
+        But worst-case total: the same as the heap method? However, the constant factor might be better.
+
+        And we avoid the lazy deletion and the heap might grow to O(n) which is acceptable? Actually, the multiset will always have exactly k elements.
+
+        But note: we start with k elements. Then we remove two and insert two -> still k elements.
+
+        So we can do:
+
+          multiset<long long> mset;
+          for (int r=0; r<k; r++) {
+              mset.insert(cur[r]);
+          }
+
+          // Then for the initial state:
+          long long current_min = *mset.begin();
+          long long current_max = *mset.rbegin();
+          // set best_ratio_this_k = (current_max, current_min)
+
+          for (int pos=1; pos<n; pos++) {
+              int r1 = (pos-1) % k;
+              int r2 = pos % k;
+
+              // If r1==r2? Actually, k>=2 and consecutive mod k are distinct? Only if k==1? but k>=2 -> distinct.
+              // So we do:
+
+              // Remove the old values for r1 and r2.
+              auto it1 = mset.find(cur[r1]);
+              mset.erase(it1);
+              auto it2 = mset.find(cur[r2]);
+              mset.erase(it2);
+
+              // Update the values for r1 and r2.
+              long long old_r1 = cur[r1];
+              long long old_r2 = cur[r2];
+              cur[r1] = cur[r1] - a1 + arr[pos-1];
+              cur[r2] = cur[r2] - arr[pos-1] + a1;
+
+              mset.insert(cur[r1]);
+              mset.insert(cur[r2]);
+
+              current_min = *mset.begin();
+              current_max = *mset.rbegin();
+
+              // update best_ratio_this_k: if (current_max * best_min_k < best_max_k * current_min) -> update
+          }
+
+        But note: the multiset's erase by value? Actually, we did:
+
+            auto it1 = mset.find(cur[r1]);   // but note: after we erase, we update cur[r1]? So we must do the erase before updating cur[r1]? 
+
+        Actually, we stored the old value in the set? We are using the current value of cur[r1] at the moment, which is the old value? Then we remove that occurrence. Then we update cur[r1] and insert the new value.
+
+        This is correct.
+
+        However, we must be cautious: if the same value appears multiple times, we are removing the exact occurrence we found? But we don't know which one. Actually, we are storing the entire multiset. We remove one occurrence of the old value for r1 and one for r2. Then we add the new values.
+
+        This is correct.
+
+ 24. But note: worst-case performance: for n=10^6 and k=10^6? Actually, k is a divisor of n, so k<=n. But worst-case k=n? Then the multiset has n elements. Then each insertion and deletion is O(log n). Then per move: O(log n). Then total for one divisor k: O(n log n). Then for d(n) divisors, worst-case total O(d(n) * n log n) which is 144 * 10^6 * 20 = 288e6? Actually, 144 * 10^6 * log2(10^6) = 144 * 10^6 * 20 = 2880e6 = 2.88e9, which is acceptable in C++? In 5 seconds, worst-case 2.88e9 operations might be borderline in C++ (about 5 seconds on a fast machine?).
+
+        But note: the total n across test cases is 10^6, so worst-case one test case with n=10^6 and divisors d(n)=144 -> 2.88e9 operations. In C++ we aim for 1e9 operations per second? Maybe 2.88e9 is 3 seconds? 
+
+        Alternatively, we can try to avoid if k is large: note that if k is large (like k=n) then the number of groups is n, so each group has one student. Then the group sums are the student's skill. Then the min and max are the min and max of the entire sequence? But the entire sequence changes as we move the captain? Actually, we can precompute the entire sequence without the captain and then insert the captain? 
+
+        However, the entire sequence is the n-1 students plus the captain. The min and max of the set of n numbers? Then the min and max are independent of the position? Actually, no: the captain has a fixed value a1, and the other students are fixed. The set of numbers is fixed: {a1, a2, a3, ..., an}. Then the min and max of the set are fixed? 
+
+        Therefore, for k=n, the group sums are the individual students. Then the min_sum = min(a1, a2, ..., an) and max_sum = max(a1, a2, ..., an). 
+
+        So we can skip the loop for k=n? 
+
+        Similarly, we can skip any k that is large? But the problem: we must consider all divisors. And k=n is one divisor.
+
+        So we can do:
+
+          if (k == n) {
+              // Then we have n groups, each group has one student.
+              // The group sums are the individual students: the set of numbers is the entire array (including a1) and the arr (which has n-1 numbers).
+              long long min_val = a1;
+              long long max_val = a1;
+              for (int i=0; i<n-1; i++) {
+                  if (arr[i] < min_val) min_val = arr[i];
+                  if (arr[i] > max_val) max_val = arr[i];
+              }
+              // Then the ratio is max_val/min_val? and we don't need to simulate moves? because the set of numbers is fixed, so the min and max are fixed? 
+              // Actually, the captain can be inserted anywhere? But the set of numbers is fixed. So the min and max are fixed.
+
+              // Then we set best_ratio_this_k = (max_val, min_val) and skip the n moves.
+
+          } else {
+              // do the multiset simulation for n moves.
+          }
+
+        How about k=n/2? We cannot skip.
+
+        We can also skip if k is 1? but we skip k<=1.
+
+        How about k=n/2: then the multiset has k elements, which is 500000 for n=10^6? Then each insertion and deletion is O(log k) = log(500000) ~ 19. Then the total for one divisor k: n * 4 * 19 = 76e6, and then multiplied by the number of divisors (144) -> 144 * 76e6 = 10.944e9 -> too much? 
+
+        But note: the total n across test cases is 10^6, but the worst-case is one test case with n=10^6 and divisors d(n)=144. Then we do 144 divisors, each taking O(n log k). The worst divisor k might be 2 (the smallest) and then k=2 -> log k = 1, so 4 * n * 1 = 4e6 for that divisor. But the worst divisor might be k=n/2? which is 500000 -> then the work is O(n log k) = 10^6 * 20 = 20e6 for that divisor. Then total for 144 divisors: the sum_{k|n, k>1} n * log k. Since the divisors are symmetric: k and n/k, and the divisors are about O(sqrt(n)), but the log k for the large divisors is about O(log n). Then the total work for one test case: n * d(n) * log n? 
+
+        Actually, the work per divisor k is O(n log k). Then the total work per test case is O( n * d(n) * log n ). For n=10^6, d(n)=144, log n=20, then 10^6 * 144 * 20 = 2880e6 = 2.88e9 operations.
+
+        But each operation in the multiset (insertion or deletion) is O(log k) and we do 4 per move -> 4 * n per divisor k. Then the total operations per divisor k: 4 * n * log k. Then for the divisor k=n/2: log k = log(500000) ~ 19 -> 4 * 10^6 * 19 = 76e6.
+
+        And for k=2: log k = 1 -> 4 * 10^6 * 1 = 4e6.
+
+        Then the total for the test case: 
+            work = 4 * n * (log k1 + log k2 + ... + log k_{d(n)})
+
+        The sum of log k over divisors k of n? 
+
+        Actually, the divisors are symmetric: k and n/k. And log k + log (n/k) = log n. Then if we pair divisors: the total sum of log k over divisors is (d(n)/2) * log n? 
+
+        Then work = 4 * n * (d(n)/2) * log n = 2 * n * d(n) * log n.
+
+        For n=10^6: 2 * 10^6 * 144/2 * 20? Actually, 144/2=72 -> 2 * 10^6 * 72 * 20 = 2880e6 = 2.88e9.
+
+        So we cannot avoid.
+
+ 25. We must use the heap method? But the heap method was also O(d(n) * n * log n). 
+
+        Actually, the heap method was O(d(n) * n * log n) because of the lazy deletion? But the total pushes is 2*n per divisor k, and the total heap operations (push and pop) is about 4*n per divisor k? Then the total operations per divisor k: O(n log n) per divisor k? 
+
+        But the constant factor: 4*n per divisor k, and each push/pop is O(log (heap_size)). The heap size grows to about 2*n? Then each operation is O(log (2*n)) = O(log n). Then the total per divisor k: O(4*n * log(2*n)) = O(4*n log n). Then total for one test case: O( d(n) * 4 * n * log n ) = 4 * d(n) * n * log n.
+
+        The multiset method: 4 * n * log k per divisor k, and the sum over divisors: 4 * n * (sum_{k|n, k>1} log k) = 4 * n * (d(n)/2 * log n) = 2 * n * d(n) * log n.
+
+        So the multiset method is better by a factor of 2.
+
+ 26. We choose the multiset method.
+
+ 27. Also, we can avoid the inner loop for k=n by special casing: the set of group sums is fixed as the set of the n numbers. So we can compute min_val and max_val once.
+
+ 28. We can also do for k=2: we know that the group sums are the sum of residues0 and residues1? But it's still O(n) per divisor k.
+
+ 29. Implementation of the multiset method:
+
+        Precomputation of divisors for all numbers up to 10^6.
+
+        Then for each test case:
+
+          n, a1, and arr (n-1 integers)
+
+          best_max = -1, best_min = -1   // for the entire test case
+
+          for each divisor k of n (with k>1):
+
+            if k == n:
+                long long min_val = a1;
+                long long max_val = a1;
+                for (int i=0; i<n-1; i++) {
+                    if (arr[i] < min_val) min_val = arr[i];
+                    if (arr[i] > max_val) max_val = arr[i];
+                }
+                // candidate: (max_val, min_val)
+                // update best for test case: compare with (best_max, best_min) by cross-multiplying
+
+            else {
+                vector<long long> cur(k, 0);
+                cur[0] = a1;
+                for (int i=0; i<n-1; i++) {
+                    int r = (i+1) % k;
+                    cur[r] += arr[i];
+                }
+
+                multiset<long long> mset;
+                for (int i=0; i<k; i++) {
+                    mset.insert(cur[i]);
+                }
+
+                long long current_min = *mset.begin();
+                long long current_max = *mset.rbegin();
+                long long best_max_k = current_max;
+                long long best_min_k = current_min;
+
+                for (int pos=1; pos<n; pos++) {
+                    int r1 = (pos-1) % k;
+                    int r2 = pos % k;
+
+                    // Remove the current values of r1 and r2 from mset
+                    auto it1 = mset.find(cur[r1]);
+                    mset.erase(it1);
+                    auto it2 = mset.find(cur[r2]);
+                    mset.erase(it2);
+
+                    // Update the values: 
+                    cur[r1] = cur[r1] - a1 + arr[pos-1];
+                    cur[r2] = cur[r2] - arr[pos-1] + a1;
+
+                    mset.insert(cur[r1]);
+                    mset.insert(cur[r2]);
+
+                    current_min = *mset.begin();
+                    current_max = *mset.rbegin();
+
+                    // Compare (current_max, current_min) with (best_max_k, best_min_k)
+                    if (current_max * best_min_k < best_max_k * current_min) {
+                        best_max_k = current_max;
+                        best_min_k = current_min;
+                    }
+                }
+                // update best for the test case: (best_max, best_min) = the best ratio so far? compare with (best_max_k, best_min_k)
+            }
+
+          Then reduce the fraction best_max / best_min.
+
+ 30. But note: the multiset method might be slower than the heap method in practice because of the constant factor? But the total operations is less (by half) so we use multiset.
+
+ 31. However, we must be cautious: when k is large (like k=500000), the multiset operations (insert and erase) are O(log k) which is about 19, and we do 4 operations per move -> 76 per move? Then per move: 76 * 10^6 = 760e6 for one divisor? And we have about 144 divisors? Then total 109440e6 = 109.44e9? -> too slow.
+
+        But note: we only do the inner loop for one divisor at a time. And the total work for one divisor k is 4 * n * log k. Then the total work per test case is 4 * n * (sum_{k|n, k>1} log k). 
+
+        And we argued that the sum_{k|n} log k = (d(n)/2)*log n? 
+
+        So total work: 4 * n * (d(n)/2 * log n) = 2 * n * d(n) * log n.
+
+        For n=10^6, d(n)=144, then 2 * 10^6 * 144 * log2(10^6) ~ 2 * 10^6 * 144 * 20 = 5760e6 = 5.76e9 operations.
+
+        And each operation in the multiset is a constant-time? Actually, each set operation is O(log k) and we do 4 per move? Then the total operations is 4 * n * (sum_{k|n} log k) = 4 * n * (d(n)/2 * log n) = 2 * n * d(n) * log n.
+
+        But then the total operations is 5.76e9 operations? 
+
+        How long does 5.76e9 operations take in C++? In a typical contest machine, about 1e9 operations per second? Then 5.76 seconds. And we have one test case? 
+
+        But the constraint says the sum of n across test cases <= 10^6. So worst-case: one test case with n=10^6 and d(n)=144 -> 5.76 seconds? And the time limit is 5 seconds? -> borderline.
+
+        We must optimize further.
+
+ 32. Alternative: we note that the group sums are updated by an additive difference. And the initial group sums can be computed by a simple loop. Then when we move the captain, only two residues change. Then we can maintain an array of the current group sums and then we can update the min and max by:
+
+        We know the two residues that change: r1 and r2.
+
+        Then the new value for r1: new_r1 = old_r1 + (arr[pos-1] - a1)
+        The new value for r2: new_r2 = old_r2 + (a1 - arr[pos-1])
+
+        Then the min and max might change only if:
+
+          - The old value for r1 was the min or max? and the new value for r1 is now the new min or max?
+          - Similarly for r2.
+
+        We can maintain the current min and max and update them:
+
+          We store:
+            min_val = current min of the group sums
+            max_val = current max of the group sums
+
+          Then when we update r1 and r2:
+
+            Step 1: remove the old values of r1 and r2 from consideration.
+            Step 2: update the values for r1 and r2.
+            Step 3: add the new values of r1 and r2.
+
+          How to update min_val and max_val:
+
+            Let old_values = [old_r1, old_r2]
+            Let new_values = [new_r1, new_r2]
+
+            Let candidate_min = min_val, candidate_max = max_val.
+
+            But if min_val was one of the old values (r1 or r2) then we have to recompute the min over the entire array? 
+
+        Actually, we can do:
+
+          If we maintain a global min and max, and we know the old values and the new values, we can:
+
+            // Before update, the min_val and max_val are known.
+
+            // The min_val might be increased if one of the updated groups was the min? 
+            // Similarly, the max_val might be decreased if one of the updated groups was the max?
+
+            // But the entire array changes in two positions.
+
+            // We can update:
+
+            // Step 1: if the old_r1 was the min_val, then we need to find the next min? But we don't have the entire array stored. 
+
+        This becomes difficult.
+
+ 33. We can maintain a global array and then use a segment tree or a Fenwick tree? That would be overkill.
+
+ 34. Or we can use two heaps with lazy deletion but we update only two groups and then we clean the heaps only for those two groups? Actually, we don't need to clean the entire heap, we can update the min and max by:
+
+        min_val = min( min_heap_min, new_r1, new_r2 ) 
+        but wait, the min might be in the unchanged groups? 
+
+        Actually, the min of the entire array is: min( min_unchanged, new_r1, new_r2 )
+
+        Similarly, the max is: max( max_unchanged, new_r1, new_r2 )
+
+        How to get min_unchanged and max_unchanged? 
+
+          We maintain the current min and max of the entire array? but then how to update when only two groups change?
+
+        Alternatively, we can maintain the entire array in a Fenwick tree and then query min and max in O(1)? not possible.
+
+ 35. We can maintain the following:
+
+          We have an array `cur` of size k.
+
+          We also maintain the current min and max.
+
+          We also maintain a multiset for the entire array? -> which we are already doing.
+
+        But the multiset method might be the most straightforward and the total work is 5.76e9 for worst-case test case, which might pass in C++ if optimized.
+
+        Or we can hope that worst-case divisor count is not 144 and the average divisor count is low.
+
+        But the worst-case divisor count for n=10^6 is 240? Then 2 * 10^6 * 240 * 20 = 9600e6 = 9.6e9 -> too slow.
+
+ 36. We need a better approach.
+
+        Insight: the group sums for a fixed k are periodic. The initial group sums can be computed by:
+
+            cur[r] = a1 * (r==0) + sum_{i: i mod k = r} arr_i   [for the other students]
+
+        Then when we move the captain, we are essentially swapping the captain with the next student. The effect is that two residues change by a fixed amount: delta = arr[pos-1] - a1.
+
+        Then the entire array of group sums is updated in two positions: 
+            cur[r1] = cur[r1] + delta
+            cur[r2] = cur[r2] - delta
+
+        Then the min and max of the array might be updated by only considering:
+
+            the new values for r1 and r2, and the old min and max.
+
+        Specifically:
+
+          Let M = max_val, m = min_val.
+
+          After update:
+
+            candidate_max = max( M, cur[r1] (new), cur[r2] (new) )
+            candidate_min = min( m, cur[r1] (new), cur[r2] (new) )
+
+        But wait: it is possible that the old max was at r1 or r2? 
+
+          Let the old value at r1 was x, and at r2 was y.
+          After update: r1 becomes x+delta, r2 becomes y-delta.
+
+          Then the new max = max( M (if M was not at r1 or r2), x+delta, y-delta )
+          Similarly, the new min = min( m (if m was not at r1 or r2), x+delta, y-delta )
+
+        But we don't know if the old max was at r1 or r2? 
+
+        We can store which group has the max? -> no, because there might be multiple.
+
+        Alternatively, we can do:
+
+          new_cur_r1 = x+delta
+          new_cur_r2 = y-delta
+
+          candidate_max = M;
+          if (x == M || y == M) {
+              // then the max might change? but not necessarily: because we removed it and put a new value.
+              // so we have to consider the new values and also the possibility that the max was not only at one group?
+          }
+
+        This is messy.
+
+ 37. Given the complexity of the problem and the constraints on the total n (sum of n<=10^6) across test cases, we can hope that the worst-case doesn't happen often.
+
+        But note: the total work is not the sum of n, but the sum of (d(n_i)*n_i * log n_i) over test cases.
+
+        And the constraint says the sum of n_i <= 10^6.
+
+        However, if we have many test cases with small n_i, then the divisors count d(n_i) is small. 
+
+        For example, if we have 100000 test cases, each with n_i=10, then the sum of n_i=100000*10=1e6. And for each test case, we process divisors of 10: k in {2,5,10} -> 3 divisors. And for each divisor, we do n_i=10 moves, and for each move we do 4 * log(k) operations (which is about 4*log(10)=4*4=16). Then total work for one test case: 3 * 10 * 16 = 480. Then 100000 test cases: 48e6.
+
+        But if we have one test case with n=10^6 and d(n)=144, then work= 2 * 10^6 * 144 * 20 = 5760e6 = 5.76e9.
+
+        And 5.76e9 operations in C++ might be borderline (5 seconds).
+
+        We must optimize the large divisors.
+
+        Specifically, for large k (like k> sqrt(n)?), the number of groups is large, but then the number of students per group is small (n/k is small). 
+
+        Then the group sums can be updated by simply storing the array and iterating over the entire array to compute min and max after every move? 
+            -> That would be O(k) per move, and k is large -> O(n) per move, and then O(n^2) per divisor k.
+
+        Not acceptable.
+
+ 38. We might try to use a global array and then a Fenwick tree for range min/max? but updates are two points, then query the entire array for min and max? That would be O(k) per query.
+
+        Or we can use a segment tree: update in O(log k), then query in O(1) for the whole array? Actually, the segment tree can store the min and max of the entire array at the root. Then update two positions: O(log k) per update, and then we have the global min and max.
+
+        Steps:
+
+            Build a segment tree for the array `cur` of size k, supporting:
+                void update(int index, long long new_value)
+                pair<long long, long long> query()   // returns (min, max) of the entire array.
+
+            Then for each move, we update two indices: r1 and r2.
+
+            The work per move: O(log k) for each update -> O(log k) per move.
+
+            Then total for one divisor k: O(n * log k).
+
+            Then the total work per test case: O( n * (sum_{k|n} log k) ) = O( n * (d(n)/2 * log n) ) = O( n * d(n) * log n ), which is the same as the multiset method.
+
+        But the constant factor might be better? 
+
+        We can try the segment tree.
+
+        But note: we are updating two points, and then querying the entire min and max in O(1) if we design the segment tree to store the whole array's min and max at the root. Actually, the segment tree update for one index: update the leaf and then update the parents up to the root, which is O(log k), and we do it for two indices. Then the root stores the min and max of the entire array.
+
+        How to do: 
+
+            We maintain an array `seg` for the segment tree, and an array `data` (the leaves) of size k.
+
+            Each node stores the min and max of its interval.
+
+            We can build the tree in O(k), and then update in O(log k) per index.
+
+        Then for one divisor k: 
+            Build the tree: O(k)
+            Then n moves: each move: 2 updates, each update O(log k) -> 2 * log k per move.
+            Total: O(k + n * log k)
+
+        Then the total work per test case: O( sum_{k|n} (k + n * log k) )
+
+        The sum_{k|n} k = O(n) (because the divisors come in pairs: k and n/k, and k + n/k >= 2*sqrt(n), but the sum of the divisors is O(n log n)? Actually, the sum of the divisors of n is O(n) on average).
+
+        But worst-case: for n=10^6, the sum of divisors is about O(n) -> 10^6.
+
+        Then the dominant term is sum_{k|n} n * log k = n * (sum_{k|n} log k) = n * (d(n)/2 * log n) as before.
+
+        So overall, same as multiset.
+
+ 39. Given the complexity, and the fact that the worst-case total work is about 5.76e9 for one test case, we might need to use C++ and hope that the constant factors of the segment tree or the multiset are low.
+
+        We'll try the segment tree for practice.
+
+        Alternatively, we can use a Fenwick tree for min and max? But Fenwick tree for min is not straight (requires power of two and doesn't combine arbitrarily).
+
+        We'll do a segment tree for the entire array of group sums.
+
+        Structure of the segment tree:
+
+            struct SegmentTree {
+                int size;
+                vector<long long> min_val;
+                vector<long long> max_val;
+                vector<long long> data;   // the leaves, if needed
+
+                SegmentTree(int k) {
+                    size = 1;
+                    while (size < k) size *= 2;
+                    min_val.assign(2*size, LLONG_MAX);
+                    max_val.assign(2*size, LLONG_MIN);
+                    // if we have initial values, we can build
+                }
+
+                void build(vector<long long> &initial, int k) {
+                    for (int i=0; i<k; i++) {
+                        min_val[i+size] = initial[i];
+                        max_val[i+size] = initial[i];
+                    }
+                    for (int i=k; i<size; i++) {
+                        min_val[i+size] = LLONG_MAX;
+                        max_val[i+size] = LLONG_MIN;
+                    }
+                    for (int i=size-1; i>0; i--) {
+                        min_val[i] = min(min_val[2*i], min_val[2*i+1]);
+                        max_val[i] = max(max_val[2*i], max_val[2*i+1]);
+                    }
+                }
+
+                void update(int i, long long v) {
+                    i += size;
+                    min_val[i] = v;
+                    max_val[i] = v;
+                    while (i>1) {
+                        i /= 2;
+                        min_val[i] = min(min_val[2*i], min_val[2*i+1]);
+                        max_val[i] = max(max_val[2*i], max_val[2*i+1]);
+                    }
+                }
+
+                long long get_min() {
+                    return min_val[1];
+                }
+
+                long long get_max() {
+                    return max_val[1];
+                }
+            };
+
+        Then for a fixed divisor k:
+
+            vector<long long> cur(k, 0);
+            // initial values...
+            SegmentTree st(k);
+            st.build(cur, k);   // or we can update each leaf by st.update(i, cur[i]) for i in [0,k-1]
+
+            best_max_k = st.get_max();
+            best_min_k = st.get_min();
+
+            for (int pos=1; pos<n; pos++) {
+                int r1 = (pos-1) % k;
+                int r2 = pos % k;
+
+                // update cur[r1] and cur[r2]
+                cur[r1] = cur[r1] - a1 + arr[pos-1];
+                cur[r2] = cur[r2] - arr[pos-1] + a1;
+
+                st.update(r1, cur[r1]);
+                st.update(r2, cur[r2]);
+
+                long long current_min = st.get_min();
+                long long current_max = st.get_max();
+
+                // update best_ratio_this_k
+            }
+
+        This is O(n * log k) per divisor k.
+
+ 40. Given the time constraints, we implement the segment tree method.
+
+ 41. Also, special-case for k=n: 
+
+        // for k==n, we don't need the segment tree.
+
+ 42. Let's code accordingly.
+
+ 43. Note: memory for the segment tree: O(k), which is acceptable since the total sum of k over test cases is not directly bounded, but the number of divisors per test case is at most 144 and k<=n, and the total sum of n is 10^6, so the total memory might be the sum over test cases of (144 * n) which is 144 * 10^6 * (sizeof(long long)*4) -> 144 * 10^6 * 32 bits = 144e6 * 4 bytes = 576e6 bytes = 576 MB? might be acceptable.
+
+        But note: the segment tree for one divisor k: size = 2 * (next power of two>=k) -> about 2 * k.
+
+        Then the total memory for one test case: sum_{k in divisors} (2 * k) <= 2 * (sum_{k|n} k) = 2 * (number of divisors) * (n) ? 
+
+        Actually, the sum of the divisors of n is O(n), so worst-case n=10^6: the sum of the divisors is about 2.5e6 (for a typical number) but worst-case might be O(n) -> 10^6. Then 2 * 10^6 * 144? -> 288e6 integers? -> 288e6 * 8 bytes = 2304e6 bytes = 2304 MB -> too much.
+
+        Alternatively, we process one divisor at a time, and we reuse memory? 
+
+        We can do for each divisor k: 
+            - compute the work for this k, and then free the segment tree.
+
+        The memory for one divisor k: O(k). The worst-case divisor might be k=10^6, then the segment tree uses 2 * 2*10^6 = 4e6 elements? -> 8e6 * 8 = 64 MB.
+
+        Then for one test case, we do 144 such, sequentially -> peak memory per test case: 64 MB, then total memory might be 144 * 64 MB = 9216 MB -> too much.
+
+        We must not use a segment tree for large k.
+
+ 44. Given the memory constraints, we return to the multiset method. The memory for the multiset is O(k), and we only process one divisor at a time, so we can free the multiset after each divisor. The peak memory is the largest k of the test case.
+
+        The worst-case memory for one test case: the largest divisor is n=10^6, and the multiset has 10^6 integers -> 10^6 * 8 bytes = 8e6 = 8 MB. And we have 144 divisors -> but we do sequentially, so peak is 8 MB per divisor, and then we free. Total memory for the test case: 8 MB * 1 (at a time) = 8 MB.
+
+ 45. Therefore, we use the multiset method, and hope that the worst-case work (5.76e9) passes in 5 seconds in C++.
+
+        In C++, with optimizations, we can hope to do 1e9 operations per second. Then 5.76e9 might take 5.76 seconds -> might pass in 5 seconds? 
+
+        But the worst-case divisor count for n=10^6 is 240 (for 720720), then work=2 * 10^6 * 240 * 20 = 9600e6 = 9.6e9 -> 9.6 seconds.
+
+        We must optimize further.
+
+ 46. Further optimization: 
+        - If k is large, the number of moves we do is n, but note: the effect of moving the captain might be periodic or the group sums might not change much. 
+        - We might break early if the current best ratio for this k is not promising? 
+
+        But we need the best ratio over all moves.
+
+        - We might use a heuristic: if the current min and max have not changed in a while, then skip. But risky.
+
+        - We might use a more efficient data structure for dynamic min and max with updates? 
+          There is a data structure called a "min-max heap" that can do both in O(1) and update in O(log n)? But we need to update two elements and then get the min and max.
+
+        We are already using a multiset which is O(log n) per update.
+
+ 47. We might use a policy-based data structure from GCC: 
+
+        #include <ext/pb_ds/assoc_container.hpp>
+        #include <ext/pb_ds/tree_policy.hpp>
+
+        using namespace __gnu_pbds;
+
+        typedef tree<long long, null_type, less<long long>, rb_tree_tag, tree_order_statistics_node_update> ordered_set;
+
+        But this is for order statistics, not for duplicates.
+
+        For duplicates, we can use:
+
+        typedef tree<long long, null_type, less<long long>, rb_tree_tag, tree_order_statistics_node_update> ordered_set;
+        // but then insert duplicates: not directly.
+
+        Alternatively, we can use a pair<long long, int> to make unique.
+
+        Or use a GNU extension: 
+          #include <ext/pb_ds/assoc_container.hpp>
+          using namespace __gnu_pbds;
+          typedef gp_hash_table<long long, int> hash_table;   // for a multiset, we would then not have the min and max easily.
+
+        We need the min and max, so a balanced BST that supports duplicates is the multiset.
+
+ 48. Given the time, we output the multiset method and hope that the worst-case (n=10^6 with 240 divisors) doesn't occur or occurs with small n.
+
+        But the constraint: the sum of n across test cases is 10^6. 
+        The worst-case is one test case with n=10^6 and d(n)=240. 
+        Then the work is 2 * 10^6 * 240 * 20 = 9.6e9.
+
+        In C++, we hope that the constant factor of the multiset is 10 instructions per operation, then 9.6e9 instructions at 3 GHz might be 3 seconds.
+
+        We try.
+
+ 49. Code in C++ with multiset.
+
+        Note: use std::multiset.
+
+        Also, special case for k=n.
+
+        For the move loop, use:
+
+          for (int pos = 1; pos < n; pos++) {
+              int r1 = (pos-1) % k;
+              int r2 = pos % k;
+              // Remove the old values for r1 and r2.
+              // We must have the old values from the `cur` array.
+              auto it1 = mset.find(cur[r1]);
+              if (it1 != mset.end()) {
+                  mset.erase(it1);
+              } else {
+                  // This should not happen.
+              }
+              // Similarly for r2.
+
+              // Update the values for r1 and r2.
+              long long old_r1 = cur[r1];
+              long long old_r2 = cur[r2];
+              cur[r1] = old_r1 - a1 + arr[pos-1];
+              cur[r2] = old_r2 - arr[pos-1] + a1;
+
+              mset.insert(cur[r1]);
+              mset.insert(cur[r2]);
+
+              long long current_min = *mset.begin();
+              long long current_max = *mset.rbegin();
+              // update best_ratio_this_k
+          }
+
+ 50. But note: when r1==r2, but this only happens if k=1, and we skip k>1 and k>=2, and for consecutive they are different.
+
+ 51. Let's code accordingly.
+
+        We must be cautious: the array `arr` is 0-indexed with n-1 elements.
+
+        Also, when pos-1 is the index in the array `arr` for the student that is at position 'pos' in the entire sequence when the captain is at position0? 
+
+        When the captain is at position0, the student at position1 is arr[0], at position2 is arr[1], ... at position n is arr[n-2].
+
+        When we move the captain to position1, we are swapping the captain (at position0) with the student at position1 (arr[0]). 
+        Then the student that was at position1 (arr[0]) moves to position0.
+
+        In the group sums, the residue0 (position0) originally had the captain. Now it has arr[0].
+        Residue1 (position1) originally had arr[0]. Now it has the captain.
+
+        Therefore, the update for the group sums:
+            residue0: becomes (old_residue0 - a1 + arr[0])
+            residue1: becomes (old_residue1 - arr[0] + a1)
+
+        This is correct.
+
+ 52. Finally, after we have the best (best_max, best_min) for the test case, we reduce the fraction.
+
+        long long g = gcd(best_max, best_min);
+        best_max /= g;
+        best_min /= g;
+
+        But note: gcd for large integers? Use Euclidean algorithm.
+
+        However, the numbers best_max and best_min might be as large as 10^6 * 1000 = 1e9, so gcd is fast.
+
+ 53. Also, if there is no valid divisor (k>1 and divisor of n), then n must be 1? but n>=2, so there is at least one divisor: k=n.
+
+ 54. Let's hope.
+
+ 55. Given the worst-case might be borderline, we also try to speed up with:
+
+        ios::sync_with_stdio(0);
+        cin.tie(0);
+
+ 56. Code accordingly.
+
+ Let's code accordingly.

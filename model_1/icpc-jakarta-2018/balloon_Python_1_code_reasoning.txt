@@ -1,0 +1,2572 @@
+ Okay, let's break down the problem.
+
+ We have two contestants: Ayu and Budi. They both have to solve N tasks in order. The contest lasts M minutes.
+
+ Ayu:
+   - Solves task i in A_i minutes. So, the time when she finishes task i is the cumulative sum of A[0..i-1] (if we index from 0).
+   - When she solves a task, she gets a balloon. She can pop a balloon at any integer minute (as soon as she gets it, but note: she can only pop one balloon per minute and not after M).
+
+ Budi:
+   - Solves task i in B_i minutes, but if a balloon pops at time t while he is working on a task, he has to restart that task. 
+     Specifically, if he starts a task at time s, then if at time t (with s <= t < s + B_i) a balloon pops, then at time t he restarts, meaning the task then will finish at time t + B_i (if no more pops) or even later if more pops happen.
+
+ Goal:
+   - We want Ayu to have strictly more solved tasks than Budi.
+
+ Steps:
+
+ 1. First, we need to compute how many tasks Ayu can solve without any popping? 
+    Let T = cumulative time for Ayu: 
+        T0 = 0
+        T1 = A0
+        T2 = A0+A1
+        ...
+        T_i = T_{i-1} + A_{i-1}   (for the i-th task, the finish time is T_i)
+
+    Ayu solves task i if T_i <= M.
+
+    Let X = maximum index i (0-indexed) such that T_i <= M. Then Ayu solves X tasks? 
+    But note: the problem says the tasks are solved one-by-one in order. So if the cumulative time for the first k tasks is <= M, then she solves k tasks.
+
+    Actually, note: the problem says "each time a contestant solves a task, s/he will be given a balloon". So when she finishes task i at time T_i, she gets a balloon at that time.
+
+ 2. Now, without any balloon popping, we can compute how many tasks Budi solves.
+
+    We need to simulate Budi's progress without any popping? Actually, we are going to pop balloons to disrupt Budi, so we need to know the effect of popping.
+
+    However, the problem: we are to output a plan of popping (if exists) such that the number of tasks solved by Ayu (say, A_solved) is strictly greater than Budi's (B_solved).
+
+    Note: Ayu's solved tasks are fixed? Actually, no: because she might pop balloons that she gets at the time of solving? But note: she pops balloons at integer minutes, and she can only pop a balloon after she gets it. Also, she gets a balloon at the moment she solves a task. So she cannot use a balloon from a task she hasn't solved yet.
+
+    Therefore, the number of tasks Ayu solves (let that be k) is independent of her popping strategy? Because she will solve the tasks in order and the cumulative time is fixed. However, note: popping a balloon does not affect her own solving time. So Ayu will solve k tasks, where k = max { i : cumulative_sum_A[i] <= M }.
+
+    But wait: if she pops a balloon at the same time she is supposed to finish a task? Actually, no: when she finishes a task, she gets the balloon. Then she can pop it immediately? But the popping happens at the same minute? The problem says: she can pop as soon as she receives it. So if she finishes at time t, she can pop at time t? But note: the problem states that if Budi is supposed to solve a task at time t and a balloon pops at time t, then he fails. But for Ayu: she already solved the task at time t and gets the balloon at time t, so she can pop at time t.
+
+    Therefore, the number of tasks Ayu solves is fixed. Let k = number of tasks Ayu solves.
+
+    Then we require: k > (number of tasks Budi solves)
+
+    How to compute the number of tasks Budi solves under a popping schedule? And how to choose the popping schedule?
+
+    Alternatively, we can think: we want Budi to solve at most k-1 tasks.
+
+    So we must ensure that Budi does not complete his k-th task (if k is the number Ayu solved) or even less.
+
+    Steps:
+
+      Step 1: Precompute Ayu's cumulative time and find k (the number of tasks she solves).
+
+        Let prefixA[0] = 0
+        For i from 1 to N: prefixA[i] = prefixA[i-1] + A[i-1]
+
+        Then k = the largest i such that prefixA[i] <= M.
+
+        If k = 0, then Ayu solves 0 tasks -> then she cannot have strictly more than Budi (unless Budi solves negative? no). Then we output -1? Actually, Budi might solve 0 too? But then 0>0 is false. So we output -1.
+
+      Step 2: If k = 0, output -1.
+
+      Step 3: We must prevent Budi from solving k tasks (so that Budi solves at most k-1). How?
+
+        We are allowed to pop up to k balloons (because Ayu solved k tasks, so she has k balloons). We can pop at any integer minute from 0 to M (inclusive) but note: we can only pop one per minute and we cannot pop after M.
+
+        We need to simulate Budi's progress and see if by popping some balloons we can make him solve at most k-1 tasks.
+
+      Step 4: How to simulate Budi's progress under popping?
+
+        We are going to represent Budi's progress as:
+
+          Let t = current time (starting at 0)
+          For task i (from 0 to k-1, because we only care up to k tasks for Budi? Actually, we only care if he solves k tasks or not) but note: we want to prevent him from solving k tasks.
+
+          However, we are going to simulate task by task. For task i, Budi needs B_i minutes without interruption to complete it. But if at any time s (with t <= s < t+B_i) a balloon pops, then at time s, he restarts: meaning the task now will be completed at s + B_i (if no more pops) or later.
+
+        We can model the completion time for Budi's task i as:
+
+          Let s0 = start time of task i (which is the finish time of task i-1, or 0 for the first task).
+          Then, if there are popping events at times [x1, x2, ..., xr] during [s0, s0+B_i) (and we assume they are sorted), then the actual time taken for the task is:
+
+            base = B_i
+            plus for each pop at time x_j (>= s0 and < s0 + base + (additional delays?)): we have to add B_i for each pop? But note: the pop causes a restart, meaning that the time from s0 to x_j is wasted, and then the entire B_i is required again? However, if multiple pops, then each pop resets the remaining time to B_i.
+
+          Actually, we can think: 
+
+            Let the pops that occur during this task be at times: x1, x2, ..., xr (with x1 <= x2 <= ... <= xr).
+
+            Then the completion time for the task is: 
+              start = s0
+              after first pop at x1: the time spent from s0 to x1 is (x1 - s0), but then he restarts at x1, so he now needs B_i more time (so the task would finish at x1 + B_i) unless interrupted again.
+
+              Then at x2: if x2 < x1+B_i, then at x2 he restarts again, so then the task would finish at x2+B_i.
+
+            Therefore, the completion time is: the last pop time (in the sequence for this task) + B_i.
+
+            However, note: if there are multiple pops, the completion time is: max_{j} (x_j) + B_i? But wait: the pops must be in increasing order. Actually, the completion time is the last pop time in the interval for this task plus B_i.
+
+          But also, if a pop happens exactly at the moment when Budi would have finished (i.e., at s0+B_i), then the problem says: he fails and then restarts. So then the completion time becomes (s0+B_i) + B_i = s0 + 2*B_i.
+
+          So in general: for a task i that starts at s0, and given a set of popping times P (that are in [s0, s0 + base + ... ]? Actually, the pops that occur in [s0, completion_time) will cause restarts. But the completion time is not known until we account for the pops.
+
+        Actually, we can compute the completion time by:
+
+          Let current_start = s0.
+          We know the set of pops that occur during [current_start, current_start + B_i]? But note: after a pop at time x, the task restarts at x and then we have to consider the next pop from x onwards.
+
+          However, the problem says: if multiple pops, then each pop causes an immediate restart. Therefore, the entire time from the last pop to the next pop is wasted? Actually, the time is additive? 
+
+          Alternative known solution: 
+
+          We note that the completion time for task i is: 
+
+            s = s0
+            while there is a balloon pop during [s, s+B_i):
+                let the first pop in [s, s+B_i) be at time t0 (if any)
+                then we set s = t0   (because at t0 he restarts, so the new start time is t0) and then we have to account for the next pop in [t0, t0+B_i) and so on.
+
+          But if there are multiple pops, we only care about the last one? Actually, no: because after the last pop, he still needs B_i uninterrupted minutes.
+
+          Therefore, the completion time is: the last pop that occurs during the entire period of the task (which might be restarted multiple times) plus B_i.
+
+          Actually, if we let the pops that occur during the entire period (from the initial start to the final completion) be {x1, x2, ..., xr} (in increasing order), then the completion time is: 
+
+            s0 + (x1 - s0) + (x2 - x1) + ... + (xr - x_{r-1}) + ( (s0+B_i) - xr )? 
+
+          But wait: each time a pop happens, it resets the progress. So the time from the last pop must be at least B_i? Actually, the total time for the task is: 
+
+            completion_time = s0 + B_i + (# of pops during the entire period) * B_i? 
+
+          That is not correct. Consider:
+
+            Without any pop: completion_time = s0 + B_i.
+
+            With one pop at time x in [s0, s0+B_i): 
+                Then at time x, he restarts. Then he needs another B_i minutes. So the completion time = x + B_i.
+
+            With two pops: 
+                First pop at x1, then at x2 (with x1 < x2 and x2 < x1+B_i): 
+                    Then at x1: restart -> then the task would finish at x1+B_i, but at x2 (which is in [x1, x1+B_i)): so then he restarts at x2 and then finishes at x2+B_i.
+
+            So the completion time = x2 + B_i.
+
+          Therefore, we can see that the completion time is: the last pop that occurs in the interval [s0, s0 + B_i + (#pops)*B_i? ]? Actually, the last pop that occurs before the completion time? 
+
+          But note: after the last pop at x, we require B_i uninterrupted minutes. So the completion time must be at least x + B_i.
+
+          However, we can also see that the pops that occur after the last pop are irrelevant? Actually, no: because if we have a pop at x, then we set the start time to x, and then we must consider the next pops in [x, x+B_i). 
+
+          Therefore, the completion time for the task is: 
+
+            Let P be the set of pops that occur at or after the initial start time s0 and before the completion time. Then the completion time is: max_{x in P} (x) + B_i.
+
+          However, we don't know the set P until we know the completion time? This is circular.
+
+        Actually, we can use a greedy simulation: 
+
+          We know the entire set of popping events (which we can choose arbitrarily, as long as they are in increasing order and at integer minutes between 0 and M inclusive). So we are going to choose a set S of popping times.
+
+        How to compute Budi's total time for the first k tasks? 
+
+          We want to know: can we choose at most k popping events (because we have k balloons) such that Budi does not complete the k-th task (i.e., the completion time of the k-th task is > M)? 
+
+          But note: we can also use less than k pops. However, we are free to choose the popping times arbitrarily (as long as they are integers in [0, M] and non-decreasing).
+
+        Alternatively, we can reframe:
+
+          We need to prevent Budi from finishing his k-th task. So we require:
+
+            Budi's completion time for the k-th task > M.
+
+          How to compute Budi's completion time for the k-th task under a popping schedule S?
+
+            Let T0 = 0
+            For i from 0 to k-1:
+                Let s_i = T_i (start time for task i)
+                Then, we look at the popping events during [s_i, s_i + B_i) and beyond? Actually, the completion time for task i is:
+
+                  Let P_i be the set of popping events that are in the interval [s_i, s_i + B_i + ...) ... but actually we have to account for the restarts.
+
+                We can use the following:
+
+                  Let f(s) = the completion time for a task that starts at time s and requires B time, given a set of popping events (that are known and sorted). 
+
+                  Actually, we can compute f(s) = s + B + (# of pops that occur in the interval [s, f(s)]) * B? 
+
+                  But wait, that is not linear. However, note: each pop in the interval [s, f(s)) causes the task to restart. And the restarts cause the completion time to be the last pop time in that interval plus B.
+
+                  Therefore, if we let L = the last pop time in the interval [s, ...] that we care about, then f(s) = L + B.
+
+                  But note: the pops that occur after L are not considered? Actually, because after the last pop at L, we require B uninterrupted minutes, so the next pop after L must be at least L+B. But we can control the pops? So if we choose the pops arbitrarily, we can avoid having pops in [L, L+B) because we know the entire schedule.
+
+                  Therefore, for a given task that starts at s, and given a set of popping events S (which we choose arbitrarily, and we can choose them to be as we wish), we can set:
+
+                    Let L be the last pop we schedule that is at least s. Then we can set L arbitrarily as long as L < s + B? Actually, no: because if we set a pop at time L, then the completion time becomes L+B. So if we set a pop at time L, then we require L+B to be the completion time.
+
+                  But note: we might have multiple pops in [s, s+B) and then the completion time is the last pop in that entire interval plus B.
+
+          Therefore, for task i:
+
+            We can choose a set of pops (arbitrarily) that are at least s_i and at most ...? Actually, we are constrained by the entire contest time M and we also have to consider the previous tasks.
+
+          We can model the entire process as:
+
+            T_0 = 0
+            For i in range(0, k):   # we are only concerned up to k tasks for Budi (we want to prevent the k-th task from finishing)
+                T_{i+1} = max( T_i, ... )? 
+
+            Actually, if we have pops at times {x1, x2, ..., xr} that we assign to disrupt task i, then the completion time for task i is:
+
+                T_{i+1} = max( T_i, ... )? 
+
+            Specifically: we can choose any pops during the period [T_i, M] (but we want to minimize the total time? Actually, we want to maximize disruption). 
+
+          However, we are free to choose the pops arbitrarily (subject to the constraint that they are integers in [0, M] and increasing). And we have k balloons.
+
+          How to assign pops to disrupt Budi so that he doesn't complete k tasks?
+
+          We want: the completion time for the k-th task to be > M.
+
+          We can simulate backwards? 
+
+          Idea: 
+
+            Let F(i, t) = the minimum number of pops needed so that Budi's completion time for the first i tasks is at least t? 
+            But N and M are large.
+
+        Alternatively, we can use a greedy approach:
+
+          We note: to disrupt Budi's i-th task, we can pop a balloon at time t such that t is in [current_start, current_start+B_i). Then the task will finish at t+B_i. But we can pop multiple times: the effect is that the task finishes at (last pop time in the task) + B_i.
+
+          Therefore, to maximize the disruption on the i-th task, we would set the last pop as late as possible? So that the completion time becomes as large as possible.
+
+          However, we also have to consider that we can use multiple pops: but each pop uses one balloon. And we have k balloons.
+
+          Strategy:
+
+            We want to assign pops to tasks (each pop is assigned to one task that we want to disrupt) such that the overall completion time of Budi's k-th task exceeds M.
+
+            For a particular task i, if we assign j pops, then the completion time for that task is: 
+
+                Let s = start time of the task (which is the completion time of the previous task).
+                Then, if we assign j pops, we can set the last pop as late as possible: as long as the last pop is at time <= M - B_i (because after the last pop we need B_i minutes, and the entire time must be <= M? Actually, no: we want to exceed M for the k-th task, so we are free to push beyond M). But note: we cannot pop after M? The popping must be at integer minutes in [0, M]. So the last pop must be at time at most M.
+
+                The completion time for the task is: last_pop + B_i.
+
+                We want to maximize the disruption (i.e., the completion time) for the task? But we are constrained: we can only set the last pop at a time that is at most M, then the completion time would be last_pop+B_i. But if last_pop+B_i > M, then the task is not solved? Exactly.
+
+            Therefore, if we can make the completion time of task i (for any i from 0 to k-1) to be > M, then Budi will only solve i tasks? Actually, no: we are processing tasks in order. We must prevent the k-th task? Actually, we want Budi to solve at most k-1 tasks. So we need to prevent the k-th task? Actually, if we prevent the i-th task (for i < k), then Budi will solve i-1 tasks? But we can also prevent the k-th task.
+
+            Actually, we only care that Budi does not complete k tasks. So we can prevent any task from 0 to k-1? Actually, no: if we prevent the first task, then Budi solves 0 tasks. Then we require k>0. But we also can prevent the second, third, ... or the k-th task. However, if we prevent the k-th task, then Budi solves k-1 tasks. Then we have Ayu solves k, Budi solves k-1 -> k > k-1 -> true.
+
+            Therefore, we need to prevent Budi from completing at least one of the first k tasks? Actually, no: we must prevent him from completing the k-th task? But note: if the k-th task is not completed, then he only completes k-1 tasks. However, we could also prevent an earlier task and then he doesn't even start the k-th task? Actually, no: if the i-th task is not completed, then he stops at task i (so he solves i-1 tasks). But then we require k > i-1. Since i <= k, then k > i-1 is always true? 
+
+            Actually: if we prevent the i-th task (so that it is not completed by time M), then Budi solves i-1 tasks. Then we require k > i-1. Since i <= k, then k>=i, so k>i-1 is true. Therefore, preventing any one of the first k tasks is sufficient.
+
+            However, we might not need to prevent only one task? We can prevent multiple? Actually, we have k balloons. But we don't need to use all. We only need to prevent one task? 
+
+            Therefore, the problem reduces to: 
+
+              Using at most k balloons (but we are free to use as many as we want, up to k), we need to cause at least one of the first k tasks of Budi to not be completed (i.e., its completion time > M).
+
+            How to achieve this? 
+
+              For each task i (from 0 to k-1), we can try to disrupt it so that it doesn't complete. Specifically, we can assign one or more pops to task i. The effect: the task i will complete at time = (last pop time assigned to task i) + B_i. We want this time to be > M.
+
+              Therefore, for task i, if we assign a pop at time t (and we can assign multiple, but the last pop is the one that matters) such that:
+
+                  t + B_i > M
+
+              and t must be in the interval [s_i, M] (because we can pop only up to M). 
+
+              Then, if we can find a t in [s_i, M] such that t+B_i>M, then we can disrupt task i by popping at time t (and we don't need any other pops for this task? Actually, we can set the last pop to be at time t, and then the completion time is t+B_i>M).
+
+              But note: we might have to set multiple pops to delay the task enough so that we can set a pop at time t? 
+
+              Actually, no: we can choose the last pop arbitrarily at time t (as long as we have at least one balloon and we can schedule pops arbitrarily). However, we must also schedule the pops in increasing order and we must not pop more than one per minute.
+
+              But we can choose the popping times arbitrarily. Therefore, for task i, if there exists an integer t in [max(s_i, M - B_i + 1), M] then we can set a pop at that t to make the task complete at t+B_i>M.
+
+              However, note: M - B_i + 1 might be fractional? But t must be integer. So if M - B_i + 1 <= M, then we can choose t = max(s_i, ceil(M - B_i + 1))? Actually, we can choose any integer t such that t >= max(s_i, M - B_i + 1) and t<=M.
+
+              Therefore, for task i, if:
+
+                  max(s_i, M - B_i + 1) <= M
+
+              then we can choose t = max(s_i, M - B_i + 1) and that integer exists? Actually, we require:
+
+                  s_i <= M and M - B_i + 1 <= M.
+
+              Since s_i is the start time of the task (which is the completion time of the previous task) and we are only considering up to k tasks, and k is the number Ayu solved (so we know that Ayu's cumulative time for k tasks <= M), but Budi's start time for task i might be greater than M? Then we don't need to disrupt that task? Actually, if the start time s_i > M, then the task hasn't started? So Budi doesn't even start the task. Then we don't need to disrupt it. So we only consider tasks that start at time <= M.
+
+            Therefore, for task i, the condition for being disruptable is:
+
+                s_i <= M   (otherwise, we don't care because it hasn't started) and 
+                there exists an integer t in [max(s_i, M - B_i + 1), M].
+
+            But note: if M - B_i + 1 <= M, that is always true. So the only condition is that:
+
+                max(s_i, M - B_i + 1) <= M.
+
+            And since s_i<=M, we only require:
+
+                M - B_i + 1 <= M   -> which is always true? 
+
+            Actually, we require that the interval [max(s_i, M-B_i+1), M] is non-empty? 
+
+                Condition: max(s_i, M-B_i+1) <= M.
+
+            And it is, because s_i<=M and M-B_i+1 <= M (since B_i>=1). 
+
+            But we also require that max(s_i, M-B_i+1) is an integer? Actually, we are taking integers in that interval.
+
+            However, note: if M-B_i+1 > M? That would happen if B_i<=0? but B_i>=1. So M-B_i+1 <= M.
+
+            But if M-B_i+1 > s_i, then we require t>= M-B_i+1. And if M-B_i+1 > M? then the interval is empty. But:
+
+                M-B_i+1 > M  => -B_i+1>0 => 1>B_i => but B_i>=1. So if B_i=1, then M-B_i+1 = M-1+1 = M. Then t must be in [M, M] -> so we can set t=M.
+
+            Therefore, the condition for task i to be disruptable by a single pop is:
+
+                There exists an integer t such that: 
+                    s_i <= t <= M   and   t >= M - B_i + 1.
+
+            This is equivalent to: s_i <= M and the interval [max(s_i, M-B_i+1), M] has at least one integer.
+
+            How many integers? Actually, as long as max(s_i, M-B_i+1) <= M, then we can choose t = max(s_i, M-B_i+1) (if it is integer) or the next integer? Actually, all these are integers. So we can always choose t = max(s_i, M-B_i+1) as long as max(s_i, M-B_i+1) <= M, which it is.
+
+            Therefore, every task i that has start time s_i <= M is disruptable? 
+
+            But wait: what if M-B_i+1 > M? we saw that doesn't happen.
+
+            However, what if M-B_i+1 is fractional? But M and B_i are integers. So M-B_i+1 is integer.
+
+            Therefore, for each task i (0-indexed, from 0 to k-1) we can disrupt it with one pop at time t_i = max(s_i, M - B_i + 1) to make it not complete (i.e., completion time = t_i+B_i > M).
+
+            But note: we have k balloons, so we can disrupt one task with one pop. Then we are done.
+
+            Therefore, the minimal plan: we only need to use one balloon? 
+
+            However, wait: what if we disrupt one task, but then the subsequent tasks might start earlier? Actually, no: if we disrupt task i, then Budi doesn't complete task i? Then he never starts task i+1. So we only care about the first k tasks: if we disrupt one of them, then Budi solves at most i tasks (if we disrupted task i, then he solves i tasks? Actually, no: if we disrupt task i, then he does not complete task i, so he only solves tasks 0 to i-1. So he solves i tasks? 
+
+            But note: the problem says: "if Budi is supposed to solve a task at time t and a balloon pops at the same time, then he fails". So he doesn't complete the task. Therefore, if we disrupt task i, then Budi only completes tasks 0 to i-1? So he completes i tasks? 
+
+            Actually, if we disrupt task i, then he does not complete task i. So the number of tasks he completes is i (the ones from 0 to i-1)? 
+
+            But wait: the tasks are solved one-by-one. After solving task i-1, he starts task i. If we disrupt task i so that it is not completed by M, then he has not solved task i. So the count is i (the first i tasks: 0-indexed task0, task1, ... task i-1) -> that's i tasks? 
+
+            Actually, the count: 
+                Task0: index0 -> solved? 
+                ...
+                Task i-1: solved? 
+                Then task i: started but not solved -> so total solved = i.
+
+            Therefore, if we disrupt task i (which is the i-th task, 0-indexed), then Budi solves i tasks.
+
+            Then we require: 
+                Ayu solves k tasks, Budi solves i tasks, and we require k > i.
+
+            Since i is at most k-1 (because we are disrupting one of the first k tasks, so i is in [0, k-1]), then k>i is always true.
+
+            Therefore, if we can disrupt at least one task in the first k tasks (with one pop per task) then we can achieve our goal.
+
+            But note: what if the start time s_i for a task is already > M? Then we don't need to disrupt it? Actually, that task hasn't started. So Budi only solves the previous tasks. And the previous tasks: if we haven't disrupted any, then he would have solved i tasks? Actually, if the start time for task i is > M, then he doesn't start it. So he solves the first i tasks (from 0 to i-1). 
+
+            Therefore, if there is at least one task i in the first k tasks that Budi starts (i.e., the start time s_i <= M) and we can disrupt it (by popping at time t = max(s_i, M-B_i+1) which is in [s_i, M]), then we can win.
+
+            But note: if for a task i, the start time s_i > M, then we don't need to disrupt it. However, if all the first k tasks have start time s_i <= M, then we can disrupt the last one? Actually, we can disrupt any one.
+
+            However, what if for a task i, even without popping, the task would not be completed? That is, if s_i + B_i > M? Then we don't need to pop? But we still have to consider: without popping, the task i would complete at s_i+B_i>M -> so it fails. Then Budi only solves i tasks? 
+
+            Therefore, if there is any task i in the first k tasks that by itself (without popping) already fails (i.e., s_i+B_i>M), then we don't need to pop any balloon? Then we output 0.
+
+            So the plan:
+
+              Step 1: Compute k = number of tasks Ayu solves.
+
+                prefixA[0] = 0
+                for i in range(1, N+1): 
+                    prefixA[i] = prefixA[i-1] + A[i-1]
+                    if prefixA[i] > M: then k = i-1 and break. Otherwise, if we finish, k = N.
+
+              Step 2: If k==0 -> output -1.
+
+              Step 3: Compute Budi's start times for the first k tasks (without any popping).
+
+                Let s[0] = 0
+                Then for i in range(0, k): 
+                    s[i+1] = s[i] + B[i]   ??? 
+
+                But wait: without popping, yes. However, we are going to disrupt one task. But we are only checking for the natural start times? Actually, we want to know the start times without popping? Because if we do not pop any balloon, then Budi's progress is:
+
+                    s0 = 0
+                    s1 = s0 + B0
+                    s2 = s1 + B1
+                    ...
+
+                Then we want to know for each task i (0-indexed) in [0, k-1]: 
+                    the start time = s_i = cumulative sum of B[0..i-1] (for the i-th task, the start time is the completion time of task i-1).
+
+              Step 4: Check if Budi, without popping, already fails to complete k tasks? 
+
+                    s_k = cumulative sum of B[0..k-1] 
+                    if s_k > M: then Budi only completes at most k-1 tasks? Actually, no: because we have to simulate task by task. 
+
+                Actually, for task i, if the start time s_i (which is the completion time of the previous task) plus B_i > M, then the task fails. Then Budi only completes i tasks? 
+
+                Therefore, we can check: 
+
+                    for i in range(0, k):
+                        if the natural completion time of task i is > M: that is, s_i + B_i > M? Then Budi only completes i tasks (because he fails the i-th task). Then we have k > i -> always true? 
+
+                Therefore, if there is any task i in [0, k-1] such that (without popping) s_i + B_i > M, then Budi does not complete the i-th task, so he completes i tasks -> and k>i -> we win without popping any balloon.
+
+                So we output 0.
+
+              Step 5: If not, then we check: is there at least one task i (0<=i<k) such that the start time s_i <= M? Actually, we are considering the first k tasks, and we just checked that for every task i, the natural completion time s_i+B_i <= M? Then we know that without popping, Budi would complete k tasks? Then we need to disrupt at least one task.
+
+                Now, for each task i in [0, k-1]:
+                    We can disrupt it by popping at time t_i = max(s_i, M - B_i + 1) (which is in [s_i, M] and satisfies t_i+B_i>M). 
+
+                But note: we must also ensure that t_i is at least the time when Ayu has at least one balloon. 
+
+                    When does Ayu get her balloons? 
+
+                    She gets a balloon when she solves a task. The time she solves task j is prefixA[j] (for j=1..k). 
+
+                    We are going to pop at time t_i. We must have popped only balloons that we have already received. 
+
+                    Therefore, we must choose a task i such that at time t_i, Ayu has already solved at least one task? Actually, no: we can use a balloon from any task that has been solved by time t_i. But we have k balloons (from k tasks) by time prefixA[k] (which is <= M). Since t_i <= M, and Ayu has solved k tasks by time M, we have k balloons. Therefore, at time t_i, we have at least one balloon? 
+
+                    Actually, we have a balloon from a task j only if prefixA[j] <= t_i.
+
+                    Since we are going to pop at time t_i, we require that there exists at least one j (from 1 to k) such that prefixA[j] <= t_i.
+
+                    But note: we have k balloons from k tasks. The earliest balloon we get is at time prefixA[1] (the first task). Then at time t_i (which is at least M-B_i+1, and note M-B_i+1 could be as low as 0? Actually, if B_i is large, then M-B_i+1 could be negative? but then we take s_i which is nonnegative). 
+
+                    Actually, we define t_i = max(s_i, M-B_i+1). Since s_i>=0 and M-B_i+1 might be negative? Then we take max(0, ...). But if M-B_i+1 <0, then t_i = s_i (which is >=0). 
+
+                    However, we require that at time t_i, Ayu has solved at least one task. The first balloon is at time prefixA[1] = A0. Therefore, we require t_i >= A0? Actually, no: we can pop a balloon only after we get it. So we require that the balloon we use must have been received by time t_i. 
+
+                    But note: we are going to use one balloon. We can choose any balloon that has been received by time t_i. Since we have k balloons (the last one at time prefixA[k] <= M), we have at least the balloon from the first task at time prefixA[1]. So if t_i >= prefixA[1]? 
+
+                    Actually, if t_i < prefixA[1], then we don't have any balloon at time t_i. 
+
+                Therefore, for a task i to be disruptable by our popping plan, we require:
+
+                    (1) s_i <= M   (which we know because we are only considering the first k tasks and without popping they complete, so s_i <= s_i+B_i <= M? Actually, the natural completion time is s_i+B_i<=M? then s_i<=M-B_i<=M) -> satisfied.
+
+                    (2) The popping time t_i = max(s_i, M-B_i+1) must be at least the time of the first balloon? Actually, no: we require that by time t_i, Ayu has solved at least one task? 
+
+                    Specifically, we require that the first balloon is available at time prefixA[1] and we require prefixA[1] <= t_i.
+
+                What if prefixA[1] > t_i? Then we cannot pop at time t_i because we don't have a balloon.
+
+                Therefore, we must also require that t_i >= prefixA[1]? Actually, we require that at time t_i, we have at least one balloon. The earliest balloon is at time prefixA[1]. So we require t_i >= prefixA[1].
+
+                But note: we have k balloons. The j-th balloon is at time prefixA[j]. So we require that there exists j (1<=j<=k) such that prefixA[j] <= t_i.
+
+                Actually, we don't need the first one: we need any balloon that has been received by time t_i. Since the balloons are received at times prefixA[1], prefixA[2], ... prefixA[k] (which are increasing), we require that the smallest prefixA[1] <= t_i? Actually, if the first balloon is at time A0, then we require A0 <= t_i.
+
+                But if A0 > t_i, then we have no balloon at time t_i? 
+
+                Therefore, for task i, we require:
+
+                    prefixA[1] <= t_i   [if we only use one balloon, then we need one balloon by time t_i]
+
+                However, what if we use a balloon from a later task? Actually, we are free to use any balloon we have. So we require that at time t_i, we have at least one balloon. The condition is: the earliest balloon we have is prefixA[1], so we require prefixA[1] <= t_i.
+
+                But note: we might have a balloon at time prefixA[j] for j>=1 and prefixA[j] <= t_i. Since prefixA[1] is the smallest balloon time, if prefixA[1] <= t_i, then we have at least one balloon. Otherwise, we don't.
+
+                Therefore, the condition for task i is:
+
+                    t_i = max(s_i, M-B_i+1) >= prefixA[1]? 
+
+                Actually, no: we require that there exists at least one j such that prefixA[j] <= t_i. But note: the balloons are received at prefixA[1], prefixA[2], ... prefixA[k]. And prefixA[1] is the smallest. So if t_i >= prefixA[1], then we have at least the first balloon. 
+
+                However, what if we use a balloon that we received later? We don't need to use the first balloon. We can use any balloon as long as we have received it by time t_i. And if t_i >= prefixA[1], then the first balloon is available. But if t_i < prefixA[1], then no balloon is available.
+
+                Therefore, we require t_i >= prefixA[1]? 
+
+                Actually, we require that the first balloon is available? But if t_i is less than prefixA[1], then no balloon is available. So we must have t_i>=prefixA[1].
+
+            Step 6: Therefore, we can iterate over i from 0 to k-1:
+
+                Let s_i = cumulative sum of B[0..i-1]   (with s_0=0)
+
+                Note: task i is the i-th task (0-indexed) which has time B_i.
+
+                Condition for natural failure: if s_i+B_i > M -> then we don't need to pop. We can output 0.
+
+                If not, then we consider disruption: 
+                    t_i = max(s_i, M - B_i + 1)
+
+                Then check: is there at least one balloon available at time t_i? 
+                    We need: min_balloon_time = min{ prefixA[j] for j in [1, k] } = prefixA[1]   (because prefixA is increasing) 
+                    so we require t_i >= prefixA[1]? 
+
+                Actually, we need: there exists a balloon at time <= t_i. The earliest balloon is prefixA[1]. So we require prefixA[1] <= t_i.
+
+                If we find at least one i (0<=i<k) such that t_i >= prefixA[1], then we can disrupt task i by popping at time t_i.
+
+                Then we output:
+
+                    K = 1
+                    and the popping time = [t_i]   (sorted in increasing order, so just [t_i])
+
+            Step 7: But what if we don't find any task i that satisfies the condition? Then we have to disrupt two tasks? 
+
+                Why two? Because if we disrupt one task, we use one balloon and we push one task to fail. But if we disrupt two tasks, we might cause two tasks to fail? Then Budi would solve at most k-2 tasks? Then k>k-2 -> true.
+
+                Actually, we can disrupt more than one task? 
+
+                How about disrupting two tasks? 
+
+                  We have k balloons, so we can use two.
+
+                  We choose two tasks: i and j.
+
+                  For task i: we set a pop at time t_i = max(s_i, M - B_i + 1) -> but wait: if we disrupt two tasks, then the start time of the next task might change? 
+
+                  Actually, no: because if we disrupt task i, then the next task doesn't start? 
+
+                  But we are disrupting two tasks: we want to disrupt two different tasks. 
+
+                  However, if we disrupt task i, then Budi never completes task i, so he never starts task i+1. Therefore, we cannot disrupt task i+1? 
+
+                  So we can only disrupt one task? 
+
+                Therefore, we must disrupt one task. But if we cannot disrupt any single task (because for every task i, the required popping time t_i is less than the first balloon time prefixA[1]), then we have to try to disrupt a task by using multiple pops? 
+
+                Why would we use multiple pops for one task? 
+
+                  Previously, we said that one pop at time t_i (last pop) is enough. But what if we use multiple pops for the same task? 
+
+                  For a task i, if we use multiple pops, the completion time becomes the last pop time in the entire period for that task plus B_i. 
+
+                  Therefore, we can set the last pop at time t (as long as t>=max(s_i, M-B_i+1) and t<=M) to cause the task to fail. 
+
+                  But if we use multiple pops, we can set the last pop at a time that is later than the one we would set with one pop? Actually, no: with one pop we set the last pop at t_i = max(s_i, M-B_i+1). With multiple pops, we can set the last pop at any time in [max(s_i, M-B_i+1), M]. So we don't get a later time? 
+
+                  Therefore, if for a task i, the minimal popping time (for the last pop) that we can set is t_i = max(s_i, M-B_i+1). And if t_i < prefixA[1], then we cannot set the last pop at a time that is >= prefixA[1]? 
+
+                  Actually, we can set the last pop at any time in [max(s_i, M-B_i+1), M]. So if max(s_i, M-B_i+1) < prefixA[1], then we can set the last pop at time t = min(M, max(prefixA[1], max(s_i, M-B_i+1))? 
+
+                  But we require the last pop to be at least prefixA[1]? Then we set the last pop at time t = max(prefixA[1], max(s_i, M-B_i+1)) as long as t<=M.
+
+                  Then the completion time = t+B_i. 
+
+                  We require t+B_i>M? 
+
+                    t >= prefixA[1] and t>=max(s_i, M-B_i+1)
+
+                    Also, we require t<=M.
+
+                    Then t+B_i >= max(prefixA[1], M-B_i+1) + B_i.
+
+                    Now, if we set t = max(prefixA[1], M-B_i+1), then:
+
+                      If prefixA[1] >= M-B_i+1, then t = prefixA[1], and we require t+B_i>M -> prefixA[1] + B_i > M.
+
+                      Otherwise, if M-B_i+1 > prefixA[1], then t = M-B_i+1, and then t+B_i = M+1>M.
+
+                  Therefore, if we set the last pop at time t = max(prefixA[1], M-B_i+1) and we require that t<=M, then the task fails.
+
+                  But note: we have to set multiple pops? Actually, we only care about the last pop. The other pops can be set arbitrarily? 
+
+                  However, we must set the last pop at time t. We can set the other pops arbitrarily at any time in [s_i, t] (as long as we don't exceed M and we use distinct times). 
+
+                  But we need to ensure that we have enough balloons? 
+
+                    We are going to use one balloon for the last pop. But we also need balloons for the other pops? Actually, the other pops are not necessary? 
+
+                    Why do we need multiple pops? We don't. We can set only one pop at time t = max(prefixA[1], M-B_i+1) for the task i. But the issue is: we cannot set a pop at time t if we don't have a balloon at time t. 
+
+                    We require that we have a balloon at time t. 
+
+                    We know that at time prefixA[1] we have the first balloon, and then we have more balloons later. So if we set the pop at time t = max(prefixA[1], M-B_i+1), then we have a balloon at time prefixA[1] which is <= t, so we have at least one balloon at time t.
+
+                  Therefore, for a task i, we can always set the last pop at time t = max(prefixA[1], M-B_i+1) as long as t<=M. Then the task fails. 
+
+                  But note: we require only one balloon? 
+
+                  Then why didn't we think of this earlier? 
+
+                  Actually, the minimal last pop time we can set is max(s_i, M-B_i+1). But if that time is less than prefixA[1], we can set the last pop at time prefixA[1] (if prefixA[1] <= M) and then the task fails because:
+
+                    if we set the last pop at time prefixA[1], then the completion time = prefixA[1] + B_i.
+
+                    But we require prefixA[1] + B_i > M? 
+
+                    We don't know. 
+
+                    Alternatively, we set the last pop at time t = max(prefixA[1], M-B_i+1). Then:
+
+                      if M-B_i+1 <= prefixA[1], then t = prefixA[1], and then the condition for failure is: prefixA[1] + B_i > M? 
+
+                      else, t = M-B_i+1, and then t+B_i = M+1 > M -> always fails.
+
+                  Therefore, the task fails if:
+
+                      (t = max(prefixA[1], M-B_i+1)) + B_i > M
+
+                  This condition is:
+
+                      max(prefixA[1], M-B_i+1) + B_i > M
+
+                  Which is equivalent to:
+
+                      prefixA[1] + B_i > M   OR   (M-B_i+1) + B_i > M   -> which is M+1>M -> always true.
+
+                  So the condition reduces to: 
+
+                      if M-B_i+1 <= prefixA[1] then we require prefixA[1]+B_i>M?
+                      else, it always fails.
+
+                  Therefore, if M-B_i+1 <= prefixA[1] and prefixA[1]+B_i<=M, then we cannot disrupt task i? 
+
+                  Example: 
+                      M=10, B_i=5, prefixA[1]=6.
+                      Then M-B_i+1 = 10-5+1 = 6.
+                      Then t = max(6,6)=6, and 6+5=11>10 -> fails.
+
+                  So it always fails? 
+
+                  Actually, if t = max(prefixA[1], M-B_i+1) and we set the pop at time t, then the completion time is t+B_i.
+
+                  And we have:
+
+                    t+B_i = max(prefixA[1], M-B_i+1) + B_i.
+
+                  Now, if M-B_i+1 >= prefixA[1], then t = M-B_i+1, and then t+B_i = M+1>M.
+
+                  If M-B_i+1 < prefixA[1], then t = prefixA[1], and then t+B_i = prefixA[1]+B_i.
+
+                  We require t+B_i>M -> so if prefixA[1]+B_i>M, then it fails. Otherwise, it doesn't.
+
+                  Therefore, for task i, we can disrupt it by one pop at time t = max(prefixA[1], M-B_i+1) if:
+
+                      t <= M   and 
+                      (if t = prefixA[1] then we require prefixA[1]+B_i>M, but note: if prefixA[1]+B_i<=M, then the pop at time prefixA[1] would cause the task to complete at prefixA[1]+B_i, which is <=M -> then the task is completed? So it doesn't fail).
+
+                  Correction: 
+
+                    We require that the task fails: so we require that the completion time > M.
+
+                    Therefore, we require:
+
+                         max(prefixA[1], M-B_i+1) + B_i > M.
+
+                  This is always true if M-B_i+1 >= prefixA[1] (because then the pop time is at least M-B_i+1, so completion time = M-B_i+1+B_i = M+1>M).
+
+                  If M-B_i+1 < prefixA[1], then we require prefixA[1]+B_i>M.
+
+            Therefore, for each task i, we can disrupt it (with one pop) if:
+
+                Let t = max(s_i, M-B_i+1, prefixA[1])?   Actually, we are setting the pop at time t = max(prefixA[1], M-B_i+1) [and we don't care about s_i?] 
+
+                But note: we must set the pop at time at least s_i (the start time of the task). 
+
+                Therefore, we set:
+
+                    t = max( s_i, prefixA[1], M-B_i+1 )
+
+                And we require:
+
+                    t <= M   (to pop within the contest)
+                    and 
+                    t + B_i > M   (to make the task fail)
+
+                But note: t = max(s_i, prefixA[1], M-B_i+1)
+
+                And we know s_i <= M (because without popping the task completes) and M-B_i+1 <= M (because B_i>=1) and prefixA[1] <= prefixA[k] <= M? 
+
+                Then t<=M? 
+
+                Actually, we know s_i<=M, prefixA[1]<=M, M-B_i+1<=M. But what if M-B_i+1 is negative? Then we take max(s_i, prefixA[1]) which are nonnegative. 
+
+                But also, if M-B_i+1 is negative, then we set t = max(s_i, prefixA[1]) which is at least 0. Then t+B_i = max(s_i, prefixA[1]) + B_i. We require this > M? 
+
+                However, we know that without popping the task completes: s_i+B_i<=M. And since s_i <= max(s_i, prefixA[1]), then:
+
+                    max(s_i, prefixA[1]) + B_i >= s_i+B_i <= M -> so we cannot guarantee > M.
+
+                Therefore, we must avoid this case? 
+
+                Actually, if M-B_i+1 is negative, then M < B_i-1. Then the task already fails naturally? Because the natural completion time is s_i+B_i, and s_i>=0, then s_i+B_i >= B_i > M+1 > M. 
+
+                But we already checked for natural failure? 
+
+                So if a task i is not naturally failing, then s_i+B_i<=M. Then M-B_i+1 = (M+1)-B_i >= (s_i+B_i+1)-B_i = s_i+1 > s_i? 
+
+                Actually, no: 
+
+                  s_i+B_i<=M  => M-B_i+1 >= s_i+1 - B_i + B_i = s_i+1? 
+
+                Not exactly: 
+
+                  s_i+B_i<=M  => M-B_i+1 >= s_i+1   [because M>= s_i+B_i, so M-B_i>=s_i, then M-B_i+1>=s_i+1]
+
+                Then t = max(s_i, prefixA[1], M-B_i+1) >= M-B_i+1 >= s_i+1.
+
+                And then t+B_i >= (M-B_i+1)+B_i = M+1>M.
+
+                Therefore, in this case the condition holds.
+
+            Therefore, for any task i that is not naturally failing, we have:
+
+                t = max(s_i, prefixA[1], M-B_i+1) 
+                and 
+                t+B_i > M   is always true? 
+
+                Why? 
+
+                  If M-B_i+1 >= prefixA[1] and M-B_i+1>=s_i, then t = M-B_i+1, and t+B_i = M+1>M.
+
+                  If M-B_i+1 < prefixA[1] and prefixA[1]>=s_i, then t = prefixA[1], and then we require prefixA[1]+B_i>M? 
+
+                  But we don't know that.
+
+                Actually, we don't require that. We require that the task fails, which is t+B_i>M. But if t = prefixA[1] and prefixA[1]+B_i<=M, then the task completes at time prefixA[1]+B_i<=M -> so it is solved.
+
+                Therefore, we cannot disrupt the task if:
+
+                    M-B_i+1 < prefixA[1] and prefixA[1]+B_i<=M.
+
+            So the condition for disrupting task i with one pop is:
+
+                t = max(s_i, M-B_i+1, prefixA[1])   [but we can also set the pop at a time later than these? Actually, we can set it at any time in [t, M] as long as the time is at least these. But the minimal t that we can set is the max of these three. Then we set the pop at time t, and then the completion time is t+B_i. We require t+B_i>M.
+
+                And since we set t to be at least M-B_i+1, then:
+
+                    t >= M-B_i+1  => t+B_i>= (M-B_i+1)+B_i = M+1>M.
+
+                So it always fails.
+
+            Why? 
+
+                t = max(s_i, prefixA[1], M-B_i+1) 
+
+                Then t >= M-B_i+1, so t+B_i>= M+1>M.
+
+            Therefore, for any task i that is not naturally failing, we can disrupt it by setting the pop at time t = max(s_i, prefixA[1], M-B_i+1) (as long as t<=M) and then the task fails.
+
+            And note: t<=M? 
+
+                We have s_i<=M (from natural non-failure: s_i+B_i<=M -> s_i<=M-B_i<=M), 
+                prefixA[1]<=M (since Ayu solves at least one task: k>=1 and prefixA[1]<=prefixA[k]<=M), 
+                and M-B_i+1<=M (because B_i>=1).
+
+                Then t<=M? 
+
+                Actually, if M-B_i+1 > M, we wouldn't use it, but we know M-B_i+1<=M.
+
+                But what if max(s_i, prefixA[1], M-B_i+1) > M? 
+
+                That would happen if, for example, M-B_i+1 > M -> no, because M-B_i+1 = M+1-B_i, and if B_i>=1, then M+1-B_i<=M? only if B_i>=1, then M+1-B_i <= M -> 1-B_i<=0 -> always true? 
+
+                Actually, M-B_i+1 <= M   <->   -B_i+1<=0  -> B_i>=1, which holds.
+
+                Therefore, t = max(s_i, prefixA[1], M-B_i+1) <= M? 
+
+                Not necessarily: we have three numbers, each <=M, so the max is <=M? 
+
+                But wait: s_i<=M, prefixA[1]<=M, M-B_i+1<=M, so t<=M.
+
+            Therefore, for every task i that is not naturally failing, we can disrupt it with one pop at time t = max(s_i, prefixA[1], M-B_i+1) and then the task fails.
+
+            Then why did we initially think we might need prefixA[1]<=t_i? That is contained in this t.
+
+            Therefore, we can always disrupt any task i (0<=i<k) that is not naturally failing? 
+
+            Then why did we have the sample input #1? 
+
+                Sample Input #1: 
+                  4 30
+                  9 10 10 10
+                  4 10 5 10
+
+                Steps:
+
+                  Compute k for Ayu: 
+                    prefixA[0]=0
+                    prefixA[1]=9 -> <=30 -> balloon at 9
+                    prefixA[2]=19 -> balloon at 19
+                    prefixA[3]=29 -> balloon at 29
+                    prefixA[4]=39 -> >30 -> so k=3.
+
+                  Then we want to disrupt one task so that Budi solves at most 2 tasks.
+
+                  Natural failure check for Budi's first k=3 tasks:
+
+                    Task0: 
+                         s0=0, B0=4 -> 0+4=4<=30 -> not natural failure.
+                    Task1:
+                         s1=4, B1=10 -> 4+10=14<=30
+                    Task2:
+                         s2=14, B2=5 -> 14+5=19<=30
+                    Task3: 
+                         s3=19, B3=10 -> 19+10=29<=30 -> not natural failure.
+
+                  Then we can disrupt any one of the first 3 tasks. 
+
+                  For task0: 
+                     t0 = max(s0=0, prefixA[1]=9, M-B0+1=30-4+1=27) = 27.
+                  For task1:
+                     t1 = max(s1=4, 9, 30-10+1=21) = 21.
+                  For task2:
+                     t2 = max(s2=14, 9, 30-5+1=26) = 26.
+                  For task3:
+                     t3 = max(s3=19, 9, 30-10+1=21) = 21? -> but wait, we only need to consider the first 3 tasks? 
+                         Actually, we only need to disrupt one task in the first 3.
+
+                  The sample output is popping at 12 and 19. Why two pops? 
+
+                  And they disrupted the second task twice? 
+
+            Let me reexamine the sample:
+
+                Ayu: 
+                  Task1: at 9
+                  Task2: at 19
+                  Task3: at 29
+
+                Budi:
+                  Task1: starts at 0, takes 4 -> done at 4.
+                  Task2: starts at 4, and if we pop at 12 and 19, then:
+                         At 12: Budi is working (from 4 to 14, because 4+10=14) -> then he restarts at 12. Then he needs 10 minutes from 12 -> so done at 22? 
+                         But then at 19: which is in [12,22) -> so at 19, he restarts again. Then he needs 10 minutes from 19 -> done at 29.
+
+                  Then at 29, he completes the second task. Then he starts the third task at 29, which needs 10 minutes -> would finish at 39, which is >30 -> fails.
+
+                So Budi completes only 2 tasks (task1 and task2) and the third fails.
+
+                But wait: the sample output says Ayu solved 3 and Budi solved 2.
+
+                Why is Budi's second task completed at 29? Then he solved 2 tasks.
+
+                However, the problem says: Ayu pops a balloon at 29? At 29, she gets a balloon (from her third task) and pops it immediately. Then at 29, when Budi is supposed to solve his second task? The problem says: if at the same time a balloon pops, then he fails. 
+
+                So Budi fails the second task? 
+
+                Actually, the problem states: 
+                  "if a balloon pops at the same time Budi supposed to solve the task (i.e. at the 10th minute in this example), then Budi will also not solve that task."
+
+                In the sample, Budi's second task is supposed to be solved at 29? Then at 29 a balloon pops -> so he fails and has to restart. Then he hasn't completed the second task? 
+
+                Then his progress: 
+                  Task1: done at 4.
+                  Task2: started at 4, then at 12: restart -> then at 19: restart -> then at 29: restart -> then he starts again at 29, and needs 10 minutes -> 39, which is beyond 30 -> so he fails the second task.
+
+                Therefore, Budi only solves task1 -> 1 task.
+
+                Then why the sample output says 2? 
+
+                The sample output explanation says: 
+                  "Now, the projected time for Budi to finish the second task is at minute 29. At minute 29, Ayu gets his third balloon, and at the same time, Budi also solved the second task."
+
+                But then they say: "The competition ends at minute 30. In total, Ayu solved 3 tasks, while Budi only managed to solve 2 tasks."
+
+                This seems contradictory.
+
+            After re-reading: 
+                "If a balloon pops at the same time Budi supposed to solve the task (i.e. at the 10th minute in this example), then Budi will also not solve that task. Therefore, Budi has to spend another 10 minutes (for a total of 10+10=20 minutes) to solve that particular task in this case."
+
+            So at 29, Budi was supposed to solve the task? meaning: at 29 he had just finished the 10 minutes from the last restart? Then the balloon pops at 29, so he fails and restarts. 
+
+            Therefore, he does not complete the second task by 29, and then he restarts. He doesn't complete it by 30.
+
+            But the sample output says Budi solved 2 tasks. 
+
+            How? 
+
+                The first task: done at 4.
+                The second task: never done? 
+
+            The explanation says: 
+                "Now, the projected time for Budi to finish the second task is at minute 29"
+
+            and then at 29, a balloon pops -> so he fails, and then the explanation says: 
+                "at the same time, Budi also solved the second task"
+
+            This is confusing.
+
+            However, the sample output is 2 pops: 12 and 19.
+
+            And the output is valid because with that plan, Budi only solves 2 tasks? 
+
+            Actually, after two pops (at 12 and 19) for the second task, the second task is completed at 29? Then he starts the third task at 29, which he cannot finish. So he only completes 2 tasks.
+
+            But why did they pop at 29? 
+
+            The sample output says: 
+                "At minute 19, Ayu gets his second balloon and pops it right away"
+                and then "At minute 29, Ayu gets his third balloon" -> and they pop it? But the output only lists two pops: 12 and 19.
+
+            The sample output is:
+
+                2
+                12 19
+
+            So they don't pop at 29.
+
+            Then at 29, Budi completes the second task? 
+
+            How? 
+
+                Budi's second task:
+                  Start at 4.
+                  First segment: 4 to 12 -> 8 minutes (of 10 needed) -> then pop at 12: restart at 12.
+                  Then from 12 to 19: 7 minutes -> pop at 19: restart at 19.
+                  Then from 19 to 29: 10 minutes -> completed at 29.
+
+            And at 29, there is no pop? 
+
+            Then Budi completes the second task at 29.
+
+            Then he starts the third task at 29, and needs 10 minutes -> 39>30 -> fails.
+
+            So Budi completes 2 tasks.
+
+            Therefore, with one pop we could have done it? 
+
+            For example, if we pop at 27 for task0, then task0 fails? 
+
+                Task0: 
+                  Start at 0.
+                  Pop at 27: then completion time = 27+4=31>30 -> fails.
+                Then Budi only completes 0 tasks.
+
+            Why did the sample use two pops for the second task? 
+
+            The problem says: we may output any configuration.
+
+            So we could output:
+
+                K=1
+                [27]   (for task0)
+
+            or
+
+                [21]   (for task1)
+
+            or
+
+                [26]   (for task2)
+
+            But the sample output is [12,19] which are two pops for the same task (the second task). 
+
+            Why is that valid? 
+
+            And the problem says: the pops must be sorted in increasing order.
+
+            How do we know that one pop is enough? 
+
+            But the sample used two pops. 
+
+            Why? 
+
+            Note: the problem does not require minimal number of pops. It says: "you may output any configuration as long as it’s valid". 
+
+            Therefore, we only need to use one pop.
+
+            Then why sample output uses two? 
+
+            Possibly to illustrate that multiple pops are allowed.
+
+            But our solution: we only need one pop. 
+
+            However, the sample input might have multiple solutions.
+
+            Therefore, we can do:
+
+                Find any task i in [0, k-1] that is not naturally failing.
+
+                Then set t = max(s_i, prefixA[1], M-B_i+1)   [which is the minimal time we can set the last pop to disrupt task i]
+
+                Then output:
+                    K=1
+                    [t]
+
+            But wait: what if we disrupt task0? then Budi doesn't complete task0, so he only solves 0 tasks. 
+            If we disrupt task1, then he only solves 1 task.
+
+            And we require: Ayu solves k tasks, and k>0 -> always true.
+
+            However, what if k=1? then we disrupt task0, then Budi solves 0 tasks -> 1>0 -> true.
+
+            So it works.
+
+            But sample input#1: 
+                k=3, we disrupt task0: 
+                    t0 = max(0, 9, 27) = 27.
+                Then we output:
+                    1
+                    27
+
+            Why did the sample output use two pops? 
+
+            Because the problem statement says: 
+                "Ayu pops his first balloon at minute 12, ... and then at minute 19 ..."
+
+            And they use two pops for the same task.
+
+            But we can also use one pop.
+
+            However, note: we might not have a balloon at time 27? 
+
+                Ayu's balloons: 
+                    at 9, 19, 29.
+
+                At time 27, we have two balloons (from 9 and 19). 
+
+                So we can pop at 27.
+
+            Therefore, output [27] is valid.
+
+            But the sample output is [12,19]. 
+
+            Why? 
+
+            Possibly because the problem does not specify minimal number of pops. 
+
+            We can also output two pops if we want. 
+
+            However, the problem says: "you may output any configuration".
+
+            Therefore, we can choose the minimal plan: one pop.
+
+            But wait: what if the minimal plan is not the one we want? 
+
+            Actually, we only need one pop. 
+
+            But the problem does not require minimal K.
+
+            Therefore, we can output one pop.
+
+            However, what if the judge is expecting a particular solution? 
+
+            The problem says: "you may output any configuration as long as it’s valid".
+
+            So we output one pop.
+
+            But let me check sample input #2:
+
+                "5 50
+                 10 10 10 10 10
+                 15 12 19 17 20"
+
+                Output: 0
+
+            Why? 
+
+                Compute k for Ayu: 
+                    prefixA: 10,20,30,40,50 -> k=5 (because 50<=50)
+
+                Check natural failure for Budi's first 5 tasks:
+
+                    Task0: 0+15=15<=50 -> not failing.
+                    Task1: 15+12=27<=50
+                    Task2: 27+19=46<=50
+                    Task3: 46+17=63>50 -> natural failure.
+
+                Therefore, Budi only completes task0, task1, task2? -> 3 tasks.
+
+                Then Ayu solves 5>3 -> we win without popping any balloon.
+
+            Sample input #3:
+
+                "5 10
+                 15 10 5 5 5
+                 9 10 10 10 10"
+
+                Compute k: 
+                    prefixA[1]=15>10 -> so k=0.
+                Then output -1.
+
+            Therefore, the algorithm:
+
+                Step1: Read N, M, list A of size N, list B of size N.
+
+                Step2: 
+                    prefixA = [0]
+                    for i in range(N):
+                        next = prefixA[-1] + A[i]
+                        if next > M:
+                            break
+                        prefixA.append(next)
+                    k = len(prefixA)-1   # because prefixA[0]=0, then prefixA[1]=A0, ... prefixA[k] = sum of first k A's.
+
+                Step3: if k==0: print(-1) and exit.
+
+                Step4: Compute Budi's natural progress for the first k tasks (without any popping):
+
+                    s = [0]   # start time for task0
+                    for i in range(k):
+                        # completion time of task i = s[i] + B[i]
+                        # then start time for task i+1 = s[i] + B[i]
+                        s.append(s[-1] + B[i])
+
+                Step5: Check for any natural failure in the first k tasks:
+
+                    for i in range(k):
+                        # task i: starts at s[i], takes B[i] -> completes at s[i]+B[i]
+                        if s[i] + B[i] > M:
+                            # then Budi fails task i, so he only solves i tasks (0-indexed, so the first i tasks: from 0 to i-1) -> count = i?
+                            # Actually, tasks indexed 0 to i-1 are solved? and task i fails -> total solved = i.
+                            # Then Ayu solves k tasks, and k>i? 
+                            # Since i is at most k-1, we have k>i -> then we win.
+                            # We output 0 pops.
+                            print(0)
+                            exit()
+
+                Step6: If we didn't find natural failure, then we try to find one task to disrupt.
+
+                    For i in range(k):   # task i in [0, k-1]
+                        # We can always disrupt task i by one pop at time t = max(s[i], prefixA[1], M-B[i]+1) 
+                        t = max(s[i], prefixA[1], M - B[i] + 1)
+                        # But note: prefixA[1] is the time of the first balloon? Actually, the balloons are at prefixA[1], prefixA[2], ... prefixA[k]. 
+                        # But we require that at time t we have at least one balloon. The earliest balloon is prefixA[1] and we have t>=prefixA[1] (because t is at least prefixA[1]). 
+                        # And we know t<=M (as argued). 
+                        # Then we output:
+                        print(1)
+                        print(t)
+                        exit()
+
+                But wait: we only need to disrupt one task. We don't care which.
+
+            However, what if k=0? we handled.
+
+            But note: Step6: we assume we have at least one balloon? 
+
+                We have k>=1 (because k>=1 from step3). Then prefixA[1] is defined (since k>=1, we computed at least prefixA[1]).
+
+            Therefore, we are done.
+
+            However, the sample input#1: 
+                k=3, then we choose any task? 
+                For task0: t0 = max(0, 9, 27) = 27 -> then output 1 and [27].
+
+            But the sample output uses two pops. Why? 
+
+            The problem does not require minimal pops. We output one pop.
+
+            However, the sample output is also valid. 
+
+            Why did they use two pops? 
+
+            One possibility: they were disrupting the second task. But with one pop at 21 (for task1) or 26 (for task2) we could also disrupt.
+
+            But they chose to disrupt the second task with two pops. 
+
+            We don't know why.
+
+            But our solution: we output one pop.
+
+            However, note: what if we disrupt the second task with two pops? 
+
+                We have a solution that uses two pops. 
+
+                How would we know that one pop is enough? 
+
+                We just did: we only need one pop.
+
+            Therefore, we output one pop.
+
+            But wait: what if we disrupt the same task with two pops, then the last pop is set at a time that we have a balloon? 
+
+                For example, in task1: 
+                    We could set two pops: one at 12 and one at 19. Then the last pop is at 19, and the completion time = 19+10=29.
+                    And 29<=30 -> then the task is completed? 
+
+                But the sample output says they pop at 19 and then at 29 they pop again? 
+
+                Actually, the sample output only pops at 12 and 19. 
+
+                And at 19, the last pop is 19, so the task completes at 29.
+
+                But then Budi completes the second task at 29.
+
+                Then why is that a win? 
+
+                Because then Budi only completes 2 tasks? 
+
+                But our goal: we require Ayu to have strictly more solved tasks than Budi.
+
+                    Ayu: 3
+                    Budi: 2 -> 3>2 -> win.
+
+                But we could have achieved it with one pop? 
+
+                Why did they use two? 
+
+            After re-thinking: 
+
+                The problem says: we can output any configuration. 
+
+                We output one pop. That is valid.
+
+            However, there is a catch: 
+
+                The problem says: "Ayu can pop a balloon as soon as she receives it". 
+
+                So at time t, we must have received at least one balloon. 
+
+                In our solution: we set the pop at time t = max(s_i, prefixA[1], M-B_i+1). 
+
+                We have t>=prefixA[1] -> so at time t, we have at least the first balloon.
+
+                Therefore, we can pop.
+
+            But what if we want to pop at time t, but t is not an integer? 
+
+                The problem says: pop at integer minutes.
+
+                But our computation: 
+                  s_i = cumulative sum of integers (B integers) -> integer.
+                  prefixA[1] = integer.
+                  M, B_i: integers -> M-B_i+1: integer.
+
+                So t is integer.
+
+            Therefore, the solution:
+
+                Step1: Compute k (number of tasks Ayu solves)
+
+                Step2: If k==0: output -1.
+
+                Step3: Compute Budi's natural start times s[0..k] (for the first k tasks)
+
+                Step4: For i in range(k):
+                    if s[i] + B[i] > M:
+                        print(0)
+                        exit()
+
+                Step5: For any i in range(k): 
+                    t = max(s[i], prefixA[1], M - B[i] + 1)
+                    # But note: we can choose any i. We break at the first i? or any i. Let's choose the first i for simplicity.
+
+                    print(1)
+                    print(t)
+                    exit()
+
+            However, we don't need to break at the first i? We can choose any. We break at the first i we find? Actually, we only need one.
+
+            But what if there are multiple? We break at the first.
+
+            However, we must ensure that we have a balloon at time t? We have t>=prefixA[1] -> so we have the first balloon.
+
+            But what if we want to use a balloon from a later task? 
+
+                Actually, we don't care: we only need one balloon, and we have at least the first one.
+
+            Therefore, we can output the first task we find.
+
+            However, what if the popping time t is greater than the time of the last balloon? 
+
+                We have k balloons: the last balloon at time prefixA[k] (which is <=M). And we have t<=M. But we also have t>=prefixA[1] (so we have at least one balloon). 
+
+                But we might not have a balloon at time t? 
+
+                The balloons are at prefixA[1], prefixA[2], ... prefixA[k]. 
+
+                We require that there is at least one balloon at time <= t. 
+
+                Since the first balloon is at prefixA[1] and t>=prefixA[1], we have at least one balloon.
+
+            Therefore, the solution is as above.
+
+            But let me test with the sample input#1 for task1:
+
+                i=1: 
+                    s[1] = 4 (the start time for task1)
+                    prefixA[1] = 9
+                    M - B[1] + 1 = 30-10+1 = 21.
+                    t = max(4,9,21)=21.
+
+                Then we output:
+                    1
+                    21
+
+            Then what happens to Budi's task1?
+
+                Start at 4.
+                We pop at 21: then completion time = 21+10=31>30 -> fails.
+
+                Then Budi completes task0 (at 4) and fails task1 -> total 1 task.
+
+                Then Ayu: 3>1 -> win.
+
+            So that is valid.
+
+            But the sample output used two pops: 12 and 19. 
+
+            Why might they do that? 
+
+            Possibly to demonstrate multiple pops on one task. 
+
+            But we output one pop.
+
+            The problem allows any configuration.
+
+            However, note: what if we use one pop for task1 at 21, but at 21 we haven't received the second balloon? 
+
+                Ayu's balloons: 
+                    at 9 (first balloon) and 19 (second balloon) and 29 (third balloon).
+
+                At time 21, we have two balloons (from 9 and 19). 
+
+                So we can pop at 21.
+
+            Therefore, it works.
+
+            But what if we choose a task and the popping time t is greater than the cumulative time of the last task? 
+
+                Actually, we have t<=M, and the last balloon is at prefixA[k]<=M. But we only require one balloon, and we have the first balloon at prefixA[1]<=t.
+
+            Therefore, we are good.
+
+            However, what if we disrupt task0 and t0 = 27, and at 27 we have balloons from the first and second tasks? 
+
+            It's valid.
+
+            So the code:
+
+                Steps:
+
+                  Read input.
+
+                  # Compute prefixA for Ayu
+                  prefixA = [0]
+                  k = 0
+                  for i in range(N):
+                      if prefixA[-1] + A[i] <= M:
+                          prefixA.append(prefixA[-1] + A[i])
+                      else:
+                          break
+                  k = len(prefixA) - 1   # because we start with 0 and then k elements
+
+                  if k==0:
+                      print(-1)
+                      exit()
+
+                  # Compute Budi's start times for the first k tasks (s[0..k])
+                  s = [0]
+                  for i in range(k):
+                      # We only care for the first k tasks
+                      s.append(s[-1] + B[i])
+
+                  # Check for natural failure in the first k tasks (for Budi)
+                  for i in range(k):
+                      if s[i] + B[i] > M:
+                          print(0)
+                          exit()
+
+                  # Now, choose the first task i (0<=i<k) to disrupt (any task works, we pick the first for simplicity)
+                  # But we can pick any. We'll pick the first one we can? Actually, we can pick any. 
+                  # Let's pick i=0.
+                  # But we can iterate i from 0 to k-1, and compute t, and then output and break.
+
+                  # However, we know that any task works? So we can break at the first iteration.
+
+                  # But we don't need to iterate? We can just choose i=0.
+
+                  # However, to be safe (if we want to choose the smallest popping time, for example) but the problem doesn't require.
+
+                  # We choose i=0.
+
+                  # But note: the balloons are available at prefixA[1] (the first balloon) and beyond.
+
+                  # For task i=0:
+                  #   s0 = 0
+                  #   prefixA1 = prefixA[1]   (the time of the first balloon: which is A0)
+                  #   t0 = max(0, prefixA[1], M - B[0] + 1)
+
+                  # But we can choose any task. We choose the first task.
+
+                  # However, what if we choose a task that has a very late popping time? 
+
+                  # But the problem allows any.
+
+                  # Let's choose the last task? 
+
+                  # Actually, we can choose any.
+
+                  # We'll choose the last task (k-1) so that we disrupt a task that was about to complete? 
+
+                  # But no difference.
+
+                  # We choose the first task.
+
+                  i = 0
+                  t = max(s[0], prefixA[1], M - B[0] + 1)
+
+                  print(1)
+                  print(t)
+
+            However, wait: the sample input#1 for task0: 
+                s0 = 0
+                prefixA1 = 9
+                M-B0+1 = 30-4+1 = 27
+                t = 27.
+
+            Then output: 
+                1
+                27
+
+            But the sample expected output is:
+                2
+                12 19
+
+            However, the problem says: "you may output any configuration".
+
+            So we can output 1 and 27.
+
+            But the sample input#1 in the problem statement is:
+
+                Input: 
+                    4 30
+                    9 10 10 10
+                    4 10 5 10
+
+                Output:
+                    2
+                    12 19
+
+            Why does the sample output two pops? 
+
+            The problem says: "you may output any configuration". So our solution of 27 is valid.
+
+            But the judge might have multiple valid outputs.
+
+            However, the problem says: "If it is possible, you should output one (any) working plan".
+
+            Therefore, we can output 27.
+
+            But to be safe, we can also output the sample solution? 
+
+            How can we generate the sample solution? 
+
+            It is more complicated: they popped at 12 and 19 for the second task.
+
+            Why did they do that? 
+
+            Because they were not disrupting the first task, but the second task.
+
+            How to disrupt the second task with one pop? 
+
+                For the second task (i=1): 
+                    s1 = 4
+                    prefixA1 = 9
+                    M - B[1] + 1 = 30-10+1 = 21
+                    t = max(4,9,21)=21.
+
+                Then output: 1 and 21.
+
+            That is also valid.
+
+            But the sample output uses two pops: 12 and 19. 
+
+            How to generate that? 
+
+                We are not required to. 
+
+            Therefore, we output one pop.
+
+            However, what if the judge expects the minimal number of pops? 
+
+            But the problem does not ask for minimal K. 
+
+            We output K=1, which is minimal? 
+
+            Actually, we use one balloon.
+
+            But the sample output uses two. 
+
+            So we output a solution with minimal K? 
+
+            How do we know that one pop is sufficient? 
+
+            We have proved that one pop is sufficient.
+
+            Therefore, we output one pop.
+
+            Code:
+
+                Steps:
+
+                  Read N, M
+                  A = list of N integers
+                  B = list of N integers
+
+                  # Compute k: number of tasks Ayu solves
+                  k = 0
+                  current = 0
+                  prefixA = [0]
+                  for i in range(N):
+                      current += A[i]
+                      if current <= M:
+                          prefixA.append(current)
+                          k += 1
+                      else:
+                          break
+
+                  if k==0:
+                      print(-1)
+                      exit(0)
+
+                  # Compute Budi's natural start times for the first k tasks
+                  s = [0]
+                  for i in range(k):
+                      s.append(s[-1] + B[i])
+
+                  # Check if any task naturally fails
+                  for i in range(k):
+                      if s[i] + B[i] > M:
+                          print(0)
+                          exit(0)
+
+                  # Choose one task to disrupt: we choose the first task (i=0)
+                  # But note: we must have k>=1 to get here.
+                  balloon_time0 = prefixA[1]   # because prefixA[0]=0, prefixA[1]=A0, the first balloon time.
+
+                  # For task0: 
+                  t0 = max(s[0], balloon_time0, M - B[0] + 1)
+
+                  # We output one pop at t0.
+                  print(1)
+                  print(t0)
+
+            However, we might choose a task that we don't have a balloon at the popping time? 
+
+                We have t0>=balloon_time0 -> so we have the first balloon.
+
+            But wait: what if we choose a task i and the popping time is t, and we only have the first balloon, but we want to save the first balloon for later? 
+
+                Actually, we can use any balloon. We only need one balloon. And we have k balloons. We are only using one.
+
+            Therefore, the solution is complete.
+
+            However, let me test with the provided examples.
+
+            Example 1: 
+                Input: 4 30, A=[9,10,10,10], B=[4,10,5,10]
+
+                k: 
+                    prefixA[0]=0
+                    prefixA[1]=9 -> k=1
+                    prefixA[2]=19 -> k=2
+                    prefixA[3]=29 -> k=3
+                    prefixA[4]=39 -> break -> k=3
+
+                Budi's start times:
+                    s0=0
+                    s1=0+B0=4
+                    s2=4+B1=14
+                    s3=14+B2=19
+                    s4=19+B3=29   (but we only need s for indices 0..3)
+
+                Check natural failure: 
+                    i=0: 0+4=4<=30 -> no
+                    i=1: 4+10=14<=30 -> no
+                    i=2: 14+5=19<=30 -> no
+                    i=3: 19+10=29<=30 -> no
+
+                Then we choose task0: 
+                    t0 = max(0, prefixA[1]=9, 30-4+1=27) = 27.
+
+                Output: 1 and 27.
+
+            Example 2: 
+                Input: 5 50, A=[10,10,10,10,10], B=[15,12,19,17,20]
+
+                k=5: because 50<=50.
+                Budi's start times:
+                    s0=0
+                    s1=15
+                    s2=15+12=27
+                    s3=27+19=46
+                    s4=46+17=63   -> but we don't compute s4? 
+                Actually, we only compute for the first k=5 tasks: 
+                    i=0: s0=0, B0=15 -> 0+15=15<=50 -> no failure
+                    i=1: s1=15, B1=12 -> 15+12=27<=50
+                    i=2: 27+19=46<=50
+                    i=3: 46+17=63>50 -> natural failure -> output 0.
+
+            Example 3: 
+                Input: 5 10, A=[15,10,5,5,5], B=[9,10,10,10,10]
+
+                k: 
+                    prefixA[0]=0
+                    prefixA[1]=15>10 -> break, k=0 -> output -1.
+
+            But wait: the sample input#2 output is 0, and we output 0.
+
+            However, the sample input#1 we output 1 and 27, but the sample expected output is 2 and [12,19]. 
+
+            So we have a different output.
+
+            But the problem says: any valid configuration.
+
+            Therefore, we must check: is 1 and 27 a valid configuration for sample#1?
+
+                Ayu: 
+                  Task0: at 9 -> balloon at 9
+                  Task1: at 19 -> balloon at 19
+                  Task2: at 29 -> balloon at 29
+
+                Budi: 
+                  Task0: start at 0, we pop at 27. Then the completion time = 27+4=31>30 -> fails.
+
+                Then Budi doesn't complete any task? 
+
+                Actually, he completes task0? 
+
+                Without popping: 
+                    He would complete task0 at 4, then task1 at 14, then task2 at 19, then task3 at 29.
+
+                With popping at 27: 
+                    Task0: 
+                         Start at 0. 
+                         At 27: we pop -> then he restarts at 27, and then needs 4 minutes -> 31>30 -> fails.
+
+                So Budi completes 0 tasks.
+
+                Then Ayu completes 3>0 -> win.
+
+                Therefore, it is valid.
+
+            But the problem says: sorted by increasing order. We output [27] which is sorted.
+
+            So why did the sample output use two pops? 
+
+            The problem statement explains the sample output. 
+
+            We can also output two pops? 
+
+            How? 
+
+                We have the freedom. But we only need one pop. 
+
+                The problem does not require minimal K. But we are using minimal K? 
+
+                However, the problem does not say we must use minimal K. 
+
+            Therefore, we can output either.
+
+            But to be consistent with the sample output, we might want to output the sample solution for sample input#1.
+
+            How to generate the sample solution? 
+
+                They popped at 12 and 19 for the second task.
+
+                How to come up with that? 
+
+                We know that for the second task, we can disrupt it with one pop at 21. But they used two pops.
+
+                How did they choose 12 and 19? 
+
+                Note: popping at 12 and then at 19: 
+                    The last pop is at 19, so the completion time is 19+10=29.
+
+                But 29<=30 -> so the task completes? 
+
+                However, then at 29, they pop again? 
+
+                The sample output only has two pops: 12 and 19. 
+
+                So the last pop for the second task is 19, and then the task completes at 29. 
+
+                Then Budi completes the second task at 29, and then starts the third task at 29 and fails.
+
+                Then Budi completes 2 tasks.
+
+                Why is that better? 
+
+                It uses two balloons, but it is valid.
+
+                How to generate this? 
+
+                We don't have to. The problem says "any".
+
+            Therefore, we stick to our solution: one pop.
+
+            However, note: there is a possibility that one pop might not work? 
+
+            We have argued that with one pop at time t for task i, the task i fails because the completion time = t+B_i>M. 
+
+            And we set t = max(s_i, prefixA[1], M-B_i+1) which guarantees t+B_i>M.
+
+            So it should work.
+
+            Therefore, we output one pop.
+
+            But wait: what if we disrupt a task that is not the first one? 
+
+            We are disrupting the first task. 
+
+            But we can choose any task.
+
+            How about we choose the last task? 
+
+            Actually, we can choose any task. 
+
+            We'll choose the last task (the k-th task) to be the one we disrupt? 
+
+            Why? 
+
+                If we disrupt the last task, then Budi completes k-1 tasks and then fails the last one.
+
+            But we can also disrupt an earlier task.
+
+            It doesn't matter.
+
+            Therefore, we can choose any task. 
+
+            We'll choose the first task for simplicity.
+
+            Code:
+
+                k = ... 
+                if k==0: -1
+
+                s = [0]
+                for i in range(k):
+                    s.append(s[-1] + B[i])
+
+                # Check natural failure: if found, output 0.
+
+                # Then we choose i = 0,1,...,k-1? We choose the first task i that minimizes the popping time? 
+
+                # Actually, we don't care. We choose the first task i.
+
+                for i in range(k):
+                    # We can disrupt task i? 
+                    t = max(s[i], prefixA[1], M - B[i] + 1)
+                    # We know it works. Then we output and break.
+                    print(1)
+                    print(t)
+                    exit()
+
+            But we break at the first i.
+
+            However, what if the first task has a popping time that is very large? We can try to choose a task that has a smaller popping time? 
+
+            The problem does not require minimal popping time. 
+
+            But we can also choose the task that has the smallest popping time? 
+
+            We iterate i from 0 to k-1, and choose the minimal t? 
+
+            But the problem does not require.
+
+            However, we do as above.
+
+            But note: the popping time must be at most M. And we have t<=M.
+
+            So we can do:
+
+                for i in range(k):
+                    t = max(s[i], prefixA[1], M - B[i] + 1)
+                    # We know it's valid, so we output and break.
+
+            Or we can break at the first i.
+
+            Let me run the sample input#1 with this loop:
+
+                i=0: t0 = max(0,9,27)=27
+                i=1: t1 = max(4,9,21)=21   [smaller]
+                i=2: t2 = max(14,9,26)=26
+
+            Then we break at i=0? 
+
+            We should break at the first i? 
+
+            But we can output the smallest t? 
+
+            The problem does not require.
+
+            But to minimize the popping time? 
+
+            We don't have to.
+
+            However, we can output the first i that we find. 
+
+            But we can also output the one with the smallest t? 
+
+            Since we are iterating, we can do:
+
+                best_t = a big number
+                best_i = None
+                for i in range(k):
+                    t = max(s[i], prefixA[1], M - B[i] + 1)
+                    if best_i is None or t < best_t:
+                        best_t = t
+                        best_i = i
+
+                then output best_t.
+
+            Why not? 
+
+            But the problem doesn't require. 
+
+            We'll do the simple: break at the first i.
+
+            However, the sample input#1: if we break at the first i (i=0) we output 27. 
+
+            But if we output the minimal t we find, we output 21.
+
+            Which is smaller.
+
+            And 21 is also valid.
+
+            How about we iterate and pick the first task that gives the minimal t? 
+
+            Actually, we don't care. We break at the first i.
+
+            But to match the sample output (which has 12 and 19) we are not matching anyway.
+
+            Therefore, we output the first task.
+
+            But note: the sample input#1 might be expecting 2 pops? 
+
+            We'll submit our solution and hope that the judge accepts any valid.
+
+            However, to be safe, we can output the minimal t we can get? 
+
+            That might be more efficient.
+
+            Code:
+
+                k = ... 
+                if k==0: -1
+
+                s = [0]
+                for i in range(k):
+                    s.append(s[-1] + B[i])
+
+                # Check natural failure: if found, output 0.
+
+                best_t = None
+                for i in range(k):
+                    t_val = max(s[i], prefixA[1], M - B[i] + 1)
+                    if best_t is None or t_val < best_t:
+                        best_t = t_val
+
+                print(1)
+                print(best_t)
+
+            But wait: we are not storing which task? We don't care. We only need the popping time.
+
+            However, we break out of the loop? Actually, we iterate all tasks to find the minimal popping time? 
+
+            But the problem does not require minimal popping time.
+
+            And we are only using one pop.
+
+            But the minimal popping time might be more elegant.
+
+            However, note: the popping time must be at least prefixA[1] and at least M-B_i+1, and s_i. 
+
+            We can compute the minimal popping time over i? 
+
+            But the minimal popping time might be from a task that we don't want? 
+
+            Actually, we only need one pop. We output the minimal popping time we can achieve by choosing the best task.
+
+            But we are not using more than one task. We are only disrupting one task.
+
+            Therefore, we output the minimal popping time we can get.
+
+            Example: sample input#1: 
+                i0: 27
+                i1: 21
+                i2: 26
+                then best_t = 21.
+
+            Then output: 1 and 21.
+
+            Which is valid.
+
+            How about if we disrupt task1 at 21? 
+                Budi: 
+                  Task0: 0->4 (completes at 4) -> solved.
+                  Task1: starts at 4. We pop at 21. Then completion time = 21+10=31>30 -> fails.
+                So Budi solves 1 task.
+
+                Ayu: 3>1 -> win.
+
+            It's valid.
+
+            Therefore, we can do:
+
+                best_t = 10**18   # a big number
+                for i in range(k):
+                    t_val = max(s[i], prefixA[1], M - B[i] + 1)
+                    if t_val < best_t:
+                        best_t = t_val
+
+                print(1)
+                print(best_t)
+
+            But note: we are iterating over k tasks, and k<=100000, so it's efficient.
+
+            Therefore, the final code:
+
+                Step1: Read N, M, A, B.
+
+                Step2: 
+                    prefixA = [0]
+                    k = 0
+                    for i in range(N):
+                        if prefixA[-1] + A[i] <= M:
+                            prefixA.append(prefixA[-1] + A[i])
+                            k = len(prefixA)-1   # because we start with 0, then we add the next
+                        else:
+                            break
+                    if k==0:
+                        print(-1)
+                        exit(0)
+
+                Step3: 
+                    s = [0]
+                    for i in range(k):
+                        s.append(s[-1] + B[i])
+
+                    for i in range(k):
+                        if s[i] + B[i] > M:
+                            print(0)
+                            exit(0)
+
+                Step4:
+                    # We are going to find the minimal popping time over the k tasks.
+                    best_t = 10**18
+                    # But note: prefixA[1] is the first balloon time. 
+                    for i in range(k):
+                        t_val = max(s[i], prefixA[1], M - B[i] + 1)
+                        if t_val < best_t:
+                            best_t = t_val
+
+                    print(1)
+                    print(best_t)
+
+            Let me test on sample#1: 
+                best_t = min(27, 21, 26) = 21.
+
+            Then output: 1 and 21.
+
+            Sample input#2: we output 0 (so we skip step4)
+
+            Sample input#3: output -1.
+
+            But wait: what if k==1? 
+
+                Then we do step3: 
+                    s = [0, B0]   (for the first task)
+
+                Check natural failure: 
+                    if 0+B0>M? 
+                    If not, then we go to step4.
+
+                Step4: 
+                    i=0: 
+                        t_val = max(0, prefixA[1], M-B0+1)
+
+            Example: 
+                N=1, M=10, A=[5], B=[6]
+                k=1: because 5<=10.
+
+                s = [0,6] -> then check: 0+6=6<=10 -> no natural failure.
+
+                Then step4: 
+                    t_val = max(0, prefixA[1]=5, 10-6+1=5) = 5.
+
+                Output: 1 and 5.
+
+                Then Budi: 
+                    Task0: start at 0, we pop at 5: then completion time = 5+6=11>10 -> fails.
+                Then Budi solves 0 tasks, Ayu solves 1 -> 1>0 -> win.
+
+            This is valid.
+
+            However, note: what if we have k=0? we output -1.
+
+            But what if k>=1, but prefixA[1] might not be defined? 
+
+                We have k>=1, so we computed prefixA[1] = A[0]. 
+
+            So the code is safe.
+
+            One more: 
+                Example: 
+                  N=1, M=10, A=[15] -> then k=0? 
+                  because 0+15=15>10 -> so k=0 -> output -1.
+
+            Therefore, we write the code accordingly.
+
+            However, note: the first balloon is at prefixA[1] (which is the time for the first task). 
+
+            But if k==0, we don't use it.
+
+            Code:
+
+                import sys
+
+                data = sys.stdin.read().split()
+                if not data: 
+                    exit(0)
+                it = iter(data)
+                n = int(next(it)); M = int(next(it))
+                A = [int(next(it)) for _ in range(n)]
+                B = [int(next(it)) for _ in range(n)]
+
+                # Compute k for Ayu
+                prefixA = [0]
+                k = 0
+                # We'll build prefixA for the first n, but break when exceeds M.
+                for i in range(n):
+                    cur = prefixA[-1] + A[i]
+                    if cur <= M:
+                        prefixA.append(cur)
+                        k += 1
+                    else:
+                        break
+
+                if k == 0:
+                    print(-1)
+                    exit(0)
+
+                # Compute Budi's start times for the first k tasks: s[0] = 0, s[1] = B0, s[2]=B0+B1, ... 
+                s = [0]
+                # We only need the first k tasks for Budi (since we only care about the first k)
+                for i in range(k):
+                    s.append(s[-1] + B[i])
+
+                # Check for any natural failure in the first k tasks of Budi
+                found_natural_failure = False
+                for i in range(k):
+                    # task i: starts at s[i], needs B[i] minutes -> natural completion time: s[i] + B[i]
+                    if s[i] + B[i] > M:
+                        print(0)
+                        exit(0)
+
+                # Now, we find the minimal popping time over the k tasks.
+                # The first balloon time: prefixA[1] (the time of the first balloon, which is the time when Ayu solves the first task)
+                first_balloon = prefixA[1]   # because prefixA[0]=0, prefixA[1]=A0
+
+                best_t = 10**18
+                for i in range(k):
+                    # For task i, the minimal last pop time that will cause failure is t = max(s[i], first_balloon, M - B[i] + 1)
+                    t_val = max(s[i], first_balloon, M - B[i] + 1)
+                    if t_val < best_t:
+                        best_t = t_val
+
+                print(1)
+                print(best_t)
+
+            Let me run the sample input#1: 
+                n=4, M=30, A=[9,10,10,10], B=[4,10,5,10]
+
+                k=3
+                prefixA = [0,9,19,29]
+                s = [0,4,14,19,29]   (for the first 3 tasks: we only compute s[0..3] for the tasks? but we only need s[0] to s[2] for the first 3 tasks? 
+                      Actually, the tasks are indexed 0,1,2 (for k=3))
+
+                Then we iterate i in [0,1,2]:
+                  i=0: t_val = max(0,9,30-4+1=27) = 27
+                  i=1: t_val = max(4,9,30-10+1=21) = 21
+                  i=2: t_val = max(14,9,30-5+1=26) = 26
+                best_t = 21.
+
+                Output: 
+                    1
+                    21
+
+            This matches our previous.
+
+            But the sample expected output is 2 and [12,19]. 
+
+            We output 1 and 21.
+
+            However, the problem accepts any.
+
+            Therefore, we hope it passes.
+
+            But note: what if there is no task that we can disrupt? 
+
+            We argued that we can always disrupt any task that is not naturally failing. 
+
+            So we are safe.
+
+            However, note: we assume that the minimal popping time we set is valid. 
+
+            Conditions: 
+                t_val = max(s[i], first_balloon, M-B[i]+1) 
+                and we have:
+                    t_val <= M? 
+                    s[i] <= M (because the task is not naturally failing: s[i]+B[i]<=M, so s[i]<=M-B[i]<=M)
+                    first_balloon = prefixA[1] <= prefixA[k] <= M
+                    M-B[i]+1 <= M (since B[i]>=1)
+
+                so t_val <= M.
+
+            And at time t_val, we have at least the first balloon (because t_val>=first_balloon).
+
+            Therefore, we can pop.
+
+            Final code.
+
+            But note: memory and time? 
+
+                k <= 100000.
+
+                We are storing prefixA (size k+1) and s (size k+1). 
+
+                Then we iterate k times.
+
+                So O(n), which is acceptable.
+
+            Let me run sample input#2: 
+                n=5, M=50, A=[10,10,10,10,10], B=[15,12,19,17,20]
+
+                k=5
+                prefixA = [0,10,20,30,40,50]
+
+                s = [0, 15, 27, 46, 63, 83]   -> but we break in the natural failure check: 
+                    i=0: 0+15=15<=50 -> no
+                    i=1: 15+12=27<=50 -> no
+                    i=2: 27+19=46<=50 -> no
+                    i=3: 46+17=63>50 -> then we output 0 and exit.
+
+            So we don't get to step4.
+
+            Sample input#3: 
+                n=5, M=10, A=[15,10,5,5,5], B=[9,10,10,10,10]
+                k=0 -> output -1.
+
+            Therefore, we are done.
+
+            However, note: what if we have k=0? we output -1.
+
+            But k is computed as the number of tasks Ayu solves. 
+
+            We assume that if the cumulative time for the first task already exceeds M, then k=0.
+
+            This is consistent.
+
+            We'll write the code.
+
+            But note: the natural failure check: we break at the first natural failure? 
+
+                for i in range(k):
+                    if s[i] + B[i] > M:
+                        print(0)
+                        exit(0)
+
+            This is correct: we only need one natural failure.
+
+            We'll submit.
+
+            However, we must be cautious: the popping time must be an integer, and it is.
+
+            We output best_t as an integer.
+
+            Let me test: 
+                M, B[i] are integers -> M-B[i]+1 is integer.
+                s[i] = cumulative sum of integers -> integer.
+                prefixA[1] = integer.
+
+            So best_t is integer.
+
+            Therefore, the code is:
+
+                import sys
+
+                def main():
+                    data = sys.stdin.read().split()
+                    if not data: 
+                        return
+                    it = iter(data)
+                    n = int(next(it)); M_val = int(next(it))   # I use M_val to avoid conflict with M in the loop?
+                    A_list = [int(next(it)) for _ in range(n)]
+                    B_list = [int(next(it)) for _ in range(n)]
+
+                    prefixA = [0]
+                    k = 0
+                    # We are going to compute the cumulative time for Ayu
+                    total = 0
+                    for i in range(n):
+                        total += A_list[i]
+                        if total <= M_val:
+                            prefixA.append(total)
+                            k = len(prefixA) - 1   # k is the last index we added (which is the number of tasks solved)
+                        else:
+                            # We break early, but we still have the current k as the previous length-1?
+                            # Actually, we break at the first task that causes cumulative>M, then k is the previous count.
+                            # But we break the loop, and k is set to the last successful length-1? 
+                            # Actually, we don't set k in the else. So we break and k is the last value we set.
+                            # But we break, so we don't process further.
+                            break
+
+                    if k == 0:
+                        # Note: it is possible that the first task already exceeds M_val? then we break in the first iteration and k=0.
+                        print(-1)
+                        return
+
+                    # Compute Budi's start times for the first k tasks: 
+                    s = [0]
+                    # We only need the first k tasks (B_list[0] to B_list[k-1])
+                    for i in range(k):
+                        next_s = s[-1] + B_list[i]
+                        s.append(next_s)
+
+                    # Check natural failure: for i in [0, k-1] (Budi's task i)
+                    for i in range(k):
+                        # start time = s[i], task time = B_list[i]
+                        if s[i] + B_list[i] > M_val:
+                            print(0)
+                            return
+
+                    # The first balloon time: prefixA[1] (the time when Ayu solved the first task)
+                    first_balloon = prefixA[1]   # because prefixA[0]=0, prefixA[1]=A_list[0]
+
+                    best_t = 10**18
+                    # Consider each task i in [0, k-1] for disruption
+                    for i in range(k):
+                        # For task i: 
+                        t_val = max(s[i], first_balloon, M_val - B_list[i] + 1)
+                        if t_val < best_t:
+                            best_t = t_val
+
+                    print(1)
+                    print(best_t)
+
+                if __name__ == '__main__':
+                    main()
+
+            However, note: what if k=0 in the natural failure check? we already handled k==0.
+
+            We assume k>=1.
+
+            But note: the first_balloon = prefixA[1] is defined only if k>=1.
+
+            This is true.
+
+            Let me test with k=1.
+
+            It should work.
+
+            We'll run the small example: 
+                n=1, M=10, A=[5], B=[6] -> 
+                    k=1: because 5<=10.
+                    s = [0, 6]   (s[0]=0, s[1]=6)
+                    Check natural failure: 
+                         i=0: 0+6=6<=10 -> no.
+                    Then first_balloon = prefixA[1]=5.
+                    Then t_val = max(0,5,10-6+1=5) = 5.
+                    Output: 1 and 5.
+
+            Correct.
+
+            Therefore, we run.
+
+            But note: the problem says: the popping time must be at an integer minute and we are outputting an integer.
+
+            We output best_t, which is an integer.
+
+            We hope the judge accepts.
+
+            However, the sample input#1 expects two pops. But the problem says "any". 
+
+            We output one pop at 21.
+
+            If the judge tests: 
+                They will simulate and see that Budi fails to complete the second task? 
+
+            How they simulate: 
+                They know the popping time we output: 21.
+
+                Then for Budi's second task (which is the task at index1) that starts at 4: 
+                    if we pop at 21, then the completion time becomes 21+10=31>30 -> fails.
+
+                Then Budi only completes 1 task (the first one) and fails the second one -> total 1 task.
+
+                Ayu: 3>1 -> win.
+
+            So it is valid.
+
+            Therefore, we are confident.
+
+            But note: the problem says: we cannot pop after M. We have best_t<=M, so we are safe.
+
+            We submit.
+
+            However, wait: what if best_t is greater than the last balloon time? 
+
+                We only require that at time best_t we have at least one balloon. 
+
+                The first balloon is at first_balloon, and best_t>=first_balloon, so we have the first balloon.
+
+            Therefore, we are good.
+
+            Let me run the sample input#1: 
+                best_t=21, and the balloons: 
+                    at 9, 19, 29.
+                At time 21, we have two balloons (from 9 and 19) -> so we can pop.
+
+            Correct.
+
+            Therefore, we write the code as above.
+
+            But note: the problem says: the popping times must be sorted in increasing order. 
+                We output one time -> sorted.
+
+            So we are good.
+
+            We run.
+
+            However, one more corner: 
+                k=1, M=5, A=[3], B=[3] 
+                Ayu: k=1 (since 3<=5), gets a balloon at 3.
+
+                Budi: 
+                    s = [0, 3] -> then check natural failure: 
+                         i=0: 0+3=3<=5 -> no.
+
+                Then best_t = max(0, 3, 5-3+1=3) = 3.
+
+                Output: 1 and 3.
+
+                Then Budi: 
+                    Task0: starts at 0, we pop at 3. 
+                    The problem: if a balloon pops at the same time Budi is supposed to solve the task (at 3, which would be the natural completion) -> then he fails and restarts. 
+                    Then he starts at 3, and needs 3 minutes -> 6>5 -> fails.
+
+                So Budi solves 0 tasks -> win.
+
+            Correct.
+
+            Another: 
+                k=1, M=5, A=[3], B=[4]
+                Budi: natural: 0+4=4<=5 -> no natural failure.
+                best_t = max(0,3,5-4+1=2) = 3.
+                Pop at 3: then completion time = 3+4=7>5 -> fails.
+
+            Therefore, it's correct.
+
+            We submit.
+
+            However, note: the problem says: we cannot pop after M. We have best_t<=M, so we are safe.
+
+            But what if best_t==M? 
+                Example: k=1, M=5, A=[5], B=[1]
+                Ayu: k=1? 5<=5 -> yes.
+                Budi: s[0]=0, B[0]=1 -> 0+1=1<=5 -> no natural failure.
+
+                Then best_t = max(0,5,5-1+1=5) = 5.
+
+                Pop at 5: then Budi's task0: 
+                    Start at 0, pop at 5: then completion time = 5+1=6>5 -> fails.
+
+            Correct.
+
+            Also, at time 5, we have the balloon? 
+                Ayu gets the balloon at 5, so we can pop at 5.
+
+            Correct.
+
+            Therefore, the code is complete.
+
+            But note: the problem sample input#2: 
+                "5 50
+                 10 10 10 10 10
+                 15 12 19 17 20"
+
+                We output 0.
+
+            And sample input#3: 
+                "5 10
+                 15 10 5 5 5
+                 9 10 10 10 10"
+
+                We output -1.
+
+            So we are done.
+
+            Let me run the code on the provided samples.
+
+            However, the problem sample input#1: 
+                Our output: 1 and 21.
+
+            But the sample expected output is 2 and 12 19.
+
+            The judge should accept both.
+
+            We hope.
+
+            We write the code accordingly.
+
+            Note: we output the popping time as an integer.
+
+            Code:
+
+                import sys
+
+                def main():
+                    data = sys.stdin.read().split()
+                    if not data:
+                        return
+                    it = iter(data)
+                    n = int(next(it))
+                    M_val = int(next(it))
+                    A = [int(next(it)) for _ in range(n)]
+                    B = [int(next(it)) for _ in range(n)]
+
+                    # Compute k for Ayu: number of tasks solved
+                    prefixA = [0]
+                    k = 0
+                    total = 0
+                    for i in range(n):
+                        total += A[i]
+                        if total <= M_val:
+                            prefixA.append(total)
+                            k = len(prefixA) - 1  # k is the count of tasks solved (since prefixA[0]=0, then prefixA[1] is the first task, so k=1 at that step)
+                        else:
+                            # Stop at the first task that makes cumulative>M_val
+                            break
+
+                    if k == 0:
+                        print(-1)
+                        return
+
+                    # Compute Budi's start times for the first k tasks: s[0] = 0, s[1] = B0, s[2]=B0+B1, ... up to s[k]
+                    s_arr = [0]
+                    for i in range(k):
+                        # the i-th task: index i in B
+                        next_s = s_arr[-1] + B[i]
+                        s_arr.append(next_s)
+
+                    # Check for natural failure in Budi: any task i (0<=i<k) such that s_arr[i] + B[i] > M_val
+                    for i in range(k):
+                        if s_arr[i] + B[i] > M_val:
+                            print(0)
+                            return
+
+                    # First balloon time: prefixA[1] (the time of the first balloon)
+                    first_balloon = prefixA[1]  # because prefixA[0]=0, and prefixA[1] = A0
+
+                    best_t = 10**18  # a big number
+                    for i in range(k):
+                        # For task i, we set t_val = max(s_arr[i], first_balloon, M_val - B[i] + 1)
+                        t_val = max(s_arr[i], first_balloon, M_val - B[i] + 1)
+                        if t_val < best_t:
+                            best_t = t_val
+
+                    print(1)
+                    print(best_t)
+
+                if __name__ == '__main__':
+                    main()
+
+            We run.
+
+            However, we might get TLE? k up to 100000, so the loop is O(k) which is O(100000) -> acceptable.
+
+            Memory: we store two lists of size k+1, which is 100000 -> 200000 integers, about 1.6MB.
+
+            We are safe.
+
+            We hope.
+
+            But wait: what if n=100000 and k=100000? 
+                Then we do a loop of 100000 for Ayu and 100000 for Budi and then 100000 for the last loop: total 300000, which is acceptable.
+
+            Therefore, we are done.
+
+            However, note: the problem says that the popping time must be at an integer minute. 
+                Our best_t is an integer.
+
+            We output one integer.
+
+            We hope the judge is happy.
+
+            Let me run the sample input#1: 
+                Input: "4 30\n9 10 10 10\n4 10 5 10"
+
+                Our output: 
+                    1
+                    21
+
+            But the sample expected output is:
+                    2
+                    12 19
+
+            But the problem says: any valid.
+
+            Therefore, we hope.
+
+            We'll submit.
+
+            However, the problem might have multiple test cases? 
+
+            The problem input format: 
+                begins with a line containing two integers: N M
+                then a line with N integers for A
+                then a line with N integers for B
+
+            So one test case.
+
+            Therefore, we are done.
+
+            But if there are multiple test cases? The problem does not say.
+
+            The constraints: 1<=N<=100000, so one test case.
+
+            We are safe.
+
+            We output the code.
+
+            However, note: the problem says: 
+                "Note that if Ayu solves a task at exactly the Mth minute, then the task is considered as solved."
+
+            We consider: cumulative time <= M -> solved.
+
+            And we break when cumulative time > M.
+
+            So if cumulative time == M, we include.
+
+            Therefore, our k is computed correctly.
+
+            We are good.
+
+            Final code.
+
+            But note: the problem says: 
+                "Similarly, if Budi solves a task at exactly the Mth minute, then the task is considered as solved, except if Ayu decides to pop a balloon at the same time."
+
+            In our disruption: 
+                We pop at time t, and the completion time is t+B_i.
+                We require t+B_i>M. 
+
+                If t+B_i = M+1, then it is > M, so not solved.
+
+                But what if t+B_i = M? then it is solved? 
+
+                But we require t+B_i>M. 
+
+                How do we ensure t+B_i>M? 
+                    We set t = max(..., M-B_i+1). Then 
+                    t >= M-B_i+1
+                    => t+B_i >= M+1 > M.
+
+                So it is strictly greater.
+
+            Therefore, it is safe.
+
+            We are done.
+
+            Let me run a small example: 
+                M=10, B_i=5, and we set t = max(..., 10-5+1=6) -> then t>=6, then t+B_i>=6+5=11>10.
+
+            Correct.
+
+            So the condition is safe.
+
+            We submit.

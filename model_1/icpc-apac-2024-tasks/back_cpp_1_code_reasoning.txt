@@ -1,0 +1,1559 @@
+ We are going to implement the same approach in C++ for efficiency.
+ Steps:
+ 1. Read input.
+ 2. Build graph.
+ 3. Run Dijkstra from node 1 (to get d1 and parent_arr for base path).
+ 4. If node n is unreachable, output -1.
+ 5. Run Dijkstra from node n (to get dn).
+ 6. Compute the second shortest path from 1 to n? Actually, the problem is that the second shortest path might be non-simple? 
+    However, note: the problem allows non-simple paths. But the classic second shortest path algorithm (with two distances per node) is for simple paths? 
+    Actually, the problem says we can pass through the same city or road multiple times. So we have to consider non-simple paths? 
+    But note: the second shortest path we are looking for must be a distinct set of roads? Actually, the requirement is that the set of distinct roads traversed must be different.
+
+    However, note: the problem says the set of distinct roads. So even if we traverse the same road twice, the set remains the same. Therefore, we are only concerned about the distinct set.
+
+    How about we compute the two shortest paths that are distinct in terms of the set of edges? Actually, the standard second shortest path algorithm (with two states per node) might not account for distinct sets? 
+    But note: the problem allows non-simple paths. However, the classic second shortest path (without repeated edges) is computed by the algorithm that allows using an edge multiple times? Actually, the algorithm that we use for the second shortest path (by storing two distances per node) does not enforce distinct sets? 
+
+    Let's reconsider: the problem requires distinct sets of roads. The base path (shortest) is a set S1. We need a second path (which may be non-simple) that has a distinct set S2. The second shortest path (by time) that is not the base path might not necessarily have a distinct set? Actually, if the base path is the only simple path, then the second shortest might be the base path plus a detour? That detour would introduce new edges and avoid some edges? 
+
+    However, note the problem does not require the entire set to be disjoint, only that the sets are distinct. So if we use the base path for going and then for coming back we use the base path plus a detour (so the set for the return is the base path edges plus the detour edges) then that is distinct.
+
+    Actually, the problem does not require disjoint sets, only that the two sets are different.
+
+    The candidate A: two different simple paths? But what if there is only one simple path? Then we cannot use two different simple paths. So we have to consider detours.
+
+    The problem: the sample input #1: 
+        3 2
+        1 2 10
+        1 3 5
+
+    The base path: 1->3 (time=5). Then for the return we cannot use the same set? So we have to include road 1 (which is 1-2). How? We can do: 3->1 (using road 2, then road 1 twice?).
+
+    Actually, the return path: 3->1 (via road 2) then 1->2 (via road 1) and then 2->1 (via road 1 again) and then we are at 1? But that set is {road1, road2} which is different from the forward set {road2}. 
+
+    The total time: 5 (forward) + 5 (road2) + 10 (road1) + 10 (road1 again) = 30.
+
+    How do we compute this? 
+
+    The solution in the editorial uses three candidates:
+
+    Candidate A: the sum of the two distinct simple paths? Actually, the forward by the base path (time T) and the backward by the second simple path? But note: the second simple path might not exist? Then we have to use a detour.
+
+    Candidate B1: for an edge (u, v) not on the base path but both u and v on the base path: then we can form a cycle by replacing the segment between u and v in the base path by the edge (u,v). Then for the forward journey we use the base path. For the backward journey, we start at n, go to u (along the base path in reverse), then take the edge (u,v) to go to v, then go from v to 1 along the base path? But note: then the backward journey would use the entire base path except the segment from u to v (which is replaced by the edge (u,v))? Actually, we can also do:
+
+        Forward: base path (set S)
+        Backward: we break the base path at u and v? Actually, we can do: from n to v (along base), then take edge (v,u) (if the base path goes from u to v, then from n to v we go through u? Actually, we need to traverse the base path in reverse: from n to u, then use the edge (u,v) to jump to v, then from v to 1. But note: the segment from u to v in the base path is skipped. So the backward journey avoids the segment between u and v and uses the new edge. The time for the backward journey: 
+            base_time - (segment_time) + t   [segment_time = |d1[u]-d1[v]|]
+
+        Then total = base_time (forward) + (base_time - segment_time + t) (backward) = 2*T - segment_time + t.
+
+    Candidate B4: for an edge (u,v) that has one endpoint on the base path and the other not. Then we can use the forward journey as the base path. For the backward journey, we can do: 
+            from n to u (along base), then take the edge (u,v) to go to v, then from v to 1 via the shortest path from v to 1 (which is d1[v])? But wait: the backward journey starts at n and ends at 1. So:
+            n -> ... -> u (time: ?) Actually, the base path gives the time from 1 to u: d1[u]. And the base path from 1 to n: T. Then the time from u to n along the base path is (T - d1[u]). Then we don't want to go from n to u? Actually, we are at n at the end of the forward journey. Then we want to go from n to 1 via: n -> ... -> v -> ... -> 1? Actually, we can go from n to v? How? We know dn[v] (the shortest time from n to v). Then from v to u? Actually, we don't have to. Alternatively, we can break the journey:
+
+        Option 1: from n to v (using dn[v]), then from v to u via the edge (t), then from u to 1? But we are at u, how to get to 1? We know the time from u to 1 is d1[u]? Actually, the backward journey: 
+            n -> ... -> v (time dn[v]), then v->u (time t), then u->1 (time d1[u]). Total: dn[v] + t + d1[u].
+
+        Similarly, we can do: n->u (dn[u]), then u->v (t), then v->1 (d1[v]). 
+
+        Then the total for the round trip: forward (T) + backward (min(dn[u] + t + d1[v], dn[v] + t + d1[u])). 
+
+        But note: we are allowed to do non-simple paths? And the backward journey might use the base path partially? This candidate is valid.
+
+    However, note: the forward journey uses the base path (so set S). The backward journey uses the base path from n to u (if we use the second option: n->u) then the edge (u,v) and then the path from v to 1 (which might not be the base path). So the set of distinct roads in the backward journey is the base path from n to u, then the edge (u,v), then the path from v to 1 (which might include base path edges and non-base path edges). Therefore, the set of the backward journey is not the same as the forward journey? Because it includes the edge (u,v) which is not in the base path and might avoid some base path edges from u to 1? Actually, the base path from u to 1 is used? Only the segment from n to u is the base path? Actually, the base path from n to u is the same as the base path from u to n? So the backward journey uses the base path from n to u, then the edge (u,v), then a path from v to 1. The path from v to 1 might be the base path? Actually, if v is not on the base path, then the path from v to 1 is not the base path? So the set of the backward journey is the base path from n to u (which is the same as the base path from u to n) plus the edge (u,v) plus the path from v to 1 (which is not the base path). Therefore, the set is different from the base path (which is the entire base path). 
+
+    But note: the forward journey uses the entire base path. The backward journey uses a part of the base path (from n to u) and then a detour. Therefore, the sets are distinct.
+
+ Implementation:
+
+    Steps:
+      1. Compute d1 (from 1) and dn (from n).
+      2. If d1[n] is INF -> print -1.
+
+      3. Reconstruct the base path (to mark nodes and edges on the base path).
+
+      4. Compute candidate_A: the sum of the shortest and the second shortest simple paths? Actually, we run a Dijkstra that tracks two distances per node: the shortest and the second shortest (even if they are not simple, but the algorithm we use for second shortest path typically gives the next best path that might be non-simple?).
+
+          We do:
+
+            dist0[node] = shortest time from 1 to node
+            dist1[node] = second shortest time from 1 to node
+
+          Then candidate_A = dist1[n] (if it exists).
+
+          How to compute: 
+            We initialize dist0[1]=0, and dist0[others]=INF, dist1[others]=INF.
+            We use a min-heap of (time, node).
+
+            For each neighbor:
+              new_time = current_time + weight
+              If new_time < dist0[neighbor]:
+                 dist1[neighbor] = dist0[neighbor]
+                 dist0[neighbor] = new_time
+                 push (new_time, neighbor)
+              Else if new_time != dist0[neighbor] and new_time < dist1[neighbor]:
+                 dist1[neighbor] = new_time
+                 push (new_time, neighbor)
+
+          Then candidate_A = dist0[n] (which is T) + dist1[n]? Actually, the problem: we are going to use the base path for one and the second shortest for the other? Then total = T + dist1[n]. But note: the requirement is that the sets of distinct roads are different. The base path and the second shortest path (if it exists) are two different sets? They might share some edges? But they are two different paths? So the sets are distinct? Actually, the sets are the edges of the base path and the edges of the second path. They are distinct as long as the second path is not the same as the base path? But we skip the base path? Actually, if the second path is the same as the base path, we skip it? So we require the second path to be a different set? 
+
+          However, note: the second shortest path might use the same set of edges? Actually, no: because if the second path is a different set? Actually, it could be the same set? For example, if we have two different routes that have the same set of edges? That is impossible because each edge is distinct and the set of edges would be the same. So if the second path uses a different set? Actually, the second path must be a different sequence? But the set is the collection of distinct edges? So if the second path uses an edge not in the base path, then the set is different. But if it uses the same edges? Then the set is the same? 
+
+          However, note: the problem says the set of distinct roads traversed. So if the second path uses the same set of roads (even in a different order) then the set is the same? 
+
+          Example: a cycle. The base path: 1->2->3->n. The second path: 1->3->2->n? Then the set of roads used is the same: { (1,2), (2,3), (3,n) }? Actually, the set is the same? 
+
+          But note: the problem says the set of distinct roads. So if the second path uses the same set of roads, then the set is not distinct? 
+
+          Therefore, candidate_A is only valid if the second path has a distinct set? How can we check that? Actually, we cannot in this algorithm.
+
+      However, the problem does not require the two paths to be edge-disjoint. It only requires the sets of distinct roads traversed to be different. So if the second path uses the same set of roads as the base path, then candidate_A would have the same set for both journeys? Then it is invalid.
+
+      Therefore, we cannot rely solely on the second shortest path algorithm that only considers the total time.
+
+      Alternative: we are going to compute candidate_A by the two distinct simple paths that are edge-disjoint? Actually, no: we can have two paths that share some edges but have at least one different edge? Then the sets are distinct.
+
+      Actually, the problem does not require edge-disjoint, only that the set of edges is different. So if the second path has at least one edge that is not in the base path, or misses at least one edge that is in the base path, then the set is distinct.
+
+      How about: the base path set is S. The second path set is T. We require S != T.
+
+      How can we compute the second path that has a distinct set? Actually, it is complex.
+
+      Let's reconsider: the problem allows non-simple paths. So candidate_A might not be necessary? Actually, the sample input #1: the base path is 1->3 (set {2}), and the second path we consider in candidate_A? But the second path must be a simple path? The second shortest simple path from 1 to n? It would be 1->2->3? But that set is {1,2}? Then candidate_A = 5 + (10+5)=20? But wait, the sample output is 30. So why 30? Because the problem says we are allowed to take non-simple paths? Then the backward journey can be non-simple? Actually, the sample solution for backward: 3->1->2->1? That is non-simple. So the backward journey is not the second simple path? 
+
+      Therefore, candidate_A (using two simple paths) might not be the best? Actually, the sample input #1: the two simple paths: 
+          Path1: 1->3 (time=5) -> set {edge2}
+          Path2: 1->2->3 (time=15) -> set {edge1, edge2}
+          Then total = 5+15 = 20? But the sample output is 30.
+
+      Why? The problem says: the backward journey must be from city n to city 1. The solution provided in the sample: 
+          Forward: {edge2} -> time=5
+          Backward: {edge1, edge2} -> but note: the backward journey they did: 3->1 (edge2: time5) and then 1->2 (edge1: time10) and then 2->1 (edge1 again: time10) -> total backward time=5+10+10=25 -> total=30.
+
+      Why didn't they just go 3->2->1? That would be 5 (for 3->2) and 10 for 2->1 -> total backward=15 -> total=5+15=20? 
+          Then the sets: forward {edge2}, backward {edge1}? Actually, the set for backward would be {edge1, edge2}? Because they used edge2? Actually, no: the backward journey: 3->2 (road1? Actually, no: the road1 is between 1 and 2. Road2 is between 1 and 3. There is no direct road between 3 and 2? 
+
+      The input: 
+          3 2
+          1 2 10
+          1 3 5
+
+      So the backward journey: 
+          Option 1: 3->1 (road2: time5) then 1->2 (road1: time10) -> set {road1, road2} -> time=15? Then total=20? 
+          But the problem: we are at city 3 and we must go to city 1. The journey 3->1->2 does not end at 1? It ends at 2. So we have to get back to 1? Then 3->1 (road2: time5) then 1->2 (road1: time10) then 2->1 (road1 again: time10). Total backward=25.
+
+      Why can't we do 3->2? There is no direct road. So we have to go 3->1 and then 1->2? Then to come back to 1, we must go 2->1? 
+
+      Therefore, the backward journey must end at 1. So the journey 3->1->2->1 is valid.
+
+      Now, why is 20 not the answer? Because the problem says: the set of distinct roads traversed in the backward journey is {road1, road2}. The forward journey was {road2}. They are distinct? Then why total time=20 is not acceptable? 
+
+      Actually, the problem: the backward journey from 3 to 1 must be a journey that ends at 1. The journey 3->1->2->1 ends at 1. The time for that journey is 5 (road2) + 10 (road1) + 10 (road1) = 25. But there is a journey that goes 3->1 (road2: time5) and then 1->2 (road1: time10) and then we are at 2? Then we have to get to 1? We have to go back? 
+
+      Actually, we are allowed to continue after reaching the destination? The problem: "it is possible to pass through the same city or road multiple times. It is also possible to continue traversing after reaching the destination city". 
+
+      But note: the backward journey is from city n (which is 3) to city 1. Once we reach city 1, we are done? Or do we have to stop? The problem: "travel to city n to attend the contest" and then "travel back to city 1". So the forward journey ends at city n, and the backward journey ends at city 1. We are allowed to continue after reaching the destination? Actually, the problem says "it is also possible to continue traversing after reaching the destination city". But then the journey is not over? 
+
+      Actually, the problem: we are traveling from city 1 to city n (the forward journey) and then from city n to city 1 (the backward journey). The entire journey is over when we are back at city 1. So the backward journey must end at city 1. We are allowed to pass through city 1 during the journey? Actually, we are starting at city n and ending at city 1. We are allowed to go beyond? But then we have to come back? Actually, the problem does not require that we stop at the destination? It says "travel back to city 1" meaning we must end at city 1. So the journey must end at city 1.
+
+      Therefore, the journey 3->1->2->1 is valid: we pass through city 1 (which is the destination) and then leave and then come back? But then the journey ends at city 1? So the last step is 2->1? Then the entire backward journey is 3->1->2->1? 
+
+      However, the problem says: "it is also possible to continue traversing after reaching the destination city" meaning that we might pass through the destination and then leave? But then we are required to end at the destination? So we must eventually end at the destination? 
+
+      Therefore, the journey 3->1->2->1 ends at 1? Yes.
+
+      But note: the problem does not require the journey to be the shortest? We are minimizing the total time.
+
+      Why is the answer 30? Because the sample says 30? Actually, the sample output is 30.
+
+      How do we get 30? 
+          Forward: 1->3: time=5, set={2}
+          Backward: 3->1->2->1: time=5+10+10=25, set={1,2} (distinct roads: road1 and road2)
+
+      Total=30.
+
+      Why not 20? 
+          How would we get 20? 
+          We could do:
+             Forward: 1->3: time=5, set={2}
+             Backward: 3->2->1? But there is no direct road from 3 to 2. So we cannot.
+
+          Or: 
+             Forward: 1->2->3: time=10+? There is no road from 2 to 3? Actually, the input only has two roads: 1-2 and 1-3.
+
+      Therefore, there is no simple path for backward that takes 15? 
+
+      How about: 
+          Forward: 1->3: time=5, set={2}
+          Backward: 3->1: time=5 (road2) and then we are at 1? Then we are done? But then the set of backward journey is {2} which is the same as the forward journey? -> invalid.
+
+      Then we have to extend the backward journey? So we have to add a detour? The detour: from 1 we go to 2 and back to 1? Then we have used road1 twice? Then the set of backward journey becomes {1,2}. 
+
+      So the minimal backward journey that has a distinct set from {2} is 5 (road2) + 20 (for the detour: 1->2->1) = 25? Then total=30.
+
+      How can we get 20? Only if we could do a backward journey that uses a different set without having to traverse extra? 
+
+      Actually, we cannot: because the only road from 3 to 1 is road2? Then we have to use road2 to get to 1. Then we are at 1 with set {2}? Then we have to break the set? We must use road1? Then we have to go to 2? Then we are at 2? Then we have to come back to 1? That adds 20? 
+
+      Therefore, the total backward is 5 (for 3->1) + 20 (for 1->2->1) = 25? Then total=30.
+
+      How does our candidate_B4 work for this? 
+          We have an edge: (1,2) with time=10. 
+          This edge has one endpoint (1) on the base path? Actually, the base path: 1->3. So base_nodes={1,3}. The edge (1,2) has u=1 (on base) and v=2 (not on base). Then candidate_B4: 
+             T (forward) + min( d1[u] + t + dn[v], d1[v] + t + dn[u] ) 
+          Here, u=1, v=2, t=10.
+          d1[u]=d1[1]=0
+          dn[v]=dn[2]: we have to compute dn from n=3. 
+            graph: 
+              1: [(2,10), (3,5)]
+              2: [(1,10)]
+              3: [(1,5)]
+            dn[3]=0, dn[1]=5, dn[2]=? 
+                from 3: to 1:5, then from 1 to 2:10 -> so dn[2]=15? 
+          Then:
+            Option1: d1[u] + t + dn[v] = 0+10+15=25.
+            Option2: d1[v] + t + dn[u] = d1[2]=10 (from 1->2) + 10 + dn[1] (which is 5) = 10+10+5=25.
+          Then candidate_B4 = 5 (forward) + 25 = 30.
+
+      candidate_B1: not applicable because the edge (1,2) has one endpoint not on the base path.
+
+      candidate_A: we computed the second shortest path? 
+          dist0[3]=5 (the base path)
+          How to get to 3 by a second path?
+            1->2:10, then 2->? There is no edge from 2 to 3? So we cannot go 1->2->3? Then the second path? 
+            Actually, we can do 1->3 (base) and then 3->1 and then 1->3 again? Then time=5+5+5=15? But that set is the same as the base path? Actually, the set is {2}? Then it is the same set? -> invalid.
+
+          Alternatively, 1->2->1->3: time=10+10+5=25? Then set={1,2}? Then it is distinct? 
+          Then dist1[3] = 25? Then candidate_A = 5 (forward) + 25 (backward) = 30.
+
+      Therefore, the answer=30.
+
+      But note: the problem does not require the backward journey to be a simple path? So candidate_A in our algorithm would be 5+25=30? 
+
+      How do we compute the second path? We do:
+
+          Start at 1: dist0[1]=0.
+          Then we push (0,1).
+
+          From 1: 
+             to 2: new_time=10 -> update dist0[2]=10, push(10,2)
+             to 3: new_time=5 -> update dist0[3]=5, push(5,3)
+
+          Then from 3: 
+             to 1: 5+5=10 -> but 10>dist0[1]=0 -> so we update dist1[1]=10? Then push(10,1) -> but then we don't? Actually, we only push if we update.
+
+          Then from 2: 
+             to 1: 10+10=20 -> now at 1: 
+                20>0 -> so update dist1[1]=20? Then push(20,1)
+
+          Then from 1 (with time=10) we go to 3: 10+5=15 -> then at 3: 
+                15>dist0[3]=5 -> so update dist1[3]=15? Then push(15,3) -> but wait, we already updated dist1[3]? Actually, we haven't. Then we set dist1[3]=15 and push (15,3). 
+
+          But then we also have from 1 (with time=20) we go to 3: 20+5=25 -> then at 3: 25>15 -> so we update dist1[3]? No, we don't. 
+
+          Actually, we should update the second shortest only if it is strictly between the first and the current second? 
+
+          Algorithm for second shortest:
+
+            if new_time < dist0[v]:
+                dist1[v] = dist0[v]
+                dist0[v] = new_time
+                push(new_time, v)
+            else if new_time != dist0[v] and new_time < dist1[v]:
+                dist1[v] = new_time
+                push(new_time, v)
+
+          Therefore, we get dist1[3]=15? Then candidate_A = 5+15=20? 
+
+          But wait: the journey for 15: 
+              1->2:10, then 2->1:10, then 1->3:5 -> total=25? Actually, no: 
+                 1->2: time=10 -> then 2->1: time=10 (so total 20) then 1->3: time=5 -> total=25? 
+
+          How did we get 15? 
+
+          Actually, the state at 1 with time=10: that state comes from 2? Then we go from 1 (with time=10) to 3: 10+5=15? That is the path: 1->2 and then 2->1? Then we are at 1 with time=20? Then we go to 3: time=20+5=25? 
+
+          How did we get 15? 
+
+          Actually, when we popped (5,3) we then pushed (5,3). Then we popped (10,2). Then from 2 we went to 1: time=10+10=20 -> then we update dist1[1] to 20? Then we push (20,1). Then we pop (10,1) -> but we never pushed (10,1) because from 3 we went to 1 and got 10? Then when we process (10,1) we go to 3: 10+5=15 -> then we update dist1[3] to 15? 
+
+          But note: we had dist0[3]=5, so 15 is greater than 5 -> so we update dist1[3] to 15? 
+
+          Then candidate_A = 5+15=20? 
+
+          But the problem: the journey that gives 15: 1->3 (base) and then 3->1 and then 1->3? But that set is the same as the base path? Actually, the set is {road2}? So it is the same set? -> invalid.
+
+          Therefore, candidate_A=20 is invalid? 
+
+      So we have to avoid paths that use the same set? 
+
+      How? We cannot easily check the set? 
+
+      Therefore, we might not use candidate_A at all? Or we must design candidate_A to be a path that has a distinct set? 
+
+      Actually, the problem: the set of distinct roads must be different. The base path uses set S. The second path must use a set T != S.
+
+      How to enforce that? 
+
+      Alternatively, note that candidate_B1 and candidate_B4 are designed to yield distinct sets. And candidate_A might be invalid if the second path has the same set? 
+
+      Therefore, we might skip candidate_A? But the problem: what if there are two distinct simple paths? Then candidate_A would be the sum of the base path and the second distinct simple path? 
+
+      How to compute the second distinct simple path that has a distinct set? 
+
+      Actually, we can run a Dijkstra that also tracks the set of edges? That is too expensive.
+
+      Another idea: we can avoid using the base path for the second path? We can mark the base path edges and then run a Dijkstra that does not use the base path? Then the set would be different? 
+
+      But wait: the base path is the set S. If we run a Dijkstra that avoids the base path, then the set T would be disjoint? Then T != S? 
+
+      However, it might be that the base path is the only path? Then we get no second path? 
+
+      Steps for candidate_A_alternative:
+
+          Build graph without the base path edges? 
+          Then run Dijkstra from 1 to n? 
+
+          Then candidate_A_alt = T + (shortest_path without base edges) 
+
+          But note: the problem allows non-simple paths? So we might use the base path edges multiple times? But then the set would be the same? 
+
+          Actually, we are avoiding the base path edges? Then the set of the second journey would be T (which does not include any base edge) and the forward journey set S (the base path). Then S != T? 
+
+          But what if there is no path without base edges? Then candidate_A_alt is INF.
+
+      However, note: the problem does not require the entire set to be disjoint? Only distinct? So if the second path uses some base edges and some non-base edges? Then the set is T = (some base edges) union (non-base edges). Then T is not equal to S? 
+
+      But if we avoid base edges, we are forcing T to be disjoint? Then T != S? 
+
+      However, the problem: the backward journey must be from n to 1? We are computing a path from 1 to n? Actually, we are going to use the same graph? 
+
+      Actually, we want two journeys: 
+          forward: 1->n (using base path: set S)
+          backward: n->1 (using a path that does not use any base edge? Then set T) -> then T and S are disjoint? So distinct.
+
+      But note: the graph is undirected? So the backward journey can be the same as the forward journey? Actually, we avoid the base edges? 
+
+      Then candidate_A_alt = T + (shortest_path without base edges from n to 1) -> but the graph is undirected? Then the shortest_path without base edges from n to 1 is the same as from 1 to n? 
+
+      Therefore, we can run:
+
+          Build graph without the base edges? Then run Dijkstra from 1 to n? 
+          candidate_A_alt = T + (that distance)
+
+      But note: the problem allows non-simple paths? The path without base edges might be long? But we are looking for the shortest? 
+
+      However, the problem: the backward journey is from n to 1? We can use non-simple paths? But we are avoiding base edges? Then we are forced to use non-base edges? 
+
+      But what if there is no path without base edges? Then candidate_A_alt = INF.
+
+      Then we can consider candidate_A_alt as one candidate? 
+
+      But note: the sample input #1: 
+          base path: edge (1,3) -> so we remove that edge? Then we are left with edge (1,2). Then there is no path from 1 to 3? So candidate_A_alt=INF.
+
+      Then we skip candidate_A_alt? 
+
+      But the sample input #3:
+          4 4
+          1 2 3
+          2 4 2
+          1 3 3
+          3 4 4
+
+          Base path: 1->2->4: time=3+2=5? 
+          Then remove base edges: remove (1,2) and (2,4). Then we are left with (1,3) and (3,4). Then the path 1->3->4: time=3+4=7? 
+          Then candidate_A_alt = 5+7=12? 
+
+          Then the answer=12? 
+
+          The sample output=12.
+
+      Therefore, candidate_A_alt is valid.
+
+      How about sample input #2? 
+          4 3
+          1 2 10
+          2 3 5
+          3 4 2
+
+          Base path: 1->2->3->4: time=17? 
+          Then remove base edges: we remove all edges? Then no path from 1 to 4? candidate_A_alt=INF.
+
+          candidate_B1: we have no edge not on the base path? 
+          candidate_B4: we have no edge with at least one endpoint not on the base path? (because all nodes are on the base path? and all edges are base edges) -> skip.
+
+          Then output -1? -> matches sample.
+
+      How about sample input #1? 
+          candidate_A_alt: INF -> skip.
+          candidate_B1: skip (because the only non-base edge is (1,2) and one endpoint (2) is not on the base path? Actually, base_nodes={1,3}; the edge (1,2): u=1 (on base), v=2 (not on base) -> candidate_B4: as we did, 30.
+
+      Therefore, we can do:
+
+          candidate = min(candidate_A_alt, candidate_B1, candidate_B4)
+
+      How to compute candidate_A_alt:
+
+          Step 1: mark the base_edges (the edges on the base path) -> we have base_edges set (by (min(u,v), max(u,v))).
+
+          Step 2: build a new graph that excludes base_edges? Actually, we can run Dijkstra and when traversing an edge that is a base edge, skip? 
+
+          But note: the base path is the unique path? Actually, we are going to build a graph without the base edges? 
+
+          Then run Dijkstra from 1 to n on the graph without base edges? 
+
+          candidate_A_alt = T + (dist[n] from this Dijkstra)   [if dist[n] is not INF]
+
+      But note: the base path is the shortest path? Then the graph without base edges might be disconnected? 
+
+      Implementation:
+
+          We'll create a graph that has all edges that are not base_edges? 
+
+          Then run Dijkstra on that graph.
+
+      However, note: the base path might have multiple edges? Actually, no: the base path is a simple path? 
+
+      Therefore, we do:
+
+          base_edges: set of (min(u_i, v_i), max(u_i, v_i)) for each edge on the base path.
+
+          Then for each edge (u, v, t) in the original graph, if (min(u,v), max(u,v)) is in base_edges, skip; else, add it to the new graph.
+
+          Then run Dijkstra from 1 to n in the new graph? 
+
+          candidate_A_alt = T + (the distance from 1 to n in the new graph)
+
+      But note: the journey for candidate_A_alt: 
+          forward: base path (set S) -> time T.
+          backward: the path we found in the new graph (set T, which is disjoint from S) -> time = d.
+          total = T + d.
+
+      And the sets are distinct because S and T are disjoint? Actually, T is a subset of the non-base edges? Then S and T are disjoint? So distinct.
+
+      But wait: what if the backward journey uses a non-simple path? Actually, we are running Dijkstra without base edges? Then the path we get might be non-simple? But the set of distinct edges used is T? And T is disjoint from S? Then the set for the backward journey is T? and S != T? 
+
+      Actually, the set for the backward journey might include edges that are not in T? But we built the graph without base edges? Then the backward journey uses only non-base edges? So the set is a subset of non-base edges? Then distinct from S? 
+
+      Therefore, candidate_A_alt is valid.
+
+      Now, candidate_B1: for an edge (u,v) not base and both u and v on the base path? 
+          We compute: 2*T - (segment_time) + t, where segment_time = |d1[u]-d1[v]|? 
+          Why? 
+          Forward: base path: time T, set S.
+          Backward: we break the base path: 
+              from n to u (along base): time = T - d1[u]? 
+              then take the edge (u,v): time t.
+              then from v to 1: time d1[v]? 
+          Total backward: T - d1[u] + t + d1[v] = T + (d1[v]-d1[u]) + t? 
+          But note: the base path time from u to v is |d1[u]-d1[v]|? Actually, if u is before v on the base path, then the segment from u to v is d1[v]-d1[u]. If v is before u, then it is d1[u]-d1[v]. 
+
+          Actually, we don't know the order? But we can compute the segment time as |d1[u]-d1[v]|? 
+
+          Then total = T (forward) + (T + (d1[v]-d1[u]) + t) ? That doesn't subtract the segment? 
+
+          Actually, the backward journey: 
+              Instead of going from n to u and then u to v along the base path (which is the segment from u to v, time = |d1[u]-d1[v]|), we go directly by the edge (u,v) which saves the segment and adds the edge? 
+
+          But wait: in the backward journey, we skip the segment between u and v? Actually, we skip the segment from u to v? Or from v to u? 
+
+          How about: 
+              The base path backward: from n to 1: 
+                  n -> ... -> u -> ... -> v -> ... -> 1? 
+              But we don't know the order? Actually, we know the base path from 1 to n: so we know the order? 
+
+          We can reconstruct the base path as an array and assign positions? Then the segment time between u and v is the absolute difference in the distances? 
+
+          Therefore, the backward journey: 
+              n to v: base path time? = d1[n] - d1[v]? 
+              then from v to u: we cannot use the base path? Actually, we use the edge (v,u) in reverse? time=t.
+              then u to 1: base path? = d1[u]? 
+          Total backward: (d1[n]-d1[v]) + t + d1[u] = T - d1[v] + t + d1[u]? 
+
+          But then we are not skipping the segment between u and v? Actually, the segment between u and v is not traversed? 
+
+          How much time would the backward journey take if we followed the base path? T? 
+          But in this detour, we skip the segment from u to v? Actually, we skip the segment from v to u? 
+
+          Actually, the base path backward: 
+              n -> ... -> u -> ... -> v -> ... -> 1? 
+          Then the time from n to v is the same as the time from n to u + the segment from u to v? Actually, no: 
+              The time from n to v: T - d1[v]? 
+              The time from n to u: T - d1[u]? 
+              The segment from u to v: |d1[u]-d1[v]|? 
+
+          Therefore, the detour: 
+              Instead of going from u to v (which takes |d1[u]-d1[v]|), we take the edge (u,v) which takes t? 
+          Then the backward journey time = (T - d1[u]) + t + d1[v]? 
+          But then total = T (forward) + (T - d1[u] + t + d1[v]) = 2*T + (d1[v]-d1[u]) + t? 
+
+          That is not the same as the formula we had: 2*T - |d1[u]-d1[v]| + t? 
+
+          Actually, if we skip the segment between u and v, we subtract the segment time and add t? 
+
+          How much is the segment time? 
+              If u is before v: then in the forward path, the time from u to v is d1[v]-d1[u]. 
+              Then in the backward path, the base path would go from n to u: T - d1[u] and then from u to v: d1[v]-d1[u]? and then v to 1: d1[v]? -> total backward = T - d1[u] + (d1[v]-d1[u]) + d1[v]? That doesn't make sense.
+
+          Let me define the base path: 
+              nodes: 1 = a0, a1, a2, ..., ak = n
+              d1[a0]=0, d1[a1]=w0, d1[a2]=w0+w1, ... d1[n]=T.
+
+          The backward journey: 
+              We want to go from n to 1. The base path: 
+                 n = ak, a_{k-1}, ... , a0=1.
+              The time from n to u: if u is a_i, then T - d1[u]? 
+              The time from n to v: T - d1[v]? 
+              The segment from u to v: if u = a_i and v = a_j, and i<j, then the segment from u to v in the forward path is d1[v]-d1[u]. In the backward path, the segment from v to u is the same? 
+
+          In the detour: we skip the segment from u to v? Actually, we skip the segment from v to u? 
+
+          The base backward: 
+              n -> ... -> v -> ... -> u -> ... -> 1? 
+          Then we skip the segment from v to u? 
+
+          How? 
+              We go from n to v: time = T - d1[v]? 
+              Then instead of going from v to u (which would take d1[u]-d1[v]? because u is before v? wait: if u is before v, then in the base path, v is after u? Then in the backward path: we go from v to u: that is the same as the forward path from u to v? time = d1[v]-d1[u]? 
+              Then we use the edge (u,v) to jump from v to u? But that edge is not the base edge? Then we save: we skip the segment from v to u? and use the edge (v,u) which takes t? 
+
+          Then the time for the detour: 
+              (T - d1[v])   [n to v] 
+              + t            [v to u] 
+              + d1[u]       [u to 1] 
+          = T - d1[v] + t + d1[u] 
+          = T + (d1[u]-d1[v]) + t
+
+          But if u is after v, then the segment from v to u is d1[u]-d1[v]? Then we save that and use the edge (v,u) which is t? Then the time: 
+              n to u: T - d1[u] 
+              then u to v: by the edge: t? 
+              then v to 1: d1[v] 
+          Total: T - d1[u] + t + d1[v] = T + (d1[v]-d1[u]) + t
+
+          So in both cases, the saving? Actually, we are not saving? We are replacing the segment from the smaller index to the larger index? 
+
+          Actually, the segment time is |d1[u]-d1[v]|? And the formula is: 
+              base_backward = T
+              detour_backward = T - |d1[u]-d1[v]| + t   ??? 
+
+          But our calculation: 
+              detour_backward = T - (d1[v] - d1[u]) + t   if u is before v? 
+              Actually, if u is before v: d1[u] < d1[v], then the segment time from u to v is d1[v]-d1[u]. 
+              Then detour_backward = T - (d1[v]-d1[u]) + t? 
+
+          But wait: 
+              base_backward: 
+                  n->...->v: T - d1[v]
+                  then v->u: d1[v]-d1[u]? 
+                  then u->1: d1[u]? 
+                  total: T - d1[v] + (d1[v]-d1[u]) + d1[u] = T.
+
+          detour_backward: 
+              n->v: T - d1[v]
+              v->u: t (by the edge) 
+              u->1: d1[u] 
+              total: T - d1[v] + t + d1[u] = T + (d1[u]-d1[v]) + t.
+
+          That is not T - (d1[v]-d1[u]) + t? It is T + (d1[u]-d1[v]) + t = T - (d1[v]-d1[u]) + t? 
+
+          So it is the same: T - (d1[v]-d1[u]) + t.
+
+          Similarly, if v is before u: then the segment time from v to u is d1[u]-d1[v]. 
+          Then detour_backward: 
+              n->u: T - d1[u] 
+              u->v: t 
+              v->1: d1[v] 
+              total: T - d1[u] + t + d1[v] = T + (d1[v]-d1[u]) + t = T - (d1[u]-d1[v]) + t.
+
+          Therefore, we can write: 
+              candidate = T + T - |d1[u]-d1[v]| + t = 2*T - |d1[u]-d1[v]| + t.
+
+      candidate_B4: for an edge (u,v) with one endpoint on base and the other not? 
+          Then we consider two options:
+
+          Option1: 
+              forward: base path: T.
+              backward: 
+                  n -> ... -> u (base): T - d1[u] 
+                  then u -> v: t 
+                  then v -> 1: d1[v]   [but note: d1[v] is the time from 1 to v? Then the path from v to 1? Actually, we have dn? 
+                  Actually, we have computed dn: the time from n to any node? 
+                  And d1: the time from 1 to any node? 
+                  The backward journey: 
+                      n to u: dn[u] 
+                      then u to v: t 
+                      then v to 1: d1[v]?   -> but wait: the journey from v to 1 is d1[v]? Actually, no: d1[v] is the time from 1 to v. The backward journey from v to 1: we don't have d1 for that? 
+                  Actually, the graph is undirected? Then the time from v to 1 is the same as from 1 to v? So d1[v] is the time from 1 to v, which is the same as from v to 1? 
+
+          Therefore, total backward: dn[u] + t + d1[v]? 
+
+          Similarly, Option2:
+              backward: 
+                  n to v: dn[v] 
+                  v to u: t 
+                  u to 1: d1[u] 
+              total: dn[v] + t + d1[u]
+
+          Then candidate_B4 = T + min( dn[u] + t + d1[v], dn[v] + t + d1[u] )
+
+          But note: we have dn and d1? 
+          Actually, dn[u] is the time from n to u? and d1[u] is the time from 1 to u? 
+          But we computed dn from n to all? and d1 from 1 to all? 
+
+      Therefore, we have:
+
+          candidate_A_alt: (if exists) = T + (shortest path from 1 to n without base edges)
+
+          candidate_B1: for each edge (u,v) not base and both u and v on base: 
+              cand = 2*T - abs(d1[u]-d1[v]) + t
+              candidate_B1 = min(candidate_B1, cand)
+
+          candidate_B4: for each edge (u,v) not base and one on base and one not:
+              cand = T + min( d1[u] + t + dn[v], d1[v] + t + dn[u] )   # note: we can use d1 and dn? 
+                     = T + min( d1[u] + dn[v] + t, d1[v] + dn[u] + t )
+
+          Then answer = min(candidate_A_alt, candidate_B1, candidate_B4)
+
+          If the answer is INF, output -1.
+
+      Note: we must be cautious: the graph is undirected? So the edge (u,v) can be traversed in either direction? 
+
+      But in candidate_B1 and candidate_B4, we don't care about the direction? 
+
+      Implementation details:
+
+          Step 1: Compute d1 and parent_arr for base path reconstruction.
+
+          Step 2: Reconstruct base path: 
+                base_nodes: set of nodes on the base path.
+                base_edges: set of (min(u,v), max(u,v)) for each edge on the base path? How to get the edges? 
+                    We know the parent_arr? Then the base path: 
+                      cur = n
+                      while cur != 1:
+                         prev = parent_arr[cur]
+                         add (min(prev,cur), max(prev,cur)) to base_edges.
+                         add prev to base_nodes? (1 is already included? and n is added at the beginning)
+                         cur = prev
+
+          Step 3: Compute dn: from n to all? (using the entire graph)
+
+          Step 4: Compute candidate_A_alt: 
+                Build a graph without base_edges? 
+                Then run Dijkstra from 1 to n? 
+                candidate_A_alt = T + (dist[n] if dist[n] != INF, else INF)
+
+          Step 5: candidate_B1 = INF, candidate_B4 = INF.
+                Iterate over all edges in the original graph? 
+                  if the edge is in base_edges: skip.
+                  else:
+                      if both u and v in base_nodes:
+                          cand = 2*T - abs(d1[u]-d1[v]) + t
+                          candidate_B1 = min(candidate_B1, cand)
+                      else:
+                          cand = T + min( d1[u] + dn[v] + t, d1[v] + dn[u] + t )
+                          candidate_B4 = min(candidate_B4, cand)
+
+          Step 6: ans = min(candidate_A_alt, candidate_B1, candidate_B4)
+
+          Step 7: if ans >= INF: print -1; else: print ans.
+
+      Time complexity: 
+          n, m up to 300,000? 
+          Dijkstra: O(m log n) -> two Dijkstras for d1 and dn, then one for candidate_A_alt? 
+          Then we iterate over m edges? 
+
+          Total: O(m log n) -> acceptable for n=100000, m=300000? 
+
+      But note: the graph for candidate_A_alt: we are building a graph with m - (number of base_edges) edges? 
+
+      How many base_edges? The base path has at most n-1 edges? So m - (n-1) ~ 300000? 
+
+      Therefore, we do:
+
+          Let INF = 1e18? 
+
+      Let's test on sample input #4:
+          3 1
+          1 2 1000
+
+          Then base path: from 1 to 3? -> no, because there is no edge to 3? 
+          Step 1: d1[3] remains INF -> then we output -1? 
+
+          But the sample output: -1.
+
+      Therefore, we do:
+
+          if d1[n] == INF: 
+              print(-1)
+              return
+
+      Note: the base path reconstruction: 
+          We have parent_arr? But if d1[n] is INF, we return -1.
+
+      How about sample input #2: 
+          We compute d1: 
+             1->2:10, 2->3:5, 3->4:2 -> d1[4]=17? 
+          Then base path: 4->3->2->1? 
+          base_edges: 
+             (min(4,3)=3,4) -> base_edges.add((3,4))
+             (min(3,2)=2,3) -> base_edges.add((2,3))
+             (min(2,1)=1,2) -> base_edges.add((1,2))
+
+          Then candidate_A_alt: build graph without base_edges -> no edges? Then candidate_A_alt = INF.
+
+          candidate_B1: no non-base edge? skip.
+          candidate_B4: no non-base edge? skip.
+
+          Then ans = INF -> output -1.
+
+      How about sample input #3: 
+          4 4
+          1 2 3
+          2 4 2
+          1 3 3
+          3 4 4
+
+          Base path: 
+            We compute d1: 
+               1:0
+               2:3, 3:3
+               4: min(3+2, 3+4) = 5 -> so base path: 1->2->4? 
+          Then base_edges: 
+               (min(1,2)=1,2) -> (1,2)
+               (min(2,4)=2,4) -> (2,4)
+          base_nodes: {1,2,4}
+
+          candidate_A_alt: 
+             We remove base_edges: we are left with (1,3) and (3,4). 
+             Then the graph: 
+                1: [ (3,3) ]
+                2: [ ]
+                3: [ (1,3), (4,4) ]
+                4: [ (3,4) ]
+             Then Dijkstra from 1: 
+                1:0
+                3:3
+                4: min(3+4=7) -> so dist[4]=7? 
+             candidate_A_alt = 5+7=12.
+
+          candidate_B1: 
+             non-base edges: (1,3,3) -> one endpoint 1 (base) and 3 (not base) -> skip for B1 -> go to B4.
+                     candidate_B4: 
+                         for (1,3,3): 
+                            cand1 = 5 + min( d1[1] + dn[3] + 3, d1[3] + dn[1] + 3 )
+                            We need dn: from n=4? 
+                                dn[4]=0
+                                dn[1]? 
+                                  from 4: 
+                                    4->2:2 (if base edge is available? but we are computing dn on the entire graph) 
+                                    4->3:4
+                                    2->1:3 -> so dn[1]=min(2+3=5, 4+? from 3 to 1: 3? -> 4+3=7) -> so dn[1]=5
+                                dn[3]=min(4, 2+? from 2 to 3: not directly? then 2+3+? -> no, 2->1->3? 2+3+3=8? and 4? so dn[3]=4? 
+                            Actually, we computed dn with the entire graph? 
+                                Start at 4: 
+                                  4:0
+                                  push (0,4)
+                                  4->2:2 -> dn[2]=2
+                                  4->3:4 -> dn[3]=4
+                                  2->1:3 -> dn[1]=min(INF, 2+3=5) -> 5
+                                  2->4:2 (already done)
+                                  1->2:3 -> 5+3>2? skip.
+                                  1->3:3 -> 5+3=8>4? skip.
+                                  3->1:3 -> 4+3=7>5? skip.
+                                  etc.
+
+                            Then:
+                                 cand1 = 5 + min( d1[1] + dn[3] + 3, d1[3] + dn[1] + 3 ) 
+                                        = 5 + min( 0+4+3, 3+5+3 ) 
+                                        = 5 + min(7, 11) = 5+7 = 12.
+
+                         Then candidate_B4=12? 
+
+             Also edge (3,4,4): 
+                  3 in base_nodes? no (base_nodes={1,2,4}), 4 in base_nodes: yes -> so one in and one out? 
+                  cand = 5 + min( d1[3]+dn[4]+4, d1[4]+dn[3]+4 ) 
+                        = 5 + min( 3+0+4, 5+4+4 ) 
+                        = 5 + min(7,13) = 12.
+
+             Then candidate_B4=12.
+
+          candidate_B1: we have edge (1,3) and (3,4) are not both in base_nodes? so skip.
+
+          Then ans = min(12, INF, 12) = 12.
+
+      Therefore, we have two candidates yielding 12? 
+
+      But note: candidate_A_alt is 12? So the answer is 12.
+
+      However, note: the problem says the set of distinct roads? 
+          candidate_A_alt: 
+             forward: base path: edges (1,2) and (2,4) -> set = { (1,2), (2,4) }
+             backward: edges (1,3) and (3,4) -> set = { (1,3), (3,4) } -> distinct? 
+          candidate_B4 for (1,3): 
+             forward: base path: { (1,2), (2,4) }
+             backward: 
+                4->1: 
+                  4->3 (edge (3,4)): set has (3,4) 
+                  3->1: (1,3) -> set = { (1,3), (3,4) } -> distinct? 
+          So both are valid.
+
+      Therefore, we output 12.
+
+      But note: there might be a candidate that is smaller? 
+
+      How about the base path for forward: 1->2->4 (time=5) and for backward: 1->3->4 (time=7) -> total=12? 
+
+      But the problem: the backward journey is from n (which is 4) to 1? So we must go from 4 to 1? 
+
+      How can we do 4->1 using the path 4->3->1? That is valid? 
+
+      Therefore, we have:
+
+          candidate_A_alt: 5+7=12.
+
+      So the code:
+
+          We'll do:
+
+            d1: from 1 to all (with the entire graph) -> also record parent_arr for base path reconstruction.
+            if d1[n] == INF -> -1.
+
+            dn: from n to all (with entire graph)
+
+            Reconstruct base_nodes and base_edges.
+
+            candidate_A_alt: 
+                Build a graph without base_edges: 
+                  graph_alt = array of vectors for n+1
+                  for each edge (u,v,t) in the original edges:
+                      if (min(u,v), max(u,v)) in base_edges: skip
+                      else: 
+                         add (v,t) to graph_alt[u]
+                         add (u,t) to graph_alt[v]
+                Then run Dijkstra on graph_alt from 1 to n? 
+                candidate_A_alt = T + (dist_alt[n])
+
+            candidate_B1 = INF, candidate_B4 = INF.
+            for each edge (u,v,t) in the original edges:
+                if (min(u,v), max(u,v)) in base_edges: skip
+                else:
+                    if u in base_nodes and v in base_nodes:
+                        cand = 2*T - abs(d1[u]-d1[v]) + t
+                        candidate_B1 = min(candidate_B1, cand)
+                    else:
+                        cand = T + min( d1[u] + dn[v] + t, d1[v] + dn[u] + t )
+                        candidate_B4 = min(candidate_B4, cand)
+
+            ans = min(candidate_A_alt, candidate_B1, candidate_B4)
+
+            if ans >= INF: print -1
+            else: print ans
+
+      Note: we must use a large INF? 
+
+      Let INF = 1e18? 
+
+      But the maximum T is 100000*1000 = 100,000,000? and m<=300000, so the total time can be at most 300000*1000 = 300,000,000? Then 2*T + ... might be 200,000,000? 
+
+      But we are adding candidate_A_alt which is T + (something) -> so we need INF > 400,000,000? 
+
+      Let INF = (1LL<<60) or 1e18.
+
+      Code for Dijkstra: standard.
+
+      Let's code accordingly.
+
+      Important: when reconstructing base_edges, we store as (min, max) for each edge.
+
+      We assume the graph is 1-indexed.
+
+      We note: the base path reconstruction: 
+          cur = n
+          base_nodes.insert(n)
+          base_edges set is empty.
+          while cur != 1:
+             prev = parent_arr[cur]
+             base_nodes.insert(prev)
+             u = min(prev, cur)
+             v = max(prev, cur)
+             base_edges.insert({u, v})
+             cur = prev
+
+      But note: the parent_arr: we built during the first Dijkstra? 
+          d1: we stored parent_arr[v] = u, meaning the previous node of v is u? 
+          Then the edge is between u and v? 
+
+      Then we store (min(u,v), max(u,v)) as the edge.
+
+      We are done.
+
+      Let's test on sample input #1: 
+          n=3, m=2
+          edges: 
+             (1,2,10)
+             (1,3,5)
+
+          Base path: 
+            d1[1]=0, d1[2]=10, d1[3]=5.
+            So the base path: 1->3? 
+            Then base_nodes = {1,3}
+            base_edges = { (min(1,3)=1, max(1,3)=3) }
+
+          candidate_A_alt: 
+            Remove edge (1,3)? Then we have edge (1,2,10)? 
+            Then graph_alt: 
+                1: [ (2,10) ]
+                2: [ (1,10) ]
+                3: [ ]
+            Then from 1 to 3: not reachable? candidate_A_alt = INF.
+
+          candidate_B1: 
+            non-base edge: (1,2,10): 
+                u=1, v=2: 1 in base_nodes? yes, 2 in base_nodes? no -> so candidate_B4.
+          candidate_B4: 
+                cand = T + min( d1[1] + dn[2] + 10, d1[2] + dn[1] + 10 )
+                T=5.
+                We need dn: from n=3 to all? 
+                  dn[3]=0
+                  dn[1]: from 3->1:5? 
+                  dn[2]: from 3->1->2: 5+10=15? 
+                Then:
+                   cand1 = 5 + min( 0+15+10, 10+5+10 ) 
+                         = 5 + min(25, 25) = 30.
+
+          Then ans = min(INF, INF, 30) = 30.
+
+      Correct.
+
+      We'll code accordingly.
+
+      Note: we have to be cautious about the parent_arr: we build it only for the base path? 
+
+      Implementation:
+
+          We'll do:
+
+            vector<LL> d1(n+1, INF);   // LL = long long
+            vector<LL> parent_arr(n+1, -1);   // or 0-indexed? we use 1-indexed.
+
+            d1[1]=0;
+            priority_queue< pair<LL,LL>, vector<pair<LL,LL>>, greater<pair<LL,LL>> > pq;
+            pq.push({0,1});
+            while (!pq.empty()) {
+                auto [dist, u] = pq.top(); pq.pop();
+                if (dist != d1[u]) continue;
+                for (auto [v, w] : graph[u]) {
+                    LL nd = dist + w;
+                    if (nd < d1[v]) {
+                        d1[v] = nd;
+                        parent_arr[v] = u;
+                        pq.push({nd, v});
+                    }
+                }
+            }
+
+            if (d1[n] == INF) { cout << -1 << endl; return; }
+
+            // Compute dn: 
+            vector<LL> dn(n+1, INF);
+            pq = priority_queue<...>();
+            dn[n]=0;
+            pq.push({0, n});
+            while (!pq.empty()) {
+                auto [dist, u] = pq.top(); pq.pop();
+                if (dist != dn[u]) continue;
+                for (auto [v, w] : graph[u]) {
+                    LL nd = dist + w;
+                    if (nd < dn[v]) {
+                        dn[v] = nd;
+                        pq.push({nd, v});
+                    }
+                }
+            }
+
+            // Reconstruct base path nodes and edges.
+            set<LL> base_nodes;
+            set<pair<LL,LL>> base_edges;   // store (min, max) for each edge.
+
+            base_nodes.insert(n);
+            LL cur = n;
+            while (cur != 1) {
+                LL prev = parent_arr[cur];
+                base_nodes.insert(prev);
+                LL a = min(prev, cur);
+                LL b = max(prev, cur);
+                base_edges.insert({a, b});
+                cur = prev;
+            }
+
+            // candidate_A_alt: build graph_alt
+            vector<vector<pair<LL,LL>>> graph_alt(n+1);  // 1-indexed, graph_alt[u] = {v, w}
+            for (LL i=0; i<m; i++) {
+                LL u = edges[i][0], v = edges[i][1], w = edges[i][2];
+                LL a = min(u,v);
+                LL b = max(u,v);
+                if (base_edges.find({a,b}) != base_edges.end()) {
+                    // skip
+                } else {
+                    graph_alt[u].push_back({v, w});
+                    graph_alt[v].push_back({u, w});
+                }
+            }
+
+            vector<LL> dist_alt(n+1, INF);
+            pq = priority_queue<...>();
+            dist_alt[1]=0;
+            pq.push({0,1});
+            while (!pq.empty()) {
+                auto [dist, u] = pq.top(); pq.pop();
+                if (dist != dist_alt[u]) continue;
+                for (auto [v, w] : graph_alt[u]) {
+                    LL nd = dist + w;
+                    if (nd < dist_alt[v]) {
+                        dist_alt[v] = nd;
+                        pq.push({nd, v});
+                    }
+                }
+            }
+            LL candidate_A_alt = INF;
+            if (dist_alt[n] < INF) {
+                candidate_A_alt = d1[n] + dist_alt[n];
+            }
+
+            LL candidate_B1 = INF;
+            LL candidate_B4 = INF;
+            for (LL i=0; i<m; i++) {
+                LL u = edges[i][0], v = edges[i][1], t = edges[i][2];
+                LL a = min(u,v);
+                LL b = max(u,v);
+                if (base_edges.find({a,b}) != base_edges.end()) {
+                    continue;
+                }
+                if (base_nodes.find(u) != base_nodes.end() && base_nodes.find(v) != base_nodes.end()) {
+                    // both on base path
+                    LL seg = abs(d1[u] - d1[v]);   // segment time on base path
+                    LL cand = 2 * d1[n] - seg + t;
+                    if (cand < candidate_B1) candidate_B1 = cand;
+                } else {
+                    LL option1 = d1[u] + dn[v] + t;
+                    LL option2 = d1[v] + dn[u] + t;
+                    LL cand = d1[n] + min(option1, option2);
+                    if (cand < candidate_B4) candidate_B4 = cand;
+                }
+            }
+
+            LL ans = min({candidate_A_alt, candidate_B1, candidate_B4});
+            if (ans >= INF) {
+                cout << -1 << endl;
+            } else {
+                cout << ans << endl;
+            }
+
+      But note: what if the non-base edge is not connecting two base nodes? but one base and one non-base? then we do candidate_B4.
+
+      However, what if the edge is connecting two non-base nodes? 
+          Then both u and v are not in base_nodes? 
+          The problem: we are only considering candidate_B1 and candidate_B4? 
+          But the problem says: 
+            candidate_B1: for an edge connecting two base path nodes (both on base) -> then we skip the segment.
+            candidate_B4: for an edge connecting a base node to a non-base node -> then we form a detour that goes from base node to non-base node and then to 1 via the non-base node's path? 
+
+          What about an edge connecting two non-base nodes? 
+          The problem: we are not considering it? 
+
+          Why? 
+            The candidate_B4: we require at least one endpoint to be base? Actually, the condition: 
+                if (both in base) -> candidate_B1
+                else -> candidate_B4
+
+          But what if neither is in base? then we go to candidate_B4? 
+
+          In candidate_B4: 
+              cand = T + min( d1[u] + dn[v] + t, d1[v] + dn[u] + t )
+
+          But is that valid? 
+              The forward journey: base path: set S.
+              The backward journey: 
+                 We start at n, then we have to get to u? But u is not on the base path? Then we cannot use the base path to get to u? 
+                 Actually, the formula: 
+                    Option1: n->v (dn[v]) then v->u (t) then u->1 (d1[u])? 
+                    Option2: n->u (dn[u]) then u->v (t) then v->1 (d1[v])?
+
+          But note: the entire backward journey: 
+              n->v: time dn[v] -> but v is not on the base path? Then dn[v] is the shortest time from n to v? which may not use the base path? 
+              then v->u: time t
+              then u->1: time d1[u]? which is the shortest from 1 to u? 
+
+          Then the set of the backward journey: 
+              The edges used in the path: 
+                 the path from n to v: which might include base edges? 
+                 the edge (v,u) (non-base) 
+                 the path from u to 1: which might include base edges? 
+
+          Therefore, the set of the backward journey includes the base edges? and the edge (u,v) -> so it is different from S? 
+
+          Why? 
+              The forward journey set S (base edges) does not include (u,v) (because it is non-base and not in S) and the backward journey includes (u,v) and may include other base edges? 
+          But note: it might be that the backward journey uses all the base edges? and the edge (u,v) -> then the set is S ∪ {u,v}? which is different from S? 
+
+          Therefore, it is valid.
+
+          So we do not need to require that at least one is base? We can use the same formula for any edge that is not a base edge? 
+
+          However, the problem: 
+              candidate_B1: for an edge that is not base and both endpoints on base: we have a more efficient formula? 
+              candidate_B4: for any non-base edge (whether one base or none, or two non-base) -> we use the same formula.
+
+          Therefore, we can change the condition:
+
+            if (base_edges.find(edge) != base_edges.end()) -> skip.
+
+            else if (both u and v in base_nodes) -> candidate_B1
+            else -> candidate_B4   [which includes the case of one base node and the case of no base node]
+
+      So we are good.
+
+      Let's test an edge connecting two non-base nodes? 
+          sample: 
+            n=4, base_nodes={1,2,4}, base_edges={(1,2),(2,4)}
+          Suppose we have an edge (3,5) in a bigger graph? not in the sample.
+
+          But in our sample input #3, we don't have such an edge? 
+
+          But if we add an edge (3,5) with weight 100? 
+          Then candidate_B4: 
+             cand = T + min( d1[3] + dn[5] + 100, d1[5] + dn[3] + 100 )
+          But 5 is not in the base_nodes? 
+          We have to have computed d1[5] and dn[5]? 
+          But if 5 is not connected? then d1[5]=INF, then cand = INF? 
+
+          So we skip.
+
+      Therefore, the code is as above.
+
+      Note: we are storing the edges as (min, max) to avoid duplication? 
+
+      We'll code accordingly.
+
+      Important: use long long for everything.
+
+      Let's code.
+
+      Note: the input: u and v: we have 1-indexed.
+
+      We'll store the edges in a vector of vectors? 
+          vector<tuple<LL,LL,LL>> edges_list;   // or we can store as array? 
+          But we need to iterate over the edges for candidate_B1 and candidate_B4? 
+
+          Alternatively, we can store the edges in a list and then iterate.
+
+      Steps:
+
+          Read n, m.
+          vector< vector<pair<LL,LL>> > graph(n+1);
+          vector<tuple<LL,LL,LL>> edges_list;
+          for i in range(m):
+             u, v, t = read
+             graph[u].push_back({v, t});
+             graph[v].push_back({u, t});
+             edges_list.push_back({u, v, t});
+
+          Then run the first Dijkstra for d1 and parent_arr.
+
+          Then run the second Dijkstra for dn.
+
+          Then reconstruct base_nodes and base_edges.
+
+          Then build graph_alt for candidate_A_alt: 
+             We'll create a new graph: graph_alt (n+1, vector<pair<LL,LL>>())
+             For each edge in edges_list:
+                 if the edge is not in base_edges: add both directions.
+
+          Then run Dijkstra on graph_alt for dist_alt.
+
+          Then iterate over edges_list for candidate_B1 and candidate_B4.
+
+      We'll use:
+
+          #include <bits/stdc++.h>
+          using namespace std;
+          typedef long long LL;
+          const LL INF = 1e18;
+
+      We assume the graph is 1-indexed.
+
+      Let's code accordingly.
+
+      Note: the priority_queue: we use:
+
+          priority_queue< pair<LL,LL>, vector<pair<LL,LL>>, greater<pair<LL,LL>> > pq;
+
+      Or we can use negative? But we'll use greater.
+
+      We'll test with sample inputs.
+
+      Sample input #4: 
+          3 1
+          1 2 1000
+
+          Then d1[3] = INF -> output -1.
+
+      Sample input #2: 
+          4 3
+          1 2 10
+          2 3 5
+          3 4 2
+
+          Then base_edges: all edges -> candidate_A_alt: INF, candidate_B1: no non-base edge, candidate_B4: no non-base edge? -> ans = INF -> output -1.
+
+      Sample input #3: 
+          4 4
+          1 2 3
+          2 4 2
+          1 3 3
+          3 4 4
+
+          We computed candidate_A_alt=12, candidate_B4=12 -> ans=12.
+
+      Sample input #1: 
+          3 2
+          1 2 10
+          1 3 5
+
+          candidate_A_alt=INF, candidate_B4=30 -> ans=30.
+
+      Therefore, we output the sample answers.
+
+      We'll code accordingly.
+
+      Note: the base_edges: we are storing as (min, max) as a pair.
+
+      Let me write the base_edges for sample input #3: 
+          base path: 1->2->4: 
+            edges: (1,2) -> (1,2); (2,4) -> (2,4)
+
+      Then we skip these two? 
+
+      Then the graph_alt: 
+          1: [ (3,3) ]
+          2: [ ]
+          3: [ (1,3), (4,4) ]
+          4: [ (3,4) ]
+
+      Then Dijkstra from 1: 
+         1:0
+         3:3 -> push(3,3)
+         4: min(3+4=7) -> so dist_alt[4]=7.
+
+      candidate_A_alt = 5+7=12.
+
+      Then for candidate_B4: 
+          edge (1,3,3): 
+             u=1, v=3: 1 in base, 3 not? -> so candidate_B4: 
+                 cand = 5 + min( d1[1]+dn[3]+3, d1[3]+dn[1]+3 ) 
+                      = 5 + min(0+4+3, 3+5+3) = 5+min(7,11)=12.
+
+          edge (3,4,4): 
+             u=3, v=4: 3 not in base, 4 in base -> 
+                 cand = 5 + min( d1[3]+dn[4]+4, d1[4]+dn[3]+4 )
+                      = 5 + min(3+0+4, 5+4+4) = 5+min(7,13)=12.
+
+      Then candidate_B4=12.
+
+      Then ans=min(12, INF, 12)=12.
+
+      Correct.
+
+      We'll code accordingly.
+
+      One more: sample input #2: 
+          4 3
+          1 2 10
+          2 3 5
+          3 4 2
+
+          base_edges: all three: (1,2), (2,3), (3,4)
+
+          candidate_A_alt: remove all edges -> no path -> INF.
+
+          candidate_B1: no non-base edge? skip.
+
+          candidate_B4: no non-base edge? skip.
+
+          ans=INF -> output -1.
+
+      Done.
+
+      Let me run the provided sample inputs.
+
+      We'll code accordingly.
+
+      Note: the base_edges: we must store the edges by (min, max) and then check.
+
+      Implementation:
+
+          We store the edges_list as vector<tuple<LL,LL,LL>>, but we can also use vector<array<LL,3>>.
+
+      Code:
+
+          #include <bits/stdc++.h>
+          using namespace std;
+          typedef long long LL;
+          const LL INF = 1e18;
+
+          int main() {
+              ios::sync_with_stdio(false);
+              cin.tie(0);
+
+              LL n, m;
+              cin >> n >> m;
+
+              vector<vector<pair<LL,LL>>> graph(n+1);
+              vector<array<LL,3>> edges_list;
+              for (LL i=0; i<m; i++) {
+                  LL u, v, t;
+                  cin >> u >> v >> t;
+                  graph[u].push_back({v, t});
+                  graph[v].push_back({u, t});
+                  edges_list.push_back({u, v, t});
+              }
+
+              vector<LL> d1(n+1, INF);
+              vector<LL> parent_arr(n+1, -1);
+              priority_queue< pair<LL,LL>, vector<pair<LL,LL>>, greater<pair<LL,LL>> > pq;
+
+              d1[1] = 0;
+              pq.push({0,1});
+              while (!pq.empty()) {
+                  auto [dist, u] = pq.top(); pq.pop();
+                  if (dist != d1[u]) continue;
+                  for (auto [v, w] : graph[u]) {
+                      LL nd = dist + w;
+                      if (nd < d1[v]) {
+                          d1[v] = nd;
+                          parent_arr[v] = u;
+                          pq.push({nd, v});
+                      }
+                  }
+              }
+
+              if (d1[n] == INF) {
+                  cout << -1 << endl;
+                  return 0;
+              }
+
+              vector<LL> dn(n+1, INF);
+              pq = priority_queue< pair<LL,LL>, vector<pair<LL,LL>>, greater<pair<LL,LL>> >();
+              dn[n] = 0;
+              pq.push({0, n});
+              while (!pq.empty()) {
+                  auto [dist, u] = pq.top(); pq.pop();
+                  if (dist != dn[u]) continue;
+                  for (auto [v, w] : graph[u]) {
+                      LL nd = dist + w;
+                      if (nd < dn[v]) {
+                          dn[v] = nd;
+                          pq.push({nd, v});
+                      }
+                  }
+              }
+
+              set<LL> base_nodes;
+              set<pair<LL,LL>> base_edges;
+              base_nodes.insert(n);
+              LL cur = n;
+              while (cur != 1) {
+                  LL prev = parent_arr[cur];
+                  base_nodes.insert(prev);
+                  LL a = min(prev, cur);
+                  LL b = max(prev, cur);
+                  base_edges.insert({a, b});
+                  cur = prev;
+              }
+              // Also insert node 1? The while loop stops at 1, and we insert prev (which is the parent of the current) until we get to 1? 
+              // Actually, when cur=1, we break. Then we have inserted 1? 
+              // Let me see: 
+              //   base_nodes initially has n.
+              //   then we start at n: 
+              //        prev = parent_arr[n] -> then we insert prev (which is the node before n) and also the edge (min(prev,n), max(prev,n))
+              //        then set cur = prev.
+              //   then we break when cur==1? so when we are at 1, we break without inserting 1? 
+              //   But we started by inserting n? and then we insert each parent until we get to 1? 
+              //   Actually, the last step: 
+              //        cur = 1: then we break? so 1 is inserted in a previous step? 
+              //   How? 
+              //        We start at n, then we go to its parent (say p1), then we set cur = p1, then we insert p1? 
+              //        Then we go to the parent of p1 (say p2), insert p2, then set cur=p2.
+              //        ... until we get to 1: 
+              //            When we are at 1: we break? 
+              //        Then 1 is inserted in the last iteration? 
+              //   Actually, no: 
+              //        In the iteration where cur = 1: 
+              //            prev = parent_arr[1] -> which is -1? -> then we break? 
+              //        But we require cur != 1? so we break? 
+              //   Then 1 is not inserted? 
+              //   But we started at n, then we go to the parent of n, then the parent of that ... until we get to 1? 
+              //   We break when we are at 1? Then we don't process the edge from 1 to its parent? 
+              //   Actually, the base path: 
+              //        1 -> ... -> n
+              //        We start at n, then we get the parent of n (say p), then we get the parent of p ... until we get to 1? 
+              //        The last edge we process is from 1 to its child? 
+              //   Actually, the base_edges: 
+              //        We process the edge from n to parent_arr[n] -> which is the last edge? 
+              //        Then the edge from parent_arr[n] to parent_arr[parent_arr[n]]? 
+              //        ... until we get to 1: the last edge we process is from the node that is the child of 1 to 1? 
+              //        Then we set cur = parent_arr[child] = 1? then break? 
+              //   Then base_nodes: we inserted the child of 1? and 1? 
+              //   Actually, no: 
+              //        In the step: 
+              //           cur = (child of 1) 
+              //           prev = parent_arr[child] = 1 -> we insert 1? 
+              //           base_edges: we insert (min(1, child), max(1, child))
+              //           then set cur = 1 -> then break? 
+              //   So base_nodes includes 1? 
+
+              // Therefore, we are safe.
+
+              // candidate_A_alt: build graph_alt and run dijkstra.
+              vector<vector<pair<LL,LL>>> graph_alt(n+1);
+              for (auto &e : edges_list) {
+                  LL u = e[0], v = e[1], t = e[2];
+                  LL a = min(u,v);
+                  LL b = max(u,v);
+                  if (base_edges.find({a,b}) != base_edges.end()) {
+                      continue;
+                  }
+                  graph_alt[u].push_back({v, t});
+                  graph_alt[v].push_back({u, t});
+              }
+
+              vector<LL> dist_alt(n+1, INF);
+              pq = priority_queue< pair<LL,LL>, vector<pair<LL,LL>>, greater<pair<LL,LL>> >();
+              dist_alt[1] = 0;
+              pq.push({0,1});
+              while (!pq.empty()) {
+                  auto [dist, u] = pq.top(); pq.pop();
+                  if (dist != dist_alt[u]) continue;
+                  for (auto [v, w] : graph_alt[u]) {
+                      LL nd = dist + w;
+                      if (nd < dist_alt[v]) {
+                          dist_alt[v] = nd;
+                          pq.push({nd, v});
+                      }
+                  }
+              }
+              LL candidate_A_alt = INF;
+              if (dist_alt[n] < INF) {
+                  candidate_A_alt = d1[n] + dist_alt[n];
+              }
+
+              LL candidate_B1 = INF;
+              LL candidate_B4 = INF;
+              for (auto &e : edges_list) {
+                  LL u = e[0], v = e[1], t = e[2];
+                  LL a = min(u,v);
+                  LL b = max(u,v);
+                  if (base_edges.find({a,b}) != base_edges.end()) {
+                      continue;
+                  }
+                  // Check if both in base_nodes?
+                  if (base_nodes.find(u) != base_nodes.end() && base_nodes.find(v) != base_nodes.end()) {
+                      LL seg = abs(d1[u] - d1[v]);
+                      LL cand = 2 * d1[n] - seg + t;
+                      if (cand < candidate_B1) candidate_B1 = cand;
+                  } else {
+                      LL option1 = d1[u] + dn[v] + t;   // forward: u is from 1 to u, backward: v to n? no: we are going from n to 1: so we need n->v? dn[v] is the time from n to v? and then from u to 1: d1[u]? 
+                      // But the journey: n->v->u->1? 
+                      // Or: n->u->v->1? 
+                      // Actually, we have two options: 
+                      //   Option1: n->v (dn[v]), then v->u (t), then u->1 (d1[u])? 
+                      //   Option2: n->u (dn[u]), then u->v (t), then v->1 (d1[v])? 
+                      // So we take the min of these two.
+                      LL option2 = d1[v] + dn[u] + t;
+                      LL cand = d1[n] + min(option1, option2);
+                      if (cand < candidate_B4) candidate_B4 = cand;
+                  }
+              }
+
+              LL ans = min({candidate_A_alt, candidate_B1, candidate_B4});
+              if (ans >= INF) {
+                  cout << -1 << endl;
+              } else {
+                  cout << ans << endl;
+              }
+
+              return 0;
+          }
+
+      Let me test with sample input #1: 
+          candidate_B4: for edge (1,2,10): 
+              u=1, v=2: 
+                 option1 = d1[1] + dn[2] + 10 = 0 + 15 + 10 = 25
+                 option2 = d1[2] + dn[1] + 10 = 10 + 5 + 10 = 25
+                 cand = 5 + 25 = 30.
+
+      So candidate_B4=30.
+
+      Then ans=30.
+
+      Correct.
+
+      We'll run the code on the sample inputs.
+
+      Note: the dn for sample input #1: 
+          n=3: 
+            dn[3]=0.
+            from 3: 
+                3->1:5 -> dn[1]=min(INF, 0+5)=5 -> push(5,1)
+                3->2: ? -> no direct edge? 
+            Then from 1: 
+                1->2:10 -> dn[2]=min(INF,5+10)=15 -> push(15,2)
+
+          So dn[2]=15, dn[1]=5.
+
+      Therefore, the code is correct.
+
+      We'll submit.
+
+      But note: the problem constraints: n up to 100000, m up to 300000? 
+          The three Dijkstras: 
+             d1: O(m log n)
+             dn: O(m log n)
+             dist_alt: O(m' log n) where m' <= m, so worst-case m=300000 -> about 300000*log(100000) ~ 300000*17 = 5.1e6, which is acceptable.
+
+          The sets: 
+             base_edges: we do m lookups? each O(log (base_edges.size)) -> base_edges.size = number of edges in base path = n-1? so about 100000? so log(100000) is about 17? total m*17 = 300000*17=5.1e6? 
+
+          The base_nodes: we do m lookups? similarly.
+
+          So overall acceptable.
+
+      Let me run the sample inputs in the code.
+
+      We'll do.
+
+      Note: the base_edges: we are storing as (min, max) for each edge? 
+
+      One more: when we build graph_alt: we skip base_edges? 
+
+      We'll run the sample input #1: 
+          base_edges: only (1,3) -> so we skip that edge? 
+          Then graph_alt: 
+            1: [ (2,10) ]
+            2: [ (1,10) ]
+            3: [ ]
+
+          Then dist_alt: 
+            1:0
+            2:10
+            3: INF? 
+
+          Then candidate_A_alt = INF.
+
+      Correct.
+
+      So we are done.
+
+      Code accordingly.

@@ -1,0 +1,1155 @@
+ We are given up to 15 strings, each of length up to 15.
+ We need to choose one subsequence from each string such that:
+   s0 < s1 < ... < s_{n-1}   (lexicographically)
+ and maximize the total length.
+
+ Steps:
+ 1. Precompute for each string S_i: all distinct non-empty subsequences (as strings) and sort them lexicographically.
+    Note: We can generate by bitmask, and then use a set to remove duplicates, then sort.
+
+ 2. Use dynamic programming:
+    Let dp[i][j] = maximum total length for the first i+1 children, where the i-th child's name is the j-th subsequence (in lex order) of S_i.
+
+    Transition:
+      For the first string: dp[0][j] = length(subseq_j)
+      For i>=1:
+        for each subsequence j in string i (let this subsequence be t):
+          We look at all subsequences k from string i-1 that are lexicographically < t.
+          Then: dp[i][j] = max_{k: subseq_k < t} { dp[i-1][k] } + len(t)
+
+ 3. To optimize the transition, we can:
+    - Pre-sort the list of subsequences for each string (which we did).
+    - For the previous string (i-1), we build a prefix maximum array over the sorted subsequences for the DP values.
+        Specifically, let A = sorted list of subsequences for string i-1.
+        Let B = dp[i-1] values (same order as A).
+        Build prefix_max: prefix_max[j] = max(B[0], B[1], ..., B[j])
+
+    - For a given subsequence t in string i, we find the position pos in A such that:
+          A[pos] is the first subsequence that is >= t.
+        Then all subsequences in A[0:pos] are < t.
+        Then the best value from the previous string for t is prefix_max[pos-1] (if pos>0).
+
+ 4. If at any step we find that for a string i, there is no valid subsequence (meaning that we cannot extend from the previous string) then we break early.
+
+ 5. After processing all strings, if the maximum value in the last dp array is negative (or if we broke early meaning no valid sequence) then output -1.
+
+ Important: There might be duplicates in subsequences? The problem says distinct subsequences? We use set to remove duplicates.
+
+ Constraints: 
+   N <= 15, each |S_i| <= 15 -> worst-case distinct subsequences per string: 2^15 = 32768 (which is acceptable).
+
+ Implementation:
+
+ Steps in code:
+
+   Read N and the list of strings.
+
+   Precompute for each string:
+        set<string> seen;
+        for mask from 1 to (1<<len)-1:
+            build the subsequence by including the j-th character if the j-th bit in mask is set.
+        then convert the set to a vector and sort.
+
+   dp_prev = vector for the first string: each element is the length of the subsequence.
+
+   For i from 1 to N-1:
+        Let A = sorted subsequences of the previous string (i-1) and dp_prev (the dp values for the previous string).
+        Build prefix_max: 
+            prefix_max[0] = dp_prev[0]
+            for j from 1 to len(A)-1: prefix_max[j] = max(prefix_max[j-1], dp_prev[j])
+
+        Let current = sorted subsequences of the current string (i).
+        dp_current = vector of length len(current), initialized to a very small number (or negative infinity).
+
+        For each index j in the current string's subsequences:
+            Let t = current[j]
+            Find the position 'pos' in A (the previous string's subsequences) such that A[pos] >= t (using bisect_left).
+
+            Then if pos==0: there is no subsequence in the previous string that is less than t -> skip (or leave as -inf).
+            Else: dp_current[j] = prefix_max[pos-1] + len(t)
+
+        Then set dp_prev = dp_current.
+
+   Then after the loop, if dp_prev is empty (which should not happen for the first string, but for subsequent if we break) or the max of dp_prev is negative, then output -1.
+   Otherwise, output the max.
+
+ However note: It is possible that for the first string we have no subsequences? But the string length>=1 so we have at least one subsequence.
+
+ But what if a string has no non-empty subsequence? Actually we skip empty strings so we are safe.
+
+ Important: The problem says non-empty.
+
+ But note: We start from mask=1, so we skip the empty string.
+
+ However, what if the set becomes empty? That should not happen because we skip mask=0.
+
+ But note: if the string is empty? The input says: each S_i has at least length 1.
+
+ Implementation:
+
+   We'll do:
+
+      N = number of children
+      Read the strings.
+
+      A_list: a list (for each string) of sorted distinct non-empty subsequences.
+
+      dp_prev: for the first string, we have an array of the lengths of the subsequences.
+
+      For i from 1 to N-1:
+          Build prefix_max from dp_prev and the sorted list A_list[i-1] (which is the list for the previous string).
+
+          Then for the current string i, we have A_list[i] (the sorted subsequences for the current string).
+
+          For each subsequence t in A_list[i]:
+              pos = bisect_left in A_list[i-1] for t -> the index of the first element >= t.
+
+              Then if pos==0, then we cannot pick any subsequence from the previous string that is less than t -> so we skip (leave as -inf).
+
+              Otherwise, we take prefix_max[pos-1] and add the length of t.
+
+          Then set dp_prev = dp_current.
+
+      Then answer = max(dp_prev) for the last string.
+
+      If the max is negative, output -1.
+
+  However, what if the first string has no subsequences? But we start with non-empty so at least one.
+
+  But what if the next string has no valid subsequence? Then we break and then after the loop we check: if the dp_prev is all negative -> then we output -1.
+
+  But note: we break the loop? Actually we don't break, we just set dp_prev to a vector of negative values and then process the next? 
+
+  However, if we have a string that has no valid subsequence (i.e., we cannot extend from the previous) then the entire dp_current becomes negative. Then when we process the next string, we build prefix_max from a vector of negative numbers? That is acceptable.
+
+  But note: we break early? The problem says: if at any step we break? Actually we don't break the loop, we process all.
+
+  However, if we have no valid sequence for the first two, then we set dp_prev for the second to negative. Then for the third, we try to build prefix_max from the second's dp_prev (which are all negative). Then for a subsequence t in the third string, we look for a previous subsequence that is less: if we find one, we take the best value (which is the least negative) and then add the length of t. But note: if the second string has no valid subsequence then we set the third string's dp_current to negative? Actually, we do:
+
+        dp_current[j] = prefix_max[pos-1] + len(t)
+
+      But if prefix_max[pos-1] is negative (and we are adding a positive len(t)), then it might become positive? But that is incorrect because the chain is broken at the second string.
+
+  However, the chain must be consecutive: the first child must have a name, the second must be greater than the first, the third must be greater than the second. If the second child has no valid name (meaning we cannot form a chain for the first two) then the third child cannot be attached. Therefore, we must ensure that we only consider chains that are complete.
+
+  How do we break? Actually, if at any step the entire dp_prev is negative, then we cannot form a chain ending at that step. But we still have to process the next? However, the problem requires all N children. So if we cannot form a chain at step i, then we cannot form a chain for the entire set. 
+
+  But note: we don't break the loop. However, when building the prefix_max for the next string, we are building from a vector of negative numbers. Then for the next string, even if we can pick a subsequence, we are doing:
+
+        dp_current[j] = (some negative value) + (positive) -> but it might become positive? 
+
+  But that positive value would be the length of the subsequence for the current child, but the chain broke at the previous child. We require that every adjacent pair is increasing. So if the second child has no valid name, then we cannot assign a name to the third child that is greater than the second (because the second doesn't exist). Actually, we are building the entire chain. The state for the third child depends on the second child. If the second child has no valid assignment (so all dp_prev for the second child are negative), then the third child will get negative values? Actually:
+
+        prefix_max for the second child: we build an array of the maximum values in dp_prev (which are negative). So prefix_max is negative. Then when we add the length (positive) we get:
+
+            dp_current[j] = (negative) + (positive)
+
+        But if the negative is -10**9 and the positive is at most 15, then it's still negative.
+
+  We initialize dp_current to a very small number (like -10**9). Then if we don't update it (because we skip when pos==0) then it remains -10**9. Otherwise, if we update it with (negative) + positive, it might become less negative? But if the previous state is broken, then we don't want to form a chain. Therefore, we should avoid propagating broken states.
+
+  Actually, we can do: if we have a chain that breaks at the second child, then the entire chain is invalid. We do not want to consider the third child at all? But the problem requires all children. So if at the last step we have no valid state, we output -1.
+
+  However, we are processing all the way to the last child. Then at the end we check: if the maximum value in the last dp_prev is negative -> then output -1.
+
+  But what if we have a chain that breaks at an intermediate step? Then the entire chain is broken. We don't have to break early because the negative state will propagate and the last state will be negative.
+
+  Therefore, we do:
+
+      dp_prev for the first string: all positive (the lengths).
+
+      Then for each next string, we compute dp_current. It is possible that for a string, we get no valid chain? Then we set the state to negative.
+
+      Then we move to the next.
+
+      At the end: if the last dp_prev has maximum value negative -> then output -1.
+
+  However, note: it is possible that the chain breaks at the last string? But the chain must be continuous.
+
+  But we are building the entire chain. The condition is that each child must be lexicographically greater than the previous. If we break at the i-th child, then the state for the i-th child becomes negative, and then for the (i+1)-th child we try to build from negative states? Then the (i+1)-th child will also be negative? Actually, we do:
+
+        dp_current[j] = prefix_max[pos-1] + len(t)
+
+      If prefix_max[pos-1] is negative, then the entire chain is broken and we cannot fix it. Therefore, the state for the next child will be negative.
+
+  So at the end, if the maximum value in the last state is negative, then we output -1.
+
+  But note: we are initializing the current_dp for the current string to a very small number. Then we update only when we have a valid previous state? Then if we have no valid state for the current child, then we skip and leave it as very small. Then the entire current_dp becomes negative? Then the next child will have no chance.
+
+  Therefore, we can do:
+
+      After processing each string, we can check: if the maximum value in the current dp_prev is negative, then we break early? Actually, we don't have to break because we need to process the next string? But the next string would then use a negative state and then become negative. However, we can break early to save time? But N is only 15 and the number of subsequences per string is at most 32768, so we don't need to break early.
+
+  Alternatively, we can break early if we see that the entire current_dp is negative? Then we set a flag and break, and then output -1 at the end. However, we can also just process all and then at the end check the last state.
+
+  So we do:
+
+      Let dp_prev = initial state for the first string.
+
+      For i in 1 to N-1:
+          Build prefix_max for the previous state.
+
+          current_dp = [ -10**9 ] * (number of subsequences in current string)
+
+          For each subsequence j in the current string:
+              Find the position pos in the previous string's sorted subsequences for the current subsequence.
+
+              If pos>0, then:
+                  current_dp[j] = prefix_max[pos-1] + len(current_string_subseq[j])
+
+          Then set dp_prev = current_dp.
+
+      Then after the loop, if max(dp_prev) < 0: output -1
+      Else: output max(dp_prev)
+
+  But note: what if the entire chain is broken at the first string? Then the first dp_prev is positive? Actually the first state is positive. So we don't break at the first.
+
+  However, what if the first string has no subsequences? Then we skip? But the problem states that the string is non-empty. So we have at least one.
+
+  Therefore, we code accordingly.
+
+  One more issue: distinct subsequences. We use a set to remove duplicates.
+
+  But note: the problem does not say distinct names for the children? Actually, the condition is lexicographically larger. So if we have two identical subsequences from the same string, we can only use one? Actually, the condition requires strictly increasing: so identical is not allowed. Therefore, we must use distinct subsequences? Actually, the problem says: "each child's name is lexicographically larger than any of his/her older siblings". So if we have two identical, then the next one must be greater? But we cannot assign the same name twice? The problem does not explicitly forbid the same name? However, if we have the same name for two consecutive children, then the condition fails because it is not strictly increasing. So we don't want duplicates.
+
+  But note: we are generating distinct subsequences for each string? So for the same string, we remove duplicates. Then when we compare two different strings, it is possible that a subsequence from the second string is equal to a subsequence from the first? Then we cannot use that because we require strictly increasing? So we must skip such pairs.
+
+  How do we handle that? In our DP:
+
+      We are building the list for the previous string and the current string separately.
+
+      When we do:
+
+          pos = bisect.bisect_left(prev_list, current_subseq)
+
+      This will give the first index in prev_list that is >= current_subseq.
+
+      Then if prev_list contains a string equal to current_subseq, then we will get the first occurrence of that equal string at position pos. Then we take prefix_max[pos-1] -> which is the maximum value of all subsequences strictly less than current_subseq.
+
+      So even if there are duplicates, we avoid using the same name? Actually, we avoid using any subsequence from the previous string that is >= current_subseq. Therefore, we only take strictly less.
+
+      This is correct.
+
+  Therefore, we can proceed.
+
+  Let's test with the sample: 
+      N=2, strings: ["ZORO", "ANDI"]
+
+      For "ZORO": we generate subsequences, which include "Z", "O", "R", "ZO", "ZR", ... and the largest one? We don't need to list all, but note: the lexicographically smallest subsequence of "ZORO" is "O", and the largest is "ZORO".
+
+      For "ANDI": the lexicographically largest subsequence is "NDI", but the entire set: the smallest is "A", then "AN", "AD", ... but note: the letter 'A' is the smallest. 
+
+      Now, we need to check: is there any subsequence in "ZORO" that is < a subsequence in "ANDI"?
+
+          The smallest subsequence in "ZORO" is "O" (which is greater than 'A'? Actually, 'A' is the smallest letter). So the entire set of subsequences of "ZORO" are all >= 'O' (because the smallest letter in "ZORO" is 'O'? Actually: the letters in "ZORO" are 'Z','O','R','O'. The smallest letter is 'O'. So the smallest subsequence is "O", which is greater than 'A'. Therefore, every subsequence in "ZORO" is > every subsequence in "ANDI"? Actually, no: consider "A" in "ANDI" is less than every subsequence in "ZORO". But the chain requires:
+            first child: a subsequence of "ZORO", second child: a subsequence of "ANDI", and the second must be greater than the first.
+
+          But the first child's subsequence (from "ZORO") is at least "O", and the second child's subsequence (from "ANDI") is at most "NDI" (which is lexicographically less than "O"? Actually, no: "NDI" starts with 'N', which is less than 'O'? Then "NDI" < "O". So the only hope is the second child having a subsequence that starts with a letter greater than the first child's? But the first child's subsequence might be "ZO" (which is large) and the second child can only form subsequences from "A","N","D","I" -> the largest is "NDI", but "ZO" is greater than "NDI" because 'Z' > 'N'. 
+
+          Actually, we can compare: 
+            The largest subsequence from "ANDI" is "NDI", and the smallest from "ZORO" is "O". 
+            "NDI" < "O" because 'N'<'O'? Actually, yes: the first character: 'N' vs 'O' -> 'N'<'O'. So "NDI" < "O". 
+
+          Therefore, every subsequence of "ZORO" is >= "O", and every subsequence of "ANDI" is <= "NDI" (which is < "O"). So the second child's name must be > the first child's name, but the first child's name is at least "O", and the second child's name is at most "NDI" (which is < "O"). Therefore, no valid chain.
+
+      Therefore, the DP for the second child: 
+          For each subsequence in "ANDI", we try to find a subsequence in "ZORO" that is < it -> but there is none? Because the largest subsequence in "ANDI" is "NDI", and the smallest in "ZORO" is "O", and "NDI" < "O". Therefore, for any subsequence t in "ANDI", we have: 
+              In the sorted list of "ZORO", we find the first element >= t -> which is the first element? Because the entire list of "ZORO" is >= "O", and t is <= "NDI" < "O", so the first element in "ZORO" is "O" which is > t. Then pos = 0 -> so we skip.
+
+          Then the entire dp_current for the second string is negative -> then we output -1.
+
+  This matches.
+
+  Now, we code accordingly.
+
+  Implementation in C++:
+
+      Steps:
+
+        Read N.
+        vector<string> S(N);
+        for i in 0..N-1: cin >> S[i]
+
+        vector<vector<string>> A_list(N);   // for each string, the sorted distinct non-empty subsequences.
+
+        for each string s in S:
+            int len = s.length();
+            set<string> seen;
+            for mask = 1 to (1<<len)-1:
+                string t = "";
+                for j=0 to len-1:
+                    if mask has j-th bit: t += s[j];
+                seen.insert(t);
+            vector<string> A(seen.begin(), seen.end());
+            sort(A.begin(), A.end());
+            A_list[i] = A;
+
+        // dp_prev: for the first string
+        vector<int> dp_prev;
+        for (string t : A_list[0])
+            dp_prev.push_back(t.length());
+
+        for (int i=1; i<N; i++) {
+            vector<string> prev_list = A_list[i-1];
+            vector<int> prefix_max(dp_prev.size(), 0);
+            if (dp_prev.size()>0) {
+                prefix_max[0] = dp_prev[0];
+                for (int j=1; j<dp_prev.size(); j++) {
+                    prefix_max[j] = max(prefix_max[j-1], dp_prev[j]);
+                }
+            }
+
+            vector<string> current_list = A_list[i];
+            vector<int> dp_current(current_list.size(), -1000000000);
+
+            for (int j=0; j<current_list.size(); j++) {
+                string t = current_list[j];
+                // Find the first index in prev_list that is >= t
+                auto it = lower_bound(prev_list.begin(), prev_list.end(), t);
+                int pos = it - prev_list.begin();
+
+                if (pos > 0) {
+                    dp_current[j] = prefix_max[pos-1] + t.length();
+                }
+                // else: no valid previous subsequence -> leave as -1000000000
+            }
+
+            dp_prev = dp_current;
+        }
+
+        int ans = *max_element(dp_prev.begin(), dp_prev.end());
+        if (ans < 0) {
+            cout << -1 << endl;
+        } else {
+            cout << ans << endl;
+        }
+
+  But note: what if the entire dp_prev is negative? Then we output -1.
+
+  However, what if the maximum is negative? Then we output -1.
+
+  But what if the maximum is 0? That would be if we have an empty subsequence? But we skipped empty. The smallest subsequence has length 1. So the total length for the first child is at least 1. Then the next child must be at least 1. So the total length is at least N (>=1). Therefore, the maximum total length is at least N (>=1). So we never get 0? 
+
+  But what if we have N=1? Then the total length is at least 1.
+
+  Therefore, we are safe.
+
+  Let's test with the sample: 
+        N=3, strings: ["KARIM", "PARBUDI", "CHANDRA"]
+
+        We expect 16.
+
+  However, we must note: the sample solution [ "ARIM", "ARUDI", "CHANDRA" ] -> 4+5+7=16.
+
+  How does our DP work for the second string?
+
+      For the first string: we have the subsequence "ARIM" (which is one of the subsequences). We also have others.
+
+      We want to pick "ARIM" for the first child? Then the second child must pick a subsequence that is lexicographically greater than "ARIM", and we want one that leads to a long total chain.
+
+      How do we know that "ARIM" is chosen? Actually, we consider all possibilities.
+
+      The DP for the first string: we have the length for each subsequence.
+
+      Then for the second string, for the subsequence "ARUDI", we look for the previous subsequence that is < "ARUDI". 
+
+          How does "ARIM" compare to "ARUDI"? 
+            Common prefix "AR", then next char: 'I' vs 'U': 'I' < 'U' -> so "ARIM" < "ARUDI". So it is valid.
+
+          Then the state for "ARUDI" in the second string would be: (length of "ARIM" = 4) + (length of "ARUDI" = 5) = 9.
+
+      Then for the third string, we pick "CHANDRA" (length 7) and we look for a previous subsequence (from the second string) that is < "CHANDRA". 
+
+          Note: "ARUDI" < "CHANDRA"? 
+            'A' vs 'C': 'A'<'C' -> so yes. So we can use the state from "ARUDI" (which is 9) and then add 7 -> 16.
+
+      But note: we might have a better chain? However, we are building the maximum total length.
+
+      However, we have to consider: the state for the second string might have a larger value than 9? For example, if we choose a longer subsequence for the first string and then a subsequence for the second string that is longer? 
+
+      Example: 
+          First string: "KARIM" -> the entire string is 5, but then we need a subsequence from the second string that is lexicographically larger than "KARIM". 
+          How about "PARBUDI" -> the entire string? But "PARBUDI" (7) is lexicographically larger than "KARIM"? 
+            'K' vs 'P': 'K'<'P' -> so yes. Then we can do 5+7 = 12 for the second child, and then for the third child: "CHANDRA" (7) -> 12+7=19? 
+          But wait: is "PARBUDI" > "KARIM"? 
+            First char: 'K' vs 'P' -> 'K'<'P', so yes. Then why not? 
+
+          However, the sample output is 16, so 19 would be larger? 
+
+      But wait: the sample input output is 16. Why is 19 not achieved?
+
+          The problem states: the i-th name given by grandma must be used for the i-th child? And we are taking a subsequence of the i-th name. So for the first child: we must take a subsequence of "KARIM", and the entire string is allowed? Yes.
+
+          Then why the sample output is 16? 
+
+          Actually, the sample input output is 16, so 19 must be achievable? 
+
+          But the problem says: maximum total length. So if we have 5+7+7=19, that is larger than 16.
+
+      Why the sample output is 16? 
+
+          Let me check the sample input: 
+            3
+            KARIM
+            PARBUDI
+            CHANDRA
+
+          The sample output: 16.
+
+      What is happening?
+
+          I see: the sample says: 
+            "Among all sets of names which satisfy Andi’s desire in this example, the maximum total length is 16."
+
+          So 19 must be invalid? Why?
+
+          The condition: the second child's name must be a subsequence of the second name "PARBUDI", and the entire string "PARBUDI" is a subsequence? Yes.
+
+          Then why not 19?
+
+      Actually, I made a mistake: the third child must be a subsequence of "CHANDRA", and the entire string "CHANDRA" is 7, so total 5+7+7=19.
+
+      But wait: the sample also lists [ "ARI", "BUDI", "CHANDRA"] -> 3+4+7=14, and [ "ARIM", "ARUDI", "CHANDRA"] -> 4+5+7=16, and [ "AIM", "ARBUDI", "CHANDRA"] -> 3+6+7=16.
+
+      Why is 19 not valid? 
+
+      Let me check the lexicographical condition:
+
+          First child: "KARIM" (entire string) -> "KARIM"
+          Second child: "PARBUDI" -> "PARBUDI"
+          Third child: "CHANDRA"
+
+          Condition: 
+             first < second: "KARIM" < "PARBUDI"? 
+                 'K' vs 'P': 'K'<'P' -> so yes.
+             second < third: "PARBUDI" < "CHANDRA"? 
+                 'P' vs 'C': 'P' > 'C' -> no.
+
+          So it fails.
+
+      Therefore, we must have the third child's name > "PARBUDI". The only possibility for the third child is a subsequence that starts with a letter greater than 'P', but the third string "CHANDRA" has no letter greater than 'P'? The letters are: C, H, A, N, D, R, A. The largest letter is 'R'? But 'R' < 'P'? Actually, 'R' is greater than 'P'? 
+
+          In the alphabet: 
+             A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, ... 
+          So 'R' > 'P'. 
+
+          Then we can form a subsequence that starts with 'R'? For example: "RA", "R", "RD", ... but the lexicographical order: 
+             The entire string "CHANDRA" -> we can form "RA", but that is only two letters? 
+
+          How about: "R" -> that is one letter? 
+
+          But we require: the third child's name must be greater than "PARBUDI" (which has first letter 'P'). Then any subsequence that starts with a letter greater than 'P' is valid? 
+
+          The letters in "CHANDRA" that are >= 'R' (which is after 'P') are 'R'. So we can form:
+
+            "R", "RA", "RD", "RN", ... but note: we can also form "NDRA", "ANDRA", etc. But they start with 'N' and 'A', which are less than 'P'. 
+
+          How about a subsequence that starts with 'R'? 
+
+            The string "CHANDRA": 
+                positions: 
+                  0: C
+                  1: H
+                  2: A
+                  3: N
+                  4: D
+                  5: R
+                  6: A
+
+            We can form: "R", "RA", "RD", "RND", ... but note: we must take in order.
+
+          But note: to start with 'R', we cannot use any letter that comes after the first R? Actually, we can only use letters that appear after the R? No: the subsequence must preserve order, but we can skip the first part. However, we cannot form a subsequence that starts with 'R'? Because the R is at position 5. Then we can form:
+
+            "R", "RA", "RD", "RDA", "RN", ... but note: we can also form "NDR" (using the N at position 3 and D at 4 and R at 5) -> but that starts with 'N' which is less than 'P'.
+
+          Actually, the only subsequences that start with a letter >= 'R' are those that start with 'R' (because there is no letter after R in the alphabet in the string). 
+
+          Now, "R" is a subsequence? Yes. 
+
+          Then we have: 
+             first child: "KARIM" -> 5
+             second child: "PARBUDI" -> 7
+             third child: "R" -> 1
+          total = 5+7+1 = 13.
+
+          But we can form a longer one? How about "RA"? -> 2 -> total 14.
+
+          Or "R" and then we can attach more? But we can only take in order. We can take "RA" (by taking R and then A at the end) -> 2.
+
+          But is there a subsequence that starts with 'R' and has more than 2? The only letters after R are 'A'. So we can only get "R", "RA", "RAA" (but there is only one A after the R? Actually, there is one A at the end: position 6). So we can form "RA" (by taking R at 5 and A at 6) -> length=2.
+
+          So the total is 5+7+2=14? 
+
+          But 14 is less than 16.
+
+      Therefore, the maximum is 16.
+
+      How do we get 16? 
+          Example: [ "ARIM", "ARUDI", "CHANDRA"] -> 4+5+7=16.
+
+          Check lex order:
+            "ARIM" vs "ARUDI": 
+                "AR" vs "AR" -> then next: 'I' vs 'U': 'I'<'U' -> so "ARIM" < "ARUDI"
+
+            "ARUDI" vs "CHANDRA":
+                'A' vs 'C': 'A'<'C' -> so "ARUDI" < "CHANDRA"
+
+          So it's valid.
+
+      Why can we get 7 for the last child? Because we are using the entire string "CHANDRA", and we require that the entire chain is increasing? 
+
+          Condition: the last child's name must be greater than the second last child's name. 
+          "ARUDI" < "CHANDRA": because 'A'<'C'. So yes.
+
+      How about the chain: 
+          First child: "KARIM" (5) -> but we did not pick that. We picked "ARIM" (which is 4). Why? 
+
+          Because we are maximizing the total. We might have a chain that has a lower value at the first child but then a longer chain overall.
+
+      Therefore, we must consider all possibilities.
+
+  Now, we trust the DP.
+
+  But note: the state for the first child: we have the entire string "KARIM" (5) and then for the second child, we can pick a subsequence that is > "KARIM", such as "PARBUDI" (7) -> then the state for the second child becomes 5+7=12. Then for the third child, we can pick a subsequence that is > "PARBUDI"? 
+
+          We saw that the only possibility is a subsequence starting with 'R' (from "CHANDRA") and the maximum length we can get for such a subsequence is 2. Then the state for the third child: 12+2=14.
+
+          But we have a chain that gives 4+5+7=16 -> which is larger.
+
+      Therefore, the DP must consider the state from the first child being "ARIM" and then the second child "ARUDI" (which is > "ARIM") and then the third child "CHANDRA" (which is > "ARUDI").
+
+      How does the state for the second child "ARUDI" get the value 4 (from "ARIM") + 5 = 9? Then for the third child, we pick "CHANDRA" -> 9+7=16.
+
+      So the DP will consider both possibilities.
+
+  Therefore, we code accordingly.
+
+  One more sample: 
+        Input: 
+          2
+          ZORO
+          ANDI
+
+        We expect -1.
+
+  We'll run the code and see.
+
+  However, we must be cautious: the set for the first string "ZORO" might have a subsequence that is not "O", but also "Z", which is even larger? Then the second child's name must be > "Z". But the second string "ANDI" has no letter greater than 'Z'? The largest is 'N'? Then we cannot form a chain? So we get -1.
+
+  Therefore, we code accordingly.
+
+  Let me test with the third sample:
+
+        Input: 
+          7
+          HAVE
+          FUN
+          IN
+          ICPC
+          JAKARTA
+          TWENTY
+          EIGHTEEN
+
+        Output: 25.
+
+  We'll run the code and hope it outputs 25.
+
+  However, we can try to reason: the sample solution:
+
+        [ "AVE", "FUN", "IN", "IPC", "JAKARTA", "NTY", "TEEN" ]
+
+        total = 3+3+2+3+7+3+4 = 25.
+
+      Check lex order:
+
+          "AVE" vs "FUN": 'A'<'F' -> valid.
+          "FUN" vs "IN": 'F'<'I' -> valid.
+          "IN" vs "IPC": 'I'='I', then next: 'N' vs 'P': 'N'<'P' -> valid.
+          "IPC" vs "JAKARTA": 'I'<'J' -> valid.
+          "JAKARTA" vs "NTY": 'J'<'N' -> valid.
+          "NTY" vs "TEEN": 'N'<'T' -> valid.
+
+      So valid.
+
+  How does the DP get 25?
+
+      First string: "HAVE" -> we choose "AVE" (length=3). 
+      Second string: "FUN" -> we choose "FUN" (length=3) -> state=3+3=6.
+      Third string: "IN" -> we choose "IN" (length=2) -> state=6+2=8.
+      Fourth string: "ICPC" -> we choose "IPC" (length=3) -> state=8+3=11.
+      Fifth string: "JAKARTA" -> we choose "JAKARTA" (length=7) -> state=11+7=18.
+      Sixth string: "TWENTY" -> we choose "NTY" (length=3) -> state=18+3=21.
+      Seventh string: "EIGHTEEN" -> we choose "TEEN" (length=4) -> state=21+4=25.
+
+      But note: the chain must be increasing at every step. The state for the sixth string: we must pick a subsequence of "TWENTY" that is > the fifth child's name "JAKARTA". 
+
+          How is "NTY" > "JAKARTA"? 
+            'N' vs 'J': 'N'>'J' -> yes? Actually, no: lexicographic order: we compare the first character: 'N' > 'J' -> so yes.
+
+      Then the last step: the seventh child: we pick a subsequence of "EIGHTEEN" that is > "NTY". 
+
+          "TEEN": first character 'T' > 'N'? -> yes.
+
+      Therefore, it's valid.
+
+      But note: the sixth child's name is "NTY" (from "TWENTY") -> how is that a subsequence? 
+          "TWENTY": 
+            T, W, E, N, T, Y.
+          We can take: 
+            skip T, then skip W, then skip E, then take N, then skip T? Then we have N? Then we need T and Y? But we skipped the first T and then we have another T? Then we take the first T? Then we have "NTY": 
+                positions: 
+                  3: N, 4: T, 5: Y -> that is contiguous? But we can take non contiguous? Yes: we take the N at index3, then the T at index4, then the Y at index5 -> that is in increasing index order -> valid.
+
+      Therefore, the chain is valid.
+
+  Now, we code accordingly.
+
+  One more note: we are storing the entire list of subsequences for each string. The worst-case number of distinct subsequences is 2^len, and len<=15 -> 2^15 = 32768. For 15 strings, the total memory is 15 * 32768 * (average string length) -> worst-case average string length 15? So 15*32768*15 = 7.5e6 which is acceptable.
+
+  But worst-case time: 
+        For each string i (from 1 to N-1): 
+          We iterate over all subsequences of the current string (M_i) and for each we do a binary search in the previous string's list (which has size M_{i-1}) -> O(M_i * log(M_{i-1})).
+
+        Total: O( sum_{i=1}^{N-1} M_i * log(M_{i-1}) )
+
+        M_i <= 2^15, and log(2^15)=15, so each step: 32768 * 15 = 491520, and then 14 steps? -> 14 * 491520 ~ 6.88e6, which is acceptable.
+
+  Therefore, we code.
+
+  Let me write the C++ code accordingly.
+
+  Note: We must use a set to remove duplicates? But the problem says: distinct subsequences? Actually, we are allowed to have duplicate subsequences? But the condition requires strictly increasing, so duplicates are not allowed. Also, if a string has duplicate letters, then we might generate duplicate subsequences? 
+
+      Example: "AAA" -> 
+          mask 1: "A"
+          mask 2: "A"
+          mask 3: "A"
+          mask 4: "AA", etc.
+
+      So we remove duplicates by the set.
+
+  Code:
+
+      #include <iostream>
+      #include <vector>
+      #include <set>
+      #include <algorithm>
+      #include <cctype>
+      #include <climits>
+
+      using namespace std;
+
+      int main() {
+          int N;
+          cin >> N;
+          vector<string> S(N);
+          for (int i=0; i<N; i++) {
+              cin >> S[i];
+          }
+
+          // Precompute distinct non-empty subsequences for each string, and sort.
+          vector<vector<string>> A_list(N);
+          for (int i=0; i<N; i++) {
+              string s = S[i];
+              set<string> seen;
+              int n = s.length();
+              for (int mask = 1; mask < (1<<n); mask++) {
+                  string t = "";
+                  for (int j=0; j<n; j++) {
+                      if (mask & (1<<j)) {
+                          t += s[j];
+                      }
+                  }
+                  seen.insert(t);
+              }
+              vector<string> A(seen.begin(), seen.end());
+              sort(A.begin(), A.end());
+              A_list[i] = A;
+          }
+
+          // If N==0, we skip, but N>=1.
+
+          vector<int> dp_prev;
+          for (string t : A_list[0]) {
+              dp_prev.push_back(t.length());
+          }
+
+          // If the first string has no subsequences? Then we break. But it has at least one.
+          for (int i=1; i<N; i++) {
+              vector<string> prev_list = A_list[i-1];
+              vector<int> prefix_max(dp_prev.size(), 0);
+              if (dp_prev.size() > 0) {
+                  prefix_max[0] = dp_prev[0];
+                  for (int j=1; j<dp_prev.size(); j++) {
+                      prefix_max[j] = max(prefix_max[j-1], dp_prev[j]);
+                  }
+              } else {
+                  // If the previous list is empty? Then we break? But the first string had at least one.
+                  // So we skip.
+              }
+
+              vector<string> current_list = A_list[i];
+              vector<int> dp_current(current_list.size(), -1000000000);
+
+              for (int j=0; j<current_list.size(); j++) {
+                  string t = current_list[j];
+                  // Binary search in prev_list for the first element >= t
+                  auto it = lower_bound(prev_list.begin(), prev_list.end(), t);
+                  int pos = it - prev_list.begin();
+
+                  if (pos > 0) {
+                      // Then we can take the best value from the previous state for indices [0, pos-1]
+                      dp_current[j] = prefix_max[pos-1] + t.length();
+                  }
+                  // else: no valid previous subsequence -> leave as -1000000000
+              }
+
+              dp_prev = dp_current;
+          }
+
+          int ans = -1;
+          if (!dp_prev.empty()) {
+              ans = *max_element(dp_prev.begin(), dp_prev.end());
+          }
+          if (ans < 0) {
+              cout << -1 << endl;
+          } else {
+              cout << ans << endl;
+          }
+
+          return 0;
+      }
+
+  But note: what if the entire chain breaks at the first step? Then the first dp_prev is positive, but the second becomes negative? Then we process the rest and then the last state is negative -> output -1.
+
+  Let me test with the sample: 
+        N=2, strings: ["ZORO", "ANDI"]
+
+        For the first string "ZORO": 
+            We'll generate all distinct non-empty subsequences and sort -> the first element is "O", then "OO", ... then "Z", "ZO", ... etc.
+
+        For the second string "ANDI": 
+            The first element is "A", then "AD", ... then "NDI", etc.
+
+        Then for the second string, for each subsequence t in "ANDI", we do:
+            pos = lower_bound(prev_list, t) -> since t is at most "NDI", which is < "O", then the entire prev_list is >= "O", so pos=0 -> so we set dp_current[j] = -1000000000.
+
+        Then dp_prev for the last state (which is the second child) is a vector of negative numbers -> then ans = max(...) < 0 -> output -1.
+
+  So it works.
+
+  Now, run the sample input 1:
+
+        N=3, strings: ["KARIM", "PARBUDI", "CHANDRA"]
+
+        We expect 16.
+
+        How do we get 16? 
+            The chain: "ARIM" (from first) -> then "ARUDI" (from second) -> then "CHANDRA" (from third).
+
+            The state for the first child: the subsequence "ARIM" has length 4.
+
+            Then for the second child: 
+                We look for the position of "ARUDI" in the previous list (which is the first string's list). 
+                How does "ARUDI" compare to the first string's subsequences? 
+                    The first string is "KARIM". The subsequences: 
+                      ... "AR", "ARI", "ARIM", "ARM", ... 
+                    Then we have "ARUDI": 
+                    We want to know: what is the position where "ARUDI" would be inserted in the sorted list of the first string's subsequences? 
+                    The first string's list: 
+                         ... "AR", "ARI", "ARIM", ... 
+                    Now, "ARUDI" vs "ARIM": 
+                         "AR" is common, then next: 'U' vs 'I' -> 'U'>'I', so "ARUDI" > "ARIM". 
+
+                    So the position is after "ARIM", and we can use "ARIM" (which is at index of "ARIM") and then the prefix_max at that index-1 (which includes "ARIM") -> so we get 4 (from "ARIM") + 5 (from "ARUDI") = 9.
+
+            Then for the third child: 
+                We have the state from the second string: for the subsequence "ARUDI" we have 9? But note: the dp_prev for the second string is computed for every subsequence of the second string. Then we build the prefix_max for the second string's dp_prev? 
+
+                Actually, we do:
+
+                  We have the second string's list: sorted subsequences of "PARBUDI". 
+                  We have the state for the second string: for each subsequence we have a value. For "ARUDI", we have 9. But there might be a subsequence that is lexicographically smaller than "ARUDI" that has a larger total? 
+
+                  Then we build a prefix_max for the second string: 
+                      We sort the subsequences of the second string lexicographically. 
+                      Then we build prefix_max: 
+                         prefix_max[j] = max{ dp_prev[0], dp_prev[1], ... , dp_prev[j] }.
+
+                  Then for the third child's subsequence "CHANDRA", we do:
+
+                      Find the position of "CHANDRA" in the second string's list: 
+                         The second string's list: 
+                             ... , "ARUDI", ... , "PARBUDI", ... 
+                         "CHANDRA" vs "ARUDI": 
+                             'C' vs 'A': 'C'>'A' -> so "CHANDRA" > "ARUDI". 
+                         But note: there might be subsequences in the second string that are greater than "ARUDI" and less than "CHANDRA"? 
+
+                      We need the first element in the second string's list that is >= "CHANDRA". 
+                         Since "CHANDRA" starts with 'C', and the second string's subsequences that start with 'C'? The string is "PARBUDI": it has no 'C'? So the entire list is composed of letters: 'A','P','R','B','U','D','I'. The largest letter is 'U'. So no subsequence starts with a letter >= 'C' and less than 'C'? Actually, there is no subsequence that starts with 'C'. 
+
+                         How about: we compare lexicographically? 
+                            The first character of "CHANDRA" is 'C'. 
+                            The second string's subsequences: 
+                                The ones starting with 'A' are all less than 'C'. 
+                                Then the ones starting with 'B'? -> but the string has no 'B'? It has 'B' at position 3: so we can form "B", "BD", ... etc. -> but 'B'<'C'. 
+                                Then the ones starting with 'D','I','P','R','U' are all greater than 'C'? 
+                                    Actually: 'D'>'C', etc.
+
+                         Therefore, the first subsequence that is >= "CHANDRA" would be the first one that starts with a letter >= 'C'. The smallest letter in the second string that is >= 'C' is 'D'? But wait: there is no 'C'? So the smallest letter greater than 'C' is 'D'. Then the first subsequence that starts with 'D'? 
+
+                         But note: we can also have a subsequence that starts with 'D'? 
+
+                         How do they compare to "CHANDRA"? 
+                             Any subsequence that starts with 'D' is greater than "CHANDRA"? 
+                                 Because "CHANDRA" starts with 'C', and 'D'>'C'. So any such subsequence is greater.
+
+                         Therefore, the position of "CHANDRA" in the second string's list is the first subsequence that starts with a letter >= 'D'? 
+
+                         But note: we have 'P' which is also greater than 'C'. Actually, the entire list is sorted: 
+                            ... (starting with 'A') ... then starting with 'B'? Actually, the string "PARBUDI" has: 
+                                A, B, D, I, P, R, U.
+
+                         So the sorted list: 
+                            ... , "A", ... , "B", ... , "D", ... , "I", ... , "P", ... , "R", ... , "U", ...
+
+                         Then the first element that is >= "CHANDRA" is the first element that starts with a letter > 'C'. The first such letter is 'D'. 
+
+                         So we set pos = index of the first element starting with 'D'.
+
+                         Then we take prefix_max[pos-1] -> which is the maximum value of the state for the second string for all subsequences that are < "CHANDRA", i.e., the ones that start with 'A','B','D'? No: actually, the ones that are strictly less than "CHANDRA" are all the subsequences that start with 'A' or 'B'? And also the ones that start with 'D'? 
+
+                         But wait: lexicographic order: 
+                            A string starting with 'D' is > "CHANDRA"? -> because 'D'>'C'. So the subsequences that are < "CHANDRA" are only those that start with 'A' or 'B'. 
+
+                         Therefore, we take the prefix_max at the last element that is strictly less than "CHANDRA", which is the last element that starts with 'B'? 
+
+                         But note: we built the entire list and sorted lexicographically. The last element that is < "CHANDRA" is the last element that starts with 'B'? 
+
+                         Then the value we take is the maximum state value for any subsequence in the second string that is < "CHANDRA". 
+
+                         The state values: 
+                             For the subsequence "ARUDI" we had 9. 
+                             Also, we have other subsequences: 
+                                 For example, "PARBUDI" (the entire string) had a state value? How did we compute it? 
+                                    We look for the first string's subsequences that are < "PARBUDI". 
+                                    The first string's subsequences: we have "KARIM" (the entire string) -> which is 5. 
+                                    Then the state for "PARBUDI" = 5 + 7 = 12.
+
+                         So the prefix_max for the second string: we have a value 12 at the position of "PARBUDI", but "PARBUDI" is > "CHANDRA"? Actually, no: 
+                             "PARBUDI" starts with 'P' and "CHANDRA" starts with 'C' -> so "PARBUDI" is > "CHANDRA"? 
+
+                         Actually, we are building the prefix_max for the entire sorted list? And we are going to use it for the condition: we only consider the subsequences that are < "CHANDRA". 
+
+                         Therefore, the state for the second string for any subsequence that is < "CHANDRA" (i.e., starting with 'A' or 'B') might have a maximum value? 
+
+                         How about the subsequence "ARUDI": it starts with 'A', so it is < "CHANDRA". And we have 9. 
+                         Is there any subsequence that starts with 'A' that has a state value greater than 9? 
+                             For example, if we pick a longer subsequence that starts with 'A'? 
+                                 The longest subsequence of "PARBUDI" that starts with 'A'? 
+                                    The string: P,A,R,B,U,D,I -> 
+                                    We can form: "ARBUDI": length=6 -> then state = (from first string: we need a subsequence < "ARBUDI") 
+                                        How do we get the state for "ARBUDI" in the second string? 
+                                            We look for the first string's subsequences that are < "ARBUDI". 
+                                            The first string: "KARIM" -> 
+                                                We have "ARIM": which is < "ARBUDI"? 
+                                                    "AR" common, then 'I' vs 'B': 'I'>'B'? -> no, 'I' > 'B'. 
+                                                Actually, we have "AR" (length=2) -> then state=2+6=8 -> which is less than 9.
+
+                         Actually, the chain "ARIM" (4) then "ARUDI" (5) -> total 9 is the best for the second string for the subsequences that start with 'A'? 
+
+                         Then the maximum state value for the second string for subsequences < "CHANDRA" is 9.
+
+                         Then the state for the third child: 9 + 7 (for "CHANDRA") = 16.
+
+          Therefore, we get 16.
+
+  So we output 16.
+
+  We run the third sample? We hope 25.
+
+  We'll run the code on the third sample and hope it outputs 25.
+
+  However, if it doesn't, we might have to debug.
+
+  But given the constraints, we trust the DP.
+
+  Let me run the third sample by hand? It's too long.
+
+  We'll run the code and test.
+
+  But note: the problem says the strings are in the order: 
+        HAVE
+        FUN
+        IN
+        ICPC
+        JAKARTA
+        TWENTY
+        EIGHTEEN
+
+  The chain we want: 
+        "AVE", "FUN", "IN", "IPC", "JAKARTA", "NTY", "TEEN"
+
+  How does the state propagate?
+
+      First string: "HAVE" -> we pick "AVE": state=3.
+
+      Second string: "FUN" -> we pick "FUN": 
+          We need a subsequence from the first string that is < "FUN". 
+          The first string's list: 
+             ... "A", "AE", "AV", "AVE", ... "E", "H", ... 
+          The condition: 
+             "FUN" starts with 'F'. 
+             The first string has subsequences that are < "FUN": all that start with a letter < 'F'. 
+             The best state value for the first string for such subsequences: 
+                 The maximum length for a subsequence that is < "FUN": we can take the entire "AVE" (3) -> then state=3+3=6.
+
+      Third string: "IN" -> 
+          We look in the second string for a subsequence < "IN": 
+             The second string: "FUN" -> 
+                 The subsequences: 
+                    "F", "FN", "FU", "FUN", "N", "U", "UN"
+                 Which ones are < "IN"? 
+                    "F", "FN", "FU", "FUN": all start with 'F' -> which is > 'I'? -> no: 'F'<'I'. 
+                    Also, "N", "U", "UN": 
+                         "N": 'N'<'I'? -> no, 'N'>'I'. -> so not.
+                    So all that start with 'F' are < "IN" (because 'F'<'I')? 
+                    Then the maximum state value for the second string for any subsequence that is < "IN" is the maximum state value for any subsequence that starts with 'F'. 
+                    The state for "FUN" was 6? Actually, the state for the second string for "FUN" was 6? 
+                    And the state for "F" was: we need to compute: 
+                         For "F": we look in the first string: 
+                             We need a subsequence < "F". 
+                             The first string: we have "AVE" -> which is < "F"? 
+                                 "A"<'F' -> yes. 
+                             Then the state for "F" = max_{subseq in first string < "F"} + len("F") 
+                                 = max(length of any subsequence of the first string that is < "F") + 1.
+                                 The best is "AVE" (3) -> then state=3+1=4? 
+                         But we also have "FUN": 3+3=6 -> which is the best.
+
+                    Then the state for "IN" = 6 (from the best state in the second string for subsequences < "IN") + 2 = 8.
+
+      Fourth string: "IPC" (from "ICPC") -> 
+          We look in the third string for a subsequence < "IPC": 
+             The third string: "IN" -> 
+                 Subsequences: "I", "IN", "N"
+                 Which are < "IPC": 
+                    "I" and "IN": 
+                         "I" is a prefix of "IPC"? Then "I" is < "IPC"? 
+                             Actually: 
+                                 "I" is a prefix of "IPC" -> so "I" is lexicographically smaller? 
+                                 But the condition: 
+                                    String A is lexicographically larger than string B if and only if B is a prefix of A OR ... 
+                                 So the condition for the chain: the next must be larger. 
+                                 Here, we require the third child's name < the fourth child's name? 
+                                 Actually: 
+                                    The chain: 
+                                      third child: "IN" 
+                                      fourth child: "IPC"
+                                    Condition: "IN" < "IPC"? 
+                                      They share the first character 'I', then next: 'N' vs 'P': 'N'<'P' -> so "IN" < "IPC". 
+
+                    But when we are building the state for the fourth child, we are looking for a subsequence in the third string that is < "IPC". 
+                    The condition: 
+                         "I" is < "IPC" because "I" is a prefix? -> yes.
+                         "IN" is < "IPC" because the common prefix is "I", then next: 'N'<'P' -> yes.
+
+                    Then we take the best state value from the third string for any subsequence that is < "IPC". 
+                    The state for the third string: 
+                         For "I": 
+                            We look in the second string: 
+                                We need a subsequence < "I". 
+                                The second string: "FUN" -> 
+                                    Subsequences: 
+                                        "F", "FN", ... -> all start with 'F', which is > 'I'? -> no: 'F'<'I'. 
+                                    Then the state for "I" = (best state from second string for < "I") + 1.
+                                    The best state from second string for < "I": 
+                                        We take the entire set of subsequences of "FUN" that are < "I". 
+                                        Which ones: all that start with 'F'? 
+                                        The best state value for the second string for such subsequences: 
+                                            The maximum is 6 (from "FUN")? 
+                                        Then state for "I" = 6+1=7.
+
+                         For "IN": 
+                            We computed 8.
+
+                         So the best state for the third string is 8.
+
+                    Then the state for "IPC" = 8 + 3 = 11.
+
+      Fifth string: "JAKARTA" (7) -> 
+          We look in the fourth string for a subsequence < "JAKARTA": 
+             The fourth string: "ICPC" -> 
+                 Subsequences: 
+                    "C", "CC", "CP", "CPC", "I", "IC", ... 
+                 Which are < "JAKARTA": 
+                    All that start with 'C' or 'I'? 
+                    The best state value: the maximum state from the fourth string for any subsequence < "JAKARTA". 
+                    The state for "IPC" was 11. 
+                    Is there a longer subsequence? 
+                         The entire string "ICPC" is 4 -> state = (from third string: we need a state for a subsequence < "ICPC") 
+                         How do we compute the state for "ICPC" in the fourth string? 
+                            We look for the third string: 
+                                We need a subsequence < "ICPC". 
+                                The third string: "IN" -> 
+                                    Subsequences: "I", "IN", "N" -> 
+                                    "I" is < "ICPC" (prefix) -> state for "I" from the third string was 7 -> then state for "ICPC" = 7+4=11.
+                         But we already have 11 for "IPC". 
+                         The entire string "ICPC" is 4 -> 11, same as "IPC".
+
+                    Then the best state for the fourth string is 11 (from "IPC")? 
+
+                    Actually, we might have a longer chain? 
+                         How about "ICPC" (the entire string) -> 4, then state=11? 
+                         But note: the state for the entire string is 11? Then we take 11 for the fourth string? 
+
+                    Then the state for the fifth child: 11+7=18.
+
+      Sixth string: "NTY" (from "TWENTY") -> 
+          We look in the fifth string for a subsequence < "NTY": 
+             The fifth string: "JAKARTA" -> 
+                 Subsequences: 
+                    ... "J", "JA", "JAA", ... -> all start with 'J'. 
+                 Condition: 
+                    "NTY" starts with 'N', which is < 'J'? -> no: 'N'>'J'. 
+                    Actually: 'J'<'N'. 
+                    Then every subsequence of the fifth string that starts with 'J' is < "NTY". 
+                    The best state value for the fifth string: 
+                         We have the entire string "JAKARTA" -> state=18. 
+                    Then the state for "NTY" = 18 + 3 = 21.
+
+      Seventh string: "TEEN" (4) -> 
+          We look in the sixth string for a subsequence < "TEEN": 
+             The sixth string: "TWENTY" -> 
+                 Subsequences: 
+                    ... "NTY", ... "T", "TE", ... 
+                 Condition: 
+                    "TEEN" starts with 'T'. 
+                    We need a subsequence from the sixth string that is < "TEEN". 
+                    The subsequences that are < "TEEN": 
+                         All that start with a letter < 'T', and also those that start with 'T' but then are lexicographically less than "TEEN". 
+                    The best state value: 
+                         We have the state for "NTY": 21. 
+                         Also, we have subsequences that start with 'T': 
+                             For example: "T", "TE", "TEN", ... 
+                         How do they compare to "TEEN"? 
+                             "T": is a prefix -> so < "TEEN" -> valid.
+                             "TE": is a prefix -> valid.
+                             "TEN": compare to "TEEN": 
+                                 "TE" common, then 'N' vs 'E': 'N'>'E'? -> no: actually, we have: 
+                                     "TEN": T, E, N
+                                     "TEEN": T, E, E, N -> 
+                                 At the third character: 'N' (in "TEN") vs 'E' (in "TEEN") -> 'N'>'E', so "TEN" is not a prefix and at the third character we have 'N'>'E' -> so "TEN" > "TEEN"? 
+
+                         Actually, no: 
+                             "TEN" vs "TEEN": 
+                                 Common prefix "TE", then next: 'N' (in "TEN") vs 'E' (in "TEEN") -> 'N' > 'E', so "TEN" > "TEEN". 
+                         So the only valid ones that start with 'T' are those that are prefixes of "TEEN", i.e., "T", "TE", "TEE", "TEEN" (but we don't have "TEE" in the subsequences? How? 
+                             The string "TWENTY": 
+                                 T, W, E, N, T, Y
+                             To form "TEE": we need two E's? But there is only one E? 
+
+                         Actually, we can form: 
+                             "T": from the first T -> valid.
+                             "TE": from the first T and then the E -> valid.
+                             "TEN": from the first T, then E, then N -> valid.
+                             But we cannot form "TEE" because there is only one E.
+
+                         Then the valid ones: 
+                             "T", "TE", "TEN" (but "TEN" is > "TEEN") -> so only "T" and "TE" are < "TEEN".
+
+                         What are the state values for these? 
+                             For "T": 
+                                 We look in the fifth string: 
+                                    We need a subsequence < "T". 
+                                    The fifth string: "JAKARTA" -> 
+                                        All start with 'J'? and 'J'<'T' -> valid.
+                                    Then the state for "T" = (best state from fifth string for < "T") + 1.
+                                         = 18 (from "JAKARTA")? + 1 = 19.
+                             For "TE": 
+                                 Similarly: state = 18 + 2 = 20.
+
+                         Then the best state for the sixth string for a subsequence < "TEEN" is 21 (from "NTY")? 
+                                 because 21>20? 
+
+                    Then the state for the seventh child: 21+4=25.
+
+          Therefore, we get 25.
+
+  So the code should output 25.
+
+  We code accordingly.
+
+  However, note: the state for "NTY" in the sixth string: 
+        We computed: 
+            fifth child: "JAKARTA" -> state=18.
+            then "NTY" = 18+3=21.
+
+        But when we build the prefix_max for the sixth string, we sort the subsequences lexicographically. 
+        Then the subsequences of the sixth string: 
+            ... "NTY" ... and then the ones starting with 'T': "T", "TE", ... 
+        Lexicographic order: 
+            "A" (if any) ... then "E", ... then "N" (like "NTY") ... then "T", "TE", ... 
+        So "NTY" comes before "T". 
+
+        Then when we process the seventh child's subsequence "TEEN", we do:
+
+            pos = lower_bound(sixth_list, "TEEN") 
+            -> where is "TEEN" in the sorted list? 
+                It will be after "T", "TE", ... 
+
+            Then we take prefix_max for the sixth_list at the index of the first element >= "TEEN" minus one -> which includes "NTY", "T", "TE", ... but note: "T" and "TE" are < "TEEN", and "NTY" is also < "TEEN" (because 'N'<'T')? 
+
+            Actually, "NTY" is < "TEEN" because 'N'<'T'. 
+
+            Then the prefix_max at the position before "TEEN" should be the maximum of all states for the sixth string for subsequences < "TEEN", which is max(21, 19, 20) = 21.
+
+        Therefore, we get 21+4=25.
+
+  So we code accordingly.
+
+  We run the code on the sample inputs.
+
+  Note: We must initialize the dp_prev for the first string with the lengths.
+
+  We run:
+
+      g++ -std=c++11 -O2 -o a a.cpp
+
+  Then:
+
+      Sample1: 
+        3
+        KARIM
+        PARBUDI
+        CHANDRA
+
+        Output: 16
+
+      Sample2:
+        2
+        ZORO
+        ANDI
+
+        Output: -1
+
+      Sample3:
+        7
+        HAVE
+        FUN
+        IN
+        ICPC
+        JAKARTA
+        TWENTY
+        EIGHTEEN
+
+        Output: 25
+
+  We hope.
+
+  Let me test with the third sample: we'll run the code.
+
+  But we don't have the actual environment? 
+
+  We trust the logic.
+
+  We output the code as below.

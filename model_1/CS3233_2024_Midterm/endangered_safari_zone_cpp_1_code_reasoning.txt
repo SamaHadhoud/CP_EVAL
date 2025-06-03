@@ -1,0 +1,803 @@
+ We are going to use Mo's algorithm with updates (also known as 3D Mo).
+ Steps:
+ 1. We have two types of queries: update (type 1) and range query (type 2).
+ 2. We will store the initial array and then note the updates and queries separately.
+ 3. For each query of type 2, we record the current time (number of updates that have occurred so far) and the range [l, r].
+ 4. We sort the queries by:
+      - left block index (block_size = N^(2/3))
+      - then by right block index (with alternating order for even/odd blocks for optimization)
+      - then by time (number of updates)
+
+ 5. We maintain:
+      - an array `freq` for the frequency of each species in the current range.
+      - `distinct_count`: the number of distinct species in the current range (any species with frequency>=1)
+      - `bad_count`: the number of distinct species that have frequency > K (so they are bad and will be confiscated)
+
+    Then the answer for the query is: distinct_count - bad_count.
+
+ 6. We also maintain the current array state (which may be updated) and we have a list of updates.
+
+ 7. The functions:
+      - `add_element(i)`: add the element at index i to the current range.
+        - If the species was not present, then distinct_count increases by 1.
+        - When we add one to the frequency, if it becomes K+1 then we add one to bad_count (because now the species becomes bad).
+      - `remove_element(i)`: remove the element at index i from the current range.
+        - If the frequency was K+1 and becomes K, then we remove one from bad_count.
+        - If the frequency becomes 0, then distinct_count decreases by 1.
+
+ 8. For updates:
+      - We have an update structure: { position, old_value, new_value }.
+      - When applying an update (moving forward in time):
+          - If the updated position is in the current range, we remove the old element (as if we are removing the old value at that position) and then add the new value.
+          - Actually, we can break it: first remove the old element (if in range), then set the array to the new value, then add the new element (if in range).
+      - When unapplying (moving backward in time): similarly, remove the new value and add the old value.
+
+ 9. Steps for a query:
+      - Adjust the time: apply updates until we reach the time of the query, or unapply updates to go back to the time of the query.
+      - Then adjust the left and right pointers to the query range.
+
+ 10. Important: The array we maintain for the Mo's algorithm must reflect the current time state. Therefore, we start with the array at the last update (which is the most recent state) and then unapply updates as needed to go back in time.
+
+ Implementation note: We store the initial array, and then we record each update. But note: the Mo's algorithm will start at time = total updates, and then we unapply updates to go back.
+
+ However, in the problem, the queries happen in order, but we are going to reorder the queries.
+
+ How we handle the initial state?
+      We set the array to the state after all the updates? But note: the updates we stored are the ones that occur during the input. But what about the initial array?
+
+      Actually, we read the initial array. Then, we simulate the updates as they come in the input and update a current_array. Then, we set the Mo's array to be the current_array (which is the state after all the updates). Then, when we process a query that happened at an earlier time, we unapply the updates that occurred after that time.
+
+ 11. Steps:
+      - Read N, M, K and the initial array.
+      - current_array = initial array.
+      - For each of the M lines:
+          - If update (Q_i=1): 
+                store an update: { position (0-indexed), old_value = current_array[position], new_value = B_i (note: we use 0-indexed species? but species are from 1 to N, so we can use as is) }
+                then update current_array[position] = new_value.
+          - If query (Q_i=2): 
+                store the query: { time = (number of updates so far), l = A_i-1, r = B_i-1, idx = query_count }
+
+      - Then set the array for Mo to be the current_array (which has all the updates applied) and then we will unapply updates as needed.
+
+ 12. However, note: the updates we stored are the ones that occurred during the input. When we start Mo, we are at the latest time (all updates applied). Then we process queries in sorted order.
+
+ 13. But note: the initial state (without any update) is the state at time 0. Our updates vector has all the updates in order.
+
+ 14. Implementation:
+
+      We start with:
+          current_l = 0, current_r = -1, current_time = total updates (i.e., the latest time)
+
+      Then for each query (in sorted order) we:
+
+          - While current_time > q.time: we unapply the update at index (current_time-1) and then current_time--.
+          - While current_time < q.time: we apply the update at index (current_time) and then current_time++.
+
+          Then adjust the range [current_l, current_r] to [q.l, q.r] by adding and removing elements.
+
+ 15. Note: when applying an update, we check if the updated position is in the current range [current_l, current_r]. If it is, then we remove the old value and add the new value. But note: the update structure stores the old_value and new_value. However, in the array we are maintaining for Mo, we have the latest value (which is the one after all updates). But when unapplying, we set the array to the old_value and then if in range we add the old_value? Actually, we have to change the array at that position to the old_value.
+
+ 16. How we store the array? We have a global `arr` that we update as we apply/unapply updates.
+
+ 17. Important: when we unapply an update, the update structure stored the old_value. So we set arr[update.pos] = old_value. Then if the position is in the current range, we update the frequency accordingly.
+
+ 18. Similarly, when applying an update, we set arr[update.pos] = new_value and update frequency if in range.
+
+ 19. We must note that the array we are using in the Mo algorithm is the one that reflects the current_time.
+
+ 20. We must be cautious: the initial state of the array for Mo is the state after all updates. Then, if we unapply an update, we set that position to the old_value. Then if we later apply, we set to the new_value.
+
+ 21. Steps for applying update u (at index `u.pos` from old_value to new_value):
+        - If the current range [current_l, current_r] includes u.pos, then we remove the current element (which is the old_value? Actually, at the moment of applying, the array at u.pos is the old_value? Not exactly: when we are at time T, we have applied all updates up to T-1. Then we are going to apply update T: we have the array at u.pos as the old_value? Actually, we have stored the update: at that update, the old_value was the value before the update and the new_value is the value after. So when we apply, we set the array at u.pos to new_value. But if in the current range, we remove the old_value and then add the new_value.
+
+        Similarly, when unapplying, we set the array at u.pos to the old_value. Then if in range, we remove the new_value and add the old_value.
+
+ 22. However, note: when we remove, we remove the element that is currently in the array at that position? But we are about to change the array. So we need to know what is currently at that position? Actually, at the time of applying update u, the array at u.pos is the old_value (because we haven't applied the update). So we remove the old_value (if in range) and then set the array to new_value and then add the new_value (if in range). Similarly, for unapply: we remove the current value (which is the new_value) and set to old_value and then add the old_value.
+
+ 23. But wait: in our state, we are at time t. The array at u.pos is the value at time t. When we apply the update u (which is the update that occurred at time t), we want to set it to the new_value. However, the array at u.pos currently is the value before the update (which is u.old_value) because we haven't applied update u? Actually, we are storing the array as the state at the current_time. So if current_time is t, then the array has been updated only up to time t-1. Then to apply update u (which is the update at time t), we do:
+
+        current_value = arr[u.pos]   // should be u.old_value? Actually, we have stored u.old_value in the update structure.
+
+        But we don't have to check: we know that at the moment of applying update u, the array at u.pos is u.old_value? Actually, we stored the update as {pos, old_value, new_value}. However, if we are at time t (meaning we have applied updates [0, t-1]), then the array at u.pos is the value after the last update that affected that position? But it might not be the same as u.old_value if there was a later update? 
+
+ 24. Important: We are storing updates in the order they occur. When we apply an update, we are going in chronological order. And when unapplying, we are going in reverse chronological order. So the updates are stored in a list and we apply them one by one. However, note that an update at a position might be overwritten by a later update. But in the update structure, we record the old_value as the value just before that update (which we got from our current_array at the moment we read the update). Then we updated current_array to the new_value. Then when we apply the update, we set the array at that position to the new_value. And when unapplying, we set it to the old_value.
+
+ 25. But when we are at time t, the array must reflect the state at time t (which is after applying updates 0 to t-1). Then when we apply update t, we set the array to the new_value and that becomes the state for time t+1? Actually, we are storing the array for Mo as the state at the current_time. So:
+
+        current_time = T: we have applied updates [0, T-1] -> state T.
+
+        We want to go to time T: we apply update T (so we set the array at update[T].pos to update[T].new_value) and then set current_time = T+1? Actually, we are indexing updates from 0 to time_count-1.
+
+ 26. Let me redefine:
+
+        We have updates: updates[0], updates[1], ..., updates[time_count-1] (time_count = total updates recorded).
+
+        We start at current_time = time_count (meaning we have applied all updates).
+
+        Then for a query that happened at time t (meaning we have applied updates [0, t-1]):
+
+            We need to unapply updates from time_count-1 down to t? Actually, we unapply in reverse order from the last update (time_count-1) to update t.
+
+            But note: our updates are stored in increasing time. So to go from time_count to t, we unapply the updates from time_count-1 down to t (inclusive of t? because at time t, the update at index t has not been applied). Actually, if the query has time = t, then the updates applied are the first t updates (i.e., updates[0] to updates[t-1]). We are at time_count (all updates applied). So we need to unapply the updates from time_count-1 down to t (so that we have applied updates 0 to t-1).
+
+        Steps:
+
+            while current_time > q.time:   // q.time is the number of updates that have been applied at the time of the query, so we need to have applied q.time updates.
+
+                current_time--;
+                unapply_update(updates[current_time], current_l, current_r);   // because we are at time current_time+1, and we unapply update with index current_time to go to time current_time.
+
+            while current_time < q.time:   // then we need to apply updates from current_time to q.time-1
+
+                apply_update(updates[current_time], current_l, current_r);
+                current_time++;
+
+        However, note: our stored query has q.time = the number of updates that have occurred at the time of the query. So if there were 3 updates before the query, then we want the state after 3 updates? Actually, the query is stored with time_count = the number of updates that have occurred so far. And that means that the state is after these many updates. But wait: we recorded the query at the moment when time_count updates have occurred. So the state we want is after applying the first time_count updates.
+
+        But note: the updates we stored are the ones that occurred in the input. The query is stored with the current time_count (which is the total updates at that point). Then we process the query at that time? Actually, we are storing the update events in the vector `updates` in the order of input. The query event has a time stamp = the number of updates that have been processed at the time we read the query.
+
+        However, when we sort the queries, we need to know the time stamp (the number of updates that occurred before the query). So we store that as `time_count` at the moment we read the query.
+
+        Then, the state at time t (meaning after t updates) is the state we get by applying the first t updates (from index0 to index t-1) to the initial array.
+
+        Therefore, when we start the Mo algorithm, we set the array to the state after applying all updates (time = total_updates). Then when we process a query at time t, we need to unapply the updates from total_updates-1 down to t (so we unapply the last (total_updates - t) updates).
+
+        Actually, we can do:
+
+            while current_time > q.time: 
+                current_time--;
+                unapply_update(updates[current_time]);   // now we are at time current_time
+
+            while current_time < q.time:
+                apply_update(updates[current_time]);
+                current_time++;
+
+        But note: our current_time is the number of updates we have applied so far? Then:
+
+            Initially: current_time = total_updates (because we start with the array after all updates).
+
+        Then for a query at time t:
+
+            We want to unapply updates until we are at time t? Actually, we want to have applied t updates.
+
+            So if current_time (say 10) and t=5, then we unapply 5 updates (from update index 9 to 5) to go from time 10 to time 5? Actually, we unapply one update at a time: we unapply update index 9 (to go to time 9) then 8 (to time 8) ... until we unapply update index 5 (to go to time 5). So we unapply (current_time - t) updates.
+
+        Similarly, if current_time is 3 and t=5, we apply update index 3 and 4 to go to time 5.
+
+ 27. So the algorithm:
+
+        current_time = total_updates   // we start at the latest state
+        current_l = 0, current_r = -1
+
+        for each query in sorted order:
+            // adjust time
+            while current_time > q.time:
+                current_time--;
+                unapply_update(updates[current_time], current_l, current_r);
+
+            while current_time < q.time:
+                apply_update(updates[current_time], current_l, current_r);
+                current_time++;
+
+            // adjust range
+            while current_l > q.l: add_element(--current_l);
+            while current_r < q.r: add_element(++current_r);
+            while current_l < q.l: remove_element(current_l++);
+            while current_r > q.r: remove_element(current_r--);
+
+            ans[q.idx] = distinct_count - bad_count;
+
+ 28. However, note: the above range adjustments are standard. But we must be cautious: the array we are using is the one that has been updated to the current_time.
+
+ 29. How apply_update works:
+
+        void apply_update(const Update &u, int current_l, int current_r) {
+            // The current value at u.pos is the old_value (which we stored in the update as u.old_value) but actually we have stored the update with the old_value at the time of the update? But in our array, at the time we are about to apply the update, the value at u.pos should be u.old_value? Actually, we are going in chronological order: we have applied all updates from 0 to current_time-1, so the array at u.pos is the value after the last update that affected it? But it might not be u.old_value if there was a later update that was already unapplied? 
+
+        This is the challenge: our update record for update i stores the old_value at the moment the update was read. But if we unapply a later update that changed the same position, then when we reapply an update, we must have the correct old_value? Actually, the update record is fixed: it stores the value that was at that position at the moment the update was applied. But when we unapply a later update, we set the array at that position to the old_value of that later update. Then when we reapply an earlier update, we are setting from the old_value (which is the value we stored) to the new_value? But that might not be the state that was present? 
+
+ 30. Actually, the updates are stored as:
+
+        update: { pos, old_val, new_val }
+
+        and we know that at the time we read the update, the current_array[pos] was old_val, and then we set it to new_val.
+
+        But when we unapply a later update that changed the same position, we set the array to the old_val of that later update. Then when we reapply an earlier update, the array at that position is the old_val of the later update? That is inconsistent with the stored old_val in the earlier update.
+
+ 31. Therefore, we must note: the update records are independent and we are traversing time in order. However, if there are multiple updates to the same position, then the stored old_value in an update is the value that was present at the moment we read the update. But when we are moving in time, we are only moving one update at a time and the updates are stored in the order of input. So when we apply an update, we assume the array at that position is the old_value we stored? Actually, we don't assume: we have stored the old_value at the time of the update. But when we are moving in time, we are reconstructing the array state by applying and unapplying updates in order. This is standard in Mo with updates.
+
+        Example: 
+            Initial: [a0, a1, ...]
+            Update1 (at pos0): old0 = a0, new0 = x -> so update0 = {0, a0, x}
+            Then we set the array[0] = x.
+            Then Update2 (at pos0): old1 = x, new1 = y -> update1 = {0, x, y}
+
+        Then if we start at time2 (array[0]=y) and we unapply update1: we set array[0] = x (the old_value of update1) and then unapply update0: we set array[0] = a0.
+
+        Then if we apply update0: set array[0]=x (and then update1: set array[0]=y).
+
+        So the update records are fixed and we don't need to worry: when we apply update i, we set the array at u.pos to u.new_val. And when we unapply, we set it to u.old_val. The value that was stored in the update record is the one we use.
+
+        But note: we must store the entire array as the state that we are modifying. And we have to update the array when we apply/unapply.
+
+ 32. Therefore, the apply_update function:
+
+        void apply_update(Update u, int l, int r) {
+            // The array at u.pos is currently u.old_val? Actually, we don't know? But we have stored the update with the old_val that was present at the time of the update. However, in the Mo state, the array is maintained and we are going to set the array to u.new_val. But we also update the frequency if the position is in the current range.
+
+            // Step: 
+            //   If the position u.pos is in the current range [l, r], then we remove the current value (which is the old_val) because we are going to change it? Actually, we are going to change it to u.new_val. So we remove the old_val and then add the new_val.
+
+            // But note: we are about to change the array. So we must update the frequency for the old_val and new_val.
+
+            if (l <= u.pos && u.pos <= r) {
+                remove_element(u.pos);   // This function uses the current array value at u.pos to remove. But currently, the array at u.pos is the old_val? Actually, we have stored the array state independently. How does remove_element work? It uses `arr[u.pos]` to get the species.
+
+                // Now we change the array at u.pos to the new_val.
+                arr[u.pos] = u.new_val;
+
+                add_element(u.pos);
+            } else {
+                // If not in the current range, we just update the array without affecting frequency counts.
+                arr[u.pos] = u.new_val;
+            }
+        }
+
+        Similarly, for unapply_update:
+
+        void unapply_update(Update u, int l, int r) {
+            if (l <= u.pos && u.pos <= r) {
+                remove_element(u.pos);
+                arr[u.pos] = u.old_val;
+                add_element(u.pos);
+            } else {
+                arr[u.pos] = u.old_val;
+            }
+        }
+
+ 33. However, note: in remove_element, we use the current value of arr[u.pos] to remove. But at the moment of apply_update, the array at u.pos is still u.old_val? Yes, because we haven't changed it. Then we remove the old_val. Then we set it to u.new_val and add the new_val.
+
+        Similarly, for unapply: we remove the current value (which is u.new_val) and then set to u.old_val and then add the old_val.
+
+ 34. But wait: in the apply_update function, we are passing the update structure by value? We should pass by const reference to avoid copy. But the update structure is small.
+
+ 35. However, we have a problem: the function `remove_element` and `add_element` use the global `arr` and the index. So when we call `remove_element(u.pos)`, it uses the current value in `arr[u.pos]` (which is u.old_val in the apply case, and u.new_val in the unapply case). Then we change `arr[u.pos]` and then call `add_element` which uses the new value.
+
+ 36. This is correct.
+
+ 37. But note: we must maintain the array `arr` as the current state (with the current_time). So we update `arr[u.pos]` in the apply and unapply.
+
+ 38. Implementation of add_element and remove_element:
+
+        They are defined as:
+
+        void add_element(int i) {
+            int species = arr[i];
+            int &count = freq[species];
+            if (count == 0) {
+                distinct_count++;
+            }
+            count++;
+            if (count == K+1) {
+                bad_count++;
+            }
+        }
+
+        void remove_element(int i) {
+            int species = arr[i];
+            int &count = freq[species];
+            if (count == K+1) {
+                bad_count--;
+            }
+            count--;
+            if (count == 0) {
+                distinct_count--;
+            }
+        }
+
+ 39. Edge: when K=0? Then we cannot catch any pokemon? But note the constraint: K>=1, so we are safe.
+
+ 40. We set the block_size = pow(N, 2.0/3.0). But if N is 0? It won't be because N>=1.
+
+ 41. We must note: the array indices are 0-indexed.
+
+ 42. Let's test with the sample:
+
+        Input: "5 5 2\n1 2 2 2 1"
+
+        Then the initial array: [1,2,2,2,1] (0-indexed: index0=1, index1=2, ...)
+
+        Then queries:
+
+            Q1: 2 1 4 -> query: time=0, l=0, r=3 (because 1-1=0, 4-1=3)
+            Then update: 1 3 3 -> update: pos=2 (0-indexed) from current value (which is 2) to 3 -> so update0: {2,2,3}
+            Then query: 2 1 4 -> time=1, l=0, r=3
+            Then update: 1 3 3 -> update1: {2,3,3}   -> actually, changing from 3 to 3? That's a no-op. But we store it.
+            Then query: 2 1 5 -> time=2, l=0, r=4
+
+        Then we have:
+
+            updates = [ {2,2,3}, {2,3,3} ]
+            queries = [ 
+                { time=0, l=0, r=3, idx=0 },
+                { time=1, l=0, r=3, idx=1 },
+                { time=2, l=0, r=4, idx=2 }
+            ]
+
+        We start with the array after all updates: 
+            initial: [1,2,2,2,1] -> then after update0: [1,2,3,2,1] -> then after update1: [1,2,3,2,1] (same)
+
+        Then we set global arr = [1,2,3,2,1] and current_time = 2.
+
+        Then we sort the queries. The block_size = ceil(pow(5, 2/3)) ~ ceil(5^(0.666)) ~ ceil(2.6) = 3.
+
+        Query0: time=0 -> we need to unapply updates from time=1 and time=0? 
+            First unapply update1: 
+                update1: {2,3,3} -> unapply: set arr[2] to 3? Actually, we set to old_val=3? and then if in range? current range is [0,-1] (so not in range). So we just set arr[2]=3 -> but it was 3 already? so no change? Then unapply update0: set arr[2] to 2 -> now arr = [1,2,2,2,1] and current_time=0.
+
+        Then adjust range: from [0,-1] to [0,3]: 
+            current_l=0, current_r=-1 -> then we add index0: distinct: [1] -> freq[1]=1 -> distinct_count=1, bad_count=0 -> then add index1: [1,2] -> distinct=2, then add index2: [1,2,2] -> freq[2]=2 -> which is not >K (K=2) -> then add index3: [1,2,2,2] -> freq[2]=3 -> now becomes 3 which is >2 -> so bad_count becomes 1. Then distinct_count=2 -> answer = 2-1 = 1 -> matches sample output for first query.
+
+        Query1: time=1 -> we are at time0, so we need to apply update0: 
+            update0: {2,2,3} -> in the current range [0,3]? yes -> remove_element(2): 
+                remove the current value at index2: which is 2 -> then set arr[2]=3 -> then add_element(2): add species=3 -> distinct_count: 
+                    currently: species: 1->1, 2->2, 3->1 -> distinct_count=3, and bad_count: only species2 has freq=2 (which is not >2) and species3=1 -> so bad_count=0 -> answer=3.
+
+            But the sample output for the second query is 3? Actually, the sample output for the first query is 1, the second query is 3, and the third is 3.
+
+        Then for the last query: time=2, so we apply update1: {2,3,3} -> in range [0,4]? yes -> remove_element(2): remove 3 -> then set to 3 -> then add_element(2): add 3 -> no change. Then we extend the range to [0,4]: add index4: species1 -> now species1: freq=2 -> distinct_count: 3 (species1,2,3) -> bad_count: only species2 has freq=3 -> bad_count=1? Then answer=3-1=2? but sample expects 3.
+
+        Why? 
+
+            The last query: [0,4] -> the array is [1,2,3,2,1] (after update0 and update1) -> 
+            species1: 2 times -> acceptable (<=2)
+            species2: 2 times -> acceptable
+            species3: 1 time -> acceptable
+            So all distinct species are acceptable -> distinct_count=3, bad_count=0 -> answer=3.
+
+        What went wrong in our update? 
+
+            When we applied update1, we did:
+
+                remove_element(2): 
+                    species = arr[2] = 3 -> 
+                    freq[3] was 1 -> becomes 0 -> distinct_count becomes 2? 
+                    Then we set arr[2]=3 -> then add_element(2): 
+                         species=3 -> becomes 1 -> distinct_count becomes 3? 
+                    So the net effect is nothing? 
+
+            Then we extend the range to index4: add_element(4): species=1 -> 
+                freq[1] becomes 2 -> which is acceptable (<=2) -> so distinct_count=3, bad_count=0 -> answer=3.
+
+        Why did we get bad_count=1? 
+
+            We had in the state for the previous query (query1) at range [0,3]: 
+                species: 1->1, 2->2, 3->1 -> distinct_count=3, bad_count=0.
+
+            Then for update1: we remove 3 (at index2) -> distinct_count becomes 2? and then add 3 -> distinct_count becomes 3? and bad_count remains 0.
+
+            Then we extend to index4: add 1 -> now species1:2, species2:2, species3:1 -> no bad_count -> so answer=3.
+
+        So why did we think we had bad_count=1? We didn't. 
+
+        The mistake in the last step: we thought that after the update1 we had species2:3? but we didn't. Because after the update1, the array at index2 becomes 3, so we are removing one occurrence of 2? and adding 3? Actually, the update1 changed a 3 to 3? so we removed 3 and added 3 -> so the frequency of 2 remains 2 and the frequency of 3 remains 1.
+
+        Then when we add index4: species1 -> frequency1 becomes 2 -> which is acceptable.
+
+        Therefore, we are correct.
+
+ 43. But note: the update1 was a no-op? So why did we do it? We stored the update and we have to process it. But it doesn't change the array. However, we still do the remove and add? 
+
+        In the update1: 
+            remove_element(2): we remove the current value at index2 which is 3 -> so we decrement freq[3] from 1 to 0 -> distinct_count from 3 to 2.
+            Then we set the array to 3 -> then add_element(2): add 3 -> freq[3] becomes 1 -> distinct_count becomes 3.
+
+        So the net effect is nothing? But we did two operations. However, it's inefficient for no-ops? But we cannot avoid because we don't know if the update is a no-op? And the problem says the update might change to the same species? 
+
+        But note: the problem says: "the Pokemon in a zone has changed to species B", so it might be the same.
+
+        We can avoid by checking if old_val == new_val? Then we skip the update? But then the time stamp of the query would be the same? Actually, the update still counts as an update? So we must record it and then when processing, we can skip if old_val==new_val? 
+
+        However, in the sample, the update1: old_val=3, new_val=3 -> so we skip the remove and add? But we still update the array? Actually, we don't need to update the array because it's the same. So we can skip the entire update? 
+
+        But note: the update is stored and the query uses the time stamp. So we must account for the update? Actually, we can skip the update processing if old_val==new_val? because it doesn't change the array. Then we don't change the array and we don't update the frequency. But we still count the update as applied? 
+
+        How does that affect the time? 
+
+            We have an update that is a no-op: we still increment current_time? Then the next query that has a time stamp that includes this update would be processed without any change? 
+
+            Actually, we can do:
+
+                if (u.old_val != u.new_val) {
+                    // then do the remove and set and add if in range.
+                } else {
+                    // do nothing to the array and frequency, but we still count as applied? 
+                }
+
+            But the update is recorded and the time stamp moves. So we must process the update? But the state does not change. So we can skip the physical update.
+
+        We'll add that optimization.
+
+ 44. Code optimization for update: 
+
+        In apply_update and unapply_update:
+
+            if (u.old_val == u.new_val) {
+                return;   // skip
+            }
+
+        But note: unapply_update: if the update was a no-op, then we skip? 
+
+        Actually, the update record might be a no-op? Then we skip both apply and unapply.
+
+ 45. However, in the sample the update1 is a no-op, so we skip it. Then for the last query, we are at time=2, but we skipped update1. Then we don't do anything for update1? Then we don't even update the array? But the array at index2 was already 3? so that's fine.
+
+        Then we extend the range: and we get the same state.
+
+ 46. Let's do the last query without the no-op update:
+
+        We start at time=2? but we only applied update0? and skipped update1. But the update1 was recorded and we counted it? 
+
+        Actually, we have two updates: update0 and update1. We skipped update1? Then when we go from time=1 to time=2, we skip update1? Then we are at time=2 without changing the array? So the array is still [1,2,3,2,1] (from update0) and then we extend the range to [0,4] -> which gives the same as above.
+
+        So it's safe.
+
+ 47. We'll add the condition.
+
+ 48. But note: the update record stores the old_value and new_value. We read the update and then updated the current_array to the new_value. But if it's a no-op, we don't update the current_array? Actually, we did update the current_array in the input processing? 
+
+        In the input processing:
+
+            if q==1:
+                update = {a-1, current_array[a-1], b-1}
+                if (update.old_val != update.new_val) {
+                    current_array[a-1] = update.new_val;
+                }
+                updates.push_back(update);
+
+        Then our current_array remains unchanged for no-ops? But we still push the update? 
+
+        Actually, we should update the current_array only if it changes? 
+
+        But the problem says: "the Pokemon in a zone changes to species B", so if it was already B, then it remains. So we can avoid updating the current_array? 
+
+        However, for the next update to the same position, we need the current_array to be the same? 
+
+        Example: 
+            initial: [1]
+            update1: change zone0 to 1 -> no-op -> then update2: change zone0 to 2 -> then the update2 should record old_val=1? 
+
+        But if we updated the current_array for the no-op? then we set it to 1 (which is the same) -> then for update2: old_val=1 -> which is correct.
+
+        But if we skip updating the current_array for the no-op, then the current_array remains 1? Then for update2: we record old_val=1 -> which is correct.
+
+        So we can skip updating the current_array for no-ops? 
+
+        Actually, we do:
+
+            if (q==1) {
+                a0 = a-1;
+                old_val = current_array[a0];
+                if (old_val != b-1) {
+                    current_array[a0] = b-1;
+                }
+                updates.push_back({a0, old_val, b-1});
+            }
+
+        Then we have the update record even for no-ops, but the current_array is updated only for non-no-ops.
+
+        Then when we set the initial array for Mo, we set it to the current_array (which has skipped no-ops). 
+
+        Then in the Mo algorithm, we skip no-ops? 
+
+        This is consistent.
+
+ 49. We'll do that.
+
+ 50. But note: the problem says species are from 1 to N, so we subtract 1 to make them 0-indexed? 
+
+        The constraints: "1 <= P_i, A_i, B_i <= N", and we are using an array of frequencies of size MAXN (100005). We can use the species as indices without shifting? But if we use 0-indexed, then we use species from 0 to N-1? 
+
+        Actually, the problem says species are in the range [1, N]. We can store them as 0-indexed to save space? 
+
+        We'll do:
+
+            For the initial array: read an integer x, then store x-1.
+
+            For an update: we read B, then store as B-1.
+
+        But note: the update for a zone: we store the species as 0-indexed.
+
+        This is safe because MAXN=100005, and species indices from 0 to 99999.
+
+ 51. Let's update the input reading:
+
+        cin >> N >> M >> K;
+        arr.resize(N);
+        for (int i=0; i<N; i++) {
+            cin >> arr[i];
+            arr[i]--;   // convert to 0-indexed
+        }
+
+        Then for each operation:
+
+            if q==1: 
+                cin >> a >> b;
+                a0 = a-1;   // because zone index is 0-indexed
+                b0 = b-1;   // species becomes 0-indexed
+                old_val = current_array[a0];
+                if (old_val != b0) {
+                    current_array[a0] = b0;
+                }
+                updates.push_back({a0, old_val, b0});
+
+            if q==2:
+                cin >> a >> b;
+                a0 = a-1, b0 = b-1;
+                queries.push_back({time_count, a0, b0, query_count++});
+
+ 52. Then in the Mo algorithm, the array we start with is the current_array (which is 0-indexed).
+
+ 53. We'll do that.
+
+ 54. Finally, we must note: the frequency array is of size MAXN (100005). We use `freq.assign(MAXN, 0);`
+
+ 55. Let's run the second sample to see if it matches.
+
+        Sample Input2:
+
+        "10 10 3
+         5 2 5 2 5 2 5 2 3 2 
+         2 6 10
+         2 1 9
+         1 7 2
+         1 9 2
+         1 2 3
+         2 5 9
+         1 10 3
+         2 1 9
+         2 3 10
+         2 2 8"
+
+        We convert the initial array to 0-indexed:
+
+            [4,1,4,1,4,1,4,1,2,1]
+
+        Then the operations:
+
+            Q1: 2 6 10 -> query: time=0, l=5, r=9 -> [1,4,1,2,1] -> distinct: 1,2,4 -> frequencies: 1:3, 2:1, 4:1 -> K=3 -> so 1:3 is acceptable? Then distinct_count=3, bad_count=0 -> answer=3? But sample output first is 3? then next output is 1? 
+
+        The sample output: 
+            3
+            1
+            1
+            2
+            2
+            2
+
+        But we have 10 queries? Actually, the input has 10 lines. The operations:
+
+            Line1: 2 6 10 -> query0 -> output 3
+            Line2: 2 1 9 -> query1 -> output 1
+            Line3: 1 7 2 -> update0: zone7 (0-indexed index6) -> current_array[6] = 4 -> change to 1? (because 2-1=1) -> so update0: {6,4,1} -> then current_array[6]=1 (if not no-op) -> then time_count=1
+            Line4: 1 9 2 -> update1: zone9 (index8) current_array[8]=2 -> change to 1 -> update1: {8,2,1} -> time_count=2
+            Line5: 1 2 3 -> update2: zone2 (index1) current_array[1]=1 -> change to 2 -> update2: {1,1,2} -> time_count=3
+            Line6: 2 5 9 -> query2: time=3, l=4, r=8 -> output 1 (sample says 1)
+            Line7: 1 10 3 -> update3: zone10 (index9) current_array[9]=1 -> change to 2 -> update3: {9,1,2} -> time_count=4
+            Line8: 2 1 9 -> query3: time=4, l=0, r=8 -> output 2
+            Line9: 2 3 10 -> query4: time=4, l=2, r=9 -> output 2
+            Line10:2 2 8 -> query5: time=4, l=1, r=7 -> output 2
+
+        Now we process the queries:
+
+            Query0: time0, [5,9]: array=[4,1,4,1,4,1,4,1,2,1] -> [index5..9]: [1,4,1,2,1] -> species: 1,2,4 -> frequencies: 1:3, 2:1, 4:1 -> all <=3 -> distinct_count=3, bad_count=0 -> answer=3.
+
+            Query1: time0, [0,8]: 
+                [4,1,4,1,4,1,4,1,2] -> 
+                species: 4:4 times -> bad (because 4>3), 1:4 times -> bad, 2:1 -> 
+                distinct_count=3, bad_count=2 -> answer=1.
+
+            Then we have updates: 
+                update0: {6,4,1} -> non-no-op
+                update1: {8,2,1} -> non-no-op
+                update2: {1,1,2} -> non-no-op
+                update3: {9,1,2} -> non-no-op
+
+            Then the state after all updates: 
+                initial: [4,1,4,1,4,1,4,1,2,1]
+                update0: change index6 (which was 4) to 1: [4,1,4,1,4,1,1,1,2,1]
+                update1: change index8 (which was 2) to 1: [4,1,4,1,4,1,1,1,1,1]
+                update2: change index1 (which was 1) to 2: [4,2,4,1,4,1,1,1,1,1]
+                update3: change index9 (which was 1) to 2: [4,2,4,1,4,1,1,1,1,2]
+
+            Then for query2: time=3 (meaning after 3 updates: up to update2) -> state: [4,2,4,1,4,1,1,1,1,1] -> and the range [4,8] (index4 to index8): 
+                index4:4, index5:1, index6:1, index7:1, index8:1 -> 
+                species: 4:1, 1:4 -> distinct_count=2, bad_count=1 (for species1:4>3) -> answer=1.
+
+            Query3: time=4, [0,8]: 
+                [4,2,4,1,4,1,1,1,1] -> 
+                species: 4:3, 2:1, 1:5 -> distinct_count=3, bad_count=1 (only species1:5>3) -> answer=2.
+
+            Query4: time=4, [2,9]: 
+                [4,1,4,1,1,1,1,2] (from index2 to 9: note the array: 
+                    index2:4, index3:1, index4:4, index5:1, index6:1, index7:1, index8:1, index9:2 -> 
+                    species: 4:2, 1:5, 2:1 -> distinct_count=3, bad_count=1 (species1:5>3) -> answer=2.
+
+            Query5: time=4, [1,7]:
+                [2,4,1,4,1,1,1] -> 
+                    species:2:1, 4:2, 1:4 -> distinct_count=3, bad_count=1 (species1:4>3) -> answer=2.
+
+        This matches the sample output.
+
+ 56. Therefore, we write the code accordingly.
+
+ 57. One more note: the block_size might be 0? We set:
+
+        block_size = pow(N, 2.0/3.0);
+        if (block_size == 0) block_size = 1;
+
+        But N>=1, so pow(N,2/3)>=1? for N=1: pow(1,2/3)=1 -> so safe.
+
+ 58. We'll code accordingly.
+
+ 59. Let me check the constraints: N, M, K up to 100000 -> the total number of operations in Mo is O(N^(5/3))? which is about 100000^(5/3) = 100000000^(1/3) * 100000^(2/3) = 100000000^(1/3) is 464, then 100000^(2/3) is 2154 -> so total operations about 10^6 * 2154? -> 2e9? which might be borderline in C++? 
+
+        Actually, the complexity is O( (N + Q) * N^(2/3) )? 
+
+        But we have about 100000 queries? Then (100000) * (100000^(2/3)) = 100000 * 2154 = 215e6 -> which is acceptable in C++ in 2 seconds? 
+
+        But worst-case the constant factors are high (each update and each element add/remove does several operations). We must be cautious.
+
+        We can use:
+
+            block_size = (int)pow(N, 2.0/3.0);
+            if (block_size < 1) block_size = 1;
+
+        But note: we might have N=1, then block_size=1.
+
+        Alternatively, block_size = (int)ceil(pow(N, 2.0/3.0)); -> but we can use integer:
+
+            block_size = (int)round(pow(N, 2.0/3.0));
+
+        Actually, we can do: block_size = max(1, (int)pow(N, 2.0/3.0));
+
+        But to avoid floating point, we can do:
+
+            block_size = (int)ceil(cbrt(N)*cbrt(N));
+
+        However, we'll use:
+
+            block_size = (int)pow(N, 2.0/3.0);
+            if (block_size < 1) block_size = 1;
+
+        But note: pow(N, 2.0/3.0) might be fractional -> we can use integer block_size? 
+
+        Actually, we can set:
+
+            block_size = (int)round(pow(N, 2.0/3.0));
+            if (block_size < 1) block_size = 1;
+
+        Or we can use:
+
+            block_size = 1;
+            while (block_size*block_size*block_size < (long long)N*N) 
+                block_size++;
+
+        But that might be heavy. Alternatively, we do:
+
+            block_size = (int)ceil( pow(N, 2.0/3.0) );
+
+        I'll use:
+
+            block_size = (int)pow(N, 2.0/3.0) + 1;
+
+        But to be safe, we do:
+
+            block_size = max(1, (int)(pow(N, 2.0/3.0)));
+
+        However, for N=100000: pow(100000, 2.0/3.0) = (100000)^(0.666) ~ 2154.43 -> so we take 2154.
+
+        Then we sort the queries by:
+
+            (l / block_size, r / block_size, time)
+
+        and we use the alternating order for r? 
+
+        We do:
+
+            if (a.l / block_size != b.l / block_size) 
+                return a.l < b.l;
+            else if (a.r / block_size != b.r / block_size) 
+                // for even block index: increasing r, for odd: decreasing?
+                return (a.l / block_size % 2 == 0) ? a.r < b.r : a.r > b.r;
+            else 
+                return a.time < b.time;
+
+        This is a common optimization for Mo.
+
+ 60. We'll code accordingly.
+
+ 61. Finally, note: the number of queries might be zero? then we skip.
+
+ 62. Let's code accordingly.
+
+ 63. We must use fast I/O: 
+
+        ios::sync_with_stdio(false);
+        cin.tie(nullptr);
+
+ 64. We'll run the code on the samples.
+
+ 65. Due to the complexity, we hope it runs in time.
+
+ Let me write the code accordingly.
+
+ Note: The frequency array is of size MAXN (100005) and we use global variables.
+
+ We'll do:
+
+        distinct_count = 0, bad_count = 0.
+
+        We start the Mo algorithm with:
+
+            current_l = 0, current_r = -1, current_time = updates.size();   // because we start at the state after all updates.
+
+        Then we process the sorted queries.
+
+        We must note: the updates vector has size = total_updates = time_count.
+
+        Then we set:
+
+            current_time = time_count;   // which is updates.size()
+
+        Then for each query, we adjust time and range.
+
+ 66. Code for unapply_update and apply_update with the no-op condition.
+
+ Let's code accordingly.
+
+ We'll run the provided sample inputs.
+
+ However, note: the sample input1 has 5 operations, with 3 queries and 2 updates (one no-op). 
+
+ 67. We hope it passes.
+
+ 68. If we get TLE, we might need to optimize the moves? But we'll start with this.
+
+ 69. We note: the worst-case might be heavy? but 100000 queries with block_size ~2154 -> about 100000*2154 moves? which is 2e9? worst-case in C++ might be borderline? We hope the constant factors are low.
+
+ 70. Alternatively, we can use a block size of 2500? for N=100000, then 2500^3 = 15.625e9 which is too big? 
+
+        Actually, the block_size for Mo with updates is N^(2/3). The number of blocks for l: N^(1/3), for r: N^(1/3), for time: N^(1/3) -> then the total moves: O( (N^(1/3))^2 * N ) = O(N^(5/3)).
+
+        So we stick to N^(2/3) for block_size.
+
+ 71. We'll submit and hope.
+
+ 72. Let me write the code accordingly.
+
+ 73. We'll add detailed comments if needed.
+
+ 74. But the problem says: time limit 2 seconds and memory limit 1024 MB.
+
+ 75. We use:
+
+        Memory: 
+            arr: O(N)
+            current_array: O(N)
+            updates: O(M) -> worst 100000
+            queries: O(M) -> worst 100000
+            freq: O(MAXN) -> 100005
+            ans: O(M) (for queries)
+
+        So total memory: O(N + M + MAXN) ~ 300000 integers? which is about 1.2MB? But we have MAXN=100005 -> 100005*4 = 400 KB? So total is acceptable.
+
+ 76. We'll code accordingly.
+
+ 77. One last note: the update structure: we store {pos, old_val, new_val} -> integers.
+
+ 78. We write the code.
+
+ 79. We run the sample tests.
+
+ 80. We hope.

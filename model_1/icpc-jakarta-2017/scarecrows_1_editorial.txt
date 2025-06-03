@@ -1,0 +1,124 @@
+### Approach
+The problem requires counting the number of ways to place scarecrows on an R x C grid such that:
+1. Each row contains at least one scarecrow.
+2. Every two consecutive columns contain at least one scarecrow.
+Scarecrows can only be placed on empty squares (denoted by '.'), and not on rice-planted squares (denoted by 'v').
+
+Given the constraints (R ≤ 14, C ≤ 1000), a brute-force approach is infeasible. Instead, we use **inclusion-exclusion** combined with **dynamic programming** to efficiently compute the solution.
+
+#### Key Insights
+1. **Inclusion-Exclusion Principle**: The solution involves counting arrangements that cover all rows by leveraging the inclusion-exclusion principle over subsets of rows. For each subset of rows T, we count arrangements that avoid placing scarecrows in any row in T, then combine these counts with appropriate signs to ensure only arrangements covering all rows are counted.
+2. **Dynamic Programming for Column Constraints**: For each subset T, we use dynamic programming to count valid arrangements that satisfy the consecutive column constraint. The DP state tracks whether the previous column had at least one scarecrow, which is necessary to enforce the constraint for consecutive columns.
+
+#### Algorithm
+1. **Precomputation**:
+   - **Base Mask for Columns**: For each column, compute a bitmask indicating which rows are available (i.e., contain '.' and can potentially host a scarecrow).
+   - **Power of Two Table**: Precompute powers of two modulo \(10^9 + 7\) for quick access during non-empty placement calculations.
+   - **Popcount Table**: Precompute the number of set bits (popcount) for all numbers up to \(2^R\) to efficiently count available rows in masked operations.
+
+2. **Inclusion-Exclusion Over Subsets**:
+   - Iterate over all subsets \(T\) of rows (represented as bitmasks). For each subset \(T\):
+     - **Compute Non-Empty Placements**: For each column, determine the number of non-empty placements (i.e., at least one scarecrow) in rows not in \(T\).
+     - **Dynamic Programming**:
+       - **Initialization**: For the first column, initialize DP states representing empty and non-empty placements.
+       - **Transition**: For subsequent columns, update DP states based on whether the current column is non-empty and the previous column was non-empty, ensuring the consecutive column constraint is met.
+     - **Count Valid Arrangements**: Sum the final DP states to get the count \(F(T)\) of valid arrangements avoiding rows in \(T\).
+
+3. **Combine Results**:
+   - Apply the inclusion-exclusion principle: sum \(F(T)\) over all subsets \(T\) with signs determined by the parity of the subset size to get the final count of arrangements covering all rows.
+
+#### Complexity
+- **Time Complexity**: \(O(2^R \times R \times C)\). The dominant factor is iterating over \(2^R\) subsets, each involving \(O(C)\) column processing and \(O(R)\) bitmask operations.
+- **Space Complexity**: \(O(2^R + C)\), primarily for storing the inclusion-exclusion counts and precomputed tables.
+
+### Solution Code
+```python
+MOD = 1000000007
+
+import sys
+
+def main():
+    data = sys.stdin.read().splitlines()
+    if not data: 
+        return
+    R, C = map(int, data[0].split())
+    grid = []
+    for i in range(1, 1+R):
+        grid.append(data[i].strip())
+    
+    nT = 1 << R
+    base = [0] * C
+    for j in range(C):
+        mask = 0
+        for i in range(R):
+            if grid[i][j] == '.':
+                mask |= (1 << i)
+        base[j] = mask
+        
+    max_a = R
+    power2 = [1] * (max_a + 1)
+    for i in range(1, max_a + 1):
+        power2[i] = (power2[i-1] * 2) % MOD
+        
+    popcount_arr = [0] * nT
+    for x in range(nT):
+        popcount_arr[x] = bin(x).count('1')
+        
+    F_values = [0] * nT
+    
+    for T in range(nT):
+        non_empty_arr = [0] * C
+        for j in range(C):
+            avail_mask = base[j] & (~T) 
+            a_j = popcount_arr[avail_mask & (nT - 1)]
+            if a_j == 0:
+                non_empty_arr[j] = 0
+            else:
+                non_empty_arr[j] = (power2[a_j] - 1) % MOD
+                
+        if C == 0:
+            F_values[T] = 0
+            continue
+            
+        dp0 = 1
+        dp1 = non_empty_arr[0]
+        
+        for j in range(1, C):
+            new_dp0 = dp1
+            new_dp1 = (dp0 + dp1) * non_empty_arr[j] % MOD
+            dp0, dp1 = new_dp0, new_dp1
+            
+        F_values[T] = (dp0 + dp1) % MOD
+
+    total = 0
+    for T in range(nT):
+        bits = bin(T).count('1')
+        if bits % 2 == 0:
+            total = (total + F_values[T]) % MOD
+        else:
+            total = (total - F_values[T]) % MOD
+            
+    total %= MOD
+    if total < 0:
+        total += MOD
+    print(total)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Precomputation**:
+   - **Base Masks**: For each column, create a bitmask where each bit represents whether the corresponding row is available ('.').
+   - **Power of Two Table**: Stores \(2^k \mod 10^9+7\) for quick computation of non-empty placements.
+   - **Popcount Table**: Precomputes the number of set bits for all numbers up to \(2^R\) to efficiently count available rows during subset processing.
+
+2. **Inclusion-Exclusion Loop**:
+   - For each subset \(T\) of rows (bitmask), compute the count of valid arrangements \(F(T)\) that avoid rows in \(T\):
+     - **Non-Empty Placements**: For each column, calculate the number of non-empty placements in rows not in \(T\) using the base mask and popcount.
+     - **Dynamic Programming**: Track DP states for the current column being empty or non-empty, ensuring the consecutive column constraint by checking the previous column's state.
+
+3. **Result Combination**:
+   - Sum \(F(T)\) over all subsets \(T\), with signs based on subset size parity (inclusion-exclusion principle), to obtain the final count of valid arrangements covering all rows. The result is adjusted to be non-negative modulo \(10^9 + 7\).
+
+This approach efficiently handles the constraints by leveraging bitmask operations and dynamic programming, ensuring optimal performance for large grids.

@@ -1,0 +1,7 @@
+One way to solve this problem is by using binary search on the output $k$ and test whether $go(G, k)$ can produce a complete graph. Whether $go(G, k)$ can produce a complete graph can be tested in $\mathcal{O}(N^3)$.
+
+Maintain a list $Q$ containing candidate edges $(a, b)$ where $\delta_a + \delta_b \geq k$. Process (add) edge $q \in Q$ into $G$ in any order. When $(a, b)$ is added, **scan** through all potential neighbours $c$ of $a$ and add $(a, c)$ into $Q$ if $(a, c)$ is not in $G$ or $Q$ and $\delta_c + \delta_c \geq k$ (be careful with duplicate entries). Do the same for node $b$. Process all edges in $Q$. Note that if $go(G, k)$ can produce a complete graph, then this method will produce a complete graph. This algorithm runs in $\mathcal{O}(N^3)$.
+
+Combined with the binary search, the time-complexity for this solution is $\mathcal{O}(N^3 \log N)$. Be careful when you decide the binary search range for $k$. The largest possible output is $(N - 2) + (N - 2)$, not $N - 1$.
+
+You can use other approaches with asymptotically the same time-complexity, but beware with the hidden constant factor in your solution. If you didn’t implement your solution efficiently, your solution might get **TIMELIMIT** even though it has a theoretical $\mathcal{O}(N^3 \log N)$ time-complexity—as what happened when the judges prepared this problem, e.g., < 1 second vs 30 seconds.

@@ -1,0 +1,1840 @@
+ We are going to follow the editorial approach: binary search on k in the range [0, 2*(N-1)].
+ For a candidate k, we simulate the closure process:
+   - Start with the current graph and current degrees.
+   - We maintain a max-heap (using min-heap with negative) for non-edges (u, v) with key = current_degree[u] + current_degree[v].
+   - We repeatedly extract the non-edge with the highest degree sum. If that sum is at least k, we add the edge, update the degrees of u and v, and then update the degree sums for all non-edges incident to u and v (by pushing new entries with the updated degrees). 
+   - However, note: we cannot remove old entries from the heap, so we use a lazy approach: when popping, we check if the edge is already added OR if the stored value does not match the current degree sum (then skip). Also, we break out of the loop when the top of the heap is less than k (meaning we cannot add more).
+
+ Important: We are counting how many edges we add. We know we need to add total_edges = n*(n-1)//2 - M.
+
+ But note: the simulation must not add an edge that is already present. We start by initializing the graph with the existing edges.
+
+ However, the sample input 5 0: no edges, then we need to add 10 edges. But k=0: we can add every edge regardless of degree? Actually, we start with degrees 0 for all. Then 0+0=0 >=0 -> we add. But then we update the degrees. Actually, we can simulate.
+
+ But note: the problem states that Go only adds an edge when the current degree sum is >= k. So even if we start with 0, and k=0, we can add.
+
+ However, the simulation must be efficient. The worst-case: we start with O(N^2) non-edges, and each time we add an edge we update O(N) new non-edges for the two vertices? Actually, when we add an edge (u, v), we then update the non-edges for u and v: for every other node x, if (u, x) is not present, we push a new entry for (u, x) with updated degree. Similarly for (v, x). But note: the same non-edge might be pushed multiple times. We avoid processing duplicates by skipping when the edge is already added or when the stored value is outdated.
+
+ But worst-case: each non-edge might be pushed O(N) times? Then total heap operations could be O(N^3). With N=500, that's 500^3 = 125e6, which might be borderline in Pyton? But we have a log factor (heap operations) so 125e6 * log(125e6) which is about 125e6 * 27 = 3.375e9, which is too high in Python.
+
+ We need to optimize:
+
+ Observation: We don't need to update every non-edge for u and v every time. Actually, when we add an edge (u, v), only the degrees of u and v change. Therefore, the degree sum for a non-edge (u, x) becomes (deg[u] + 1) + deg[x] (but note: deg[u] is updated already because we added one for the edge (u,v) and then we are going to update for the edge (u,x) only later? Actually, in our simulation, when we add (u,v), we update deg[u] and deg[v]. Then we consider non-edges (u,x) and (v,x) for all x. But note: the non-edge (u,x) now has new degree sum = (deg[u] (which is old_deg[u]+1) + deg[x]). However, we must note: the degree of x might have been updated by previous edge additions? But that's already reflected in the current degree array.
+
+ But the problem: we are going to push a new entry for (u,x) even if it was already in the heap. Then we have multiple entries for the same non-edge. We use lazy deletion: when popping, we check if the edge is still not present and if the stored value equals the current degree sum? Actually, we check two conditions: if the edge is now present (g[i][j]) then skip. Also, we check if the stored value (which is the degree sum at the time of pushing) is still the same as the current degree sum? Actually, the stored value is the degree sum at the time of pushing. But the current degree sum might be higher (because we have added edges and updated degrees) or even lower? Note: we only add edges so degrees can only increase. Therefore, the stored value is a lower bound? Actually, no: because we pushed with a value that was the sum at the time. Then later, when we update the degrees, the actual current degree sum is higher. So if we stored a value that was too low, we might skip a non-edge that now qualifies? But we are pushing updated entries. So we can skip the old entries? 
+
+ How to handle: 
+   We can push a new entry with the updated degree sum. Then when we pop, we might get an old entry that has a lower value than the current degree sum. So we can skip that because we know that there is a newer entry (with a higher value) in the heap? But note: the heap is a max-heap (using negative) so the largest value is at the top. However, if we have multiple entries for the same non-edge, the one with the largest value (if it is the latest) is the one we want. But if an old entry is at the top and it is outdated, we skip it.
+
+ Therefore, in the simulation:
+
+   while heap and added_edges_count < target:
+        pop the top (which is the largest degree sum, stored as negative) -> (neg_val, u, v)
+        current_val = -neg_val
+        If g[u][v] is True -> skip (already added by a previous step? Actually, we mark it as we add, so if added, skip).
+        If current_val != (degree[u] + degree[v]): then skip (because we have a more recent update that has a higher value? Actually, the current degree sum is at least the stored value? because degrees only increase. So if stored value is less than the current degree sum, then we should have pushed a newer entry. But note: we push a new entry only when we update the degree of u or v? And we update the degree of u and v only when we add an edge incident to them. So if we have an entry for (u,v) that was pushed at a time when the degree sum was X, and then later we add an edge incident to u, then we push a new entry for (u,v) with a higher value. Therefore, the current degree sum for (u,v) is at least X. So if the popped entry has value X and the current degree sum is Y>X, then we skip and process the next.
+
+        But note: we might have multiple old entries. We can skip any entry that is either already added or whose stored value is less than the current degree sum? Actually, we can also skip if the stored value is less than k? But we are popping the top, so if the top is less than k, we break. But we are storing the current_val.
+
+        Actually, we do:
+          if current_val < k: then we break because the max heap top is less than k -> no more edges can be added.
+          else: 
+             if current_val != degree[u] + degree[v]: then skip? Actually, we can skip because we have a newer entry? But what if the current degree sum is now >= k? Then we should add it? But we have a newer entry in the heap that will have a higher value? So we skip the old one.
+
+        However, we must note: the condition for adding is the current degree sum. So we should check: if the current degree sum (which is at least the stored value) is >= k? Then we can add. But wait: the stored value is X (which is >=k) and the current degree sum is Y>=X. Then Y>=k. So we can add? 
+
+        But the problem: we are simulating the process that uses the current state. The stored value might be outdated, but the current state is available. Therefore, we should check the current degree sum: 
+            if degree[u] + degree[v] >= k: then we add the edge.
+
+        However, then why do we need to store the value? We can just store the non-edge and when popping, we check the current degree sum? Then we don't need to update the heap? 
+
+        Alternative approach: we do not store the degree sum at the time of pushing. Instead, we store only (u, v). Then we use a heap that is keyed by the current degree sum? But the current degree sum changes. 
+
+        We can do:
+
+          We maintain a max-heap that is keyed by the current degree[u] + degree[v] for the non-edges. However, the current degree sum is changing. So we cannot precompute.
+
+        Actually, we can use a "lazy heap": we push non-edges with the current degree sum at the time of pushing. Then when we pop, we check the current degree sum: 
+            if the edge is already present -> skip.
+            if the current degree sum >= k: then we add the edge and update the degrees and push updates for neighbors.
+            else: skip this entry and do nothing? But then the same non-edge might be pushed again later? Actually, we break when the top of the heap (which we compute by the current degree sum of the top) is less than k? But we don't have the current degree sum of the top until we pop? 
+
+        How about:
+
+          We maintain a heap that stores (- (current degree sum at the time of pushing), u, v). But we also maintain an array `deg` that is updated.
+
+          Then, in the loop:
+            while heap:
+                pop the top -> (neg_val, u, v) = heapq.heappop(heap)
+                current_sum = -neg_val
+                if g[u][v]: continue   # already added
+                if deg[u] + deg[v] != current_sum: 
+                    # This entry is outdated: because the current degree sum is higher? Actually, we know the current degree sum is at least current_sum? 
+                    # But we have updated the degrees? Then we push a new entry? 
+                    # However, we don't push new entries unless we update the degrees of u or v? And we update the degrees only when we add an edge incident to u or v. So if we get an outdated entry, we skip and do nothing? 
+                    # But then the non-edge (u,v) might have a higher current degree sum? How do we get it? We don't push an update for (u,v) unless we update u or v? And if we update u (by adding an edge incident to u) then we do push (u, v) again? So we have a newer entry? 
+                    # Then we skip.
+                    continue
+                # Now, if we are here, then the stored value is the current degree sum? 
+                if current_sum < k:
+                    # Then we break the entire process? Because this is the largest? 
+                    # But note: we are in a max-heap: the top is the largest. If the largest is less than k, then no non-edge can be added.
+                    # However, we just popped an outdated entry? Then the next might be valid and >=k? But we have broken the heap? 
+                    # Actually, we break the inner while loop and then set heap to [] to break the outer? 
+                    # But wait: we have skipped the outdated entry and then we break? Then we leave the non-edge (u,v) which might be still in the heap? 
+                    # Instead, we should not break the heap processing until we get a valid top that is the largest and also current? 
+
+                Actually, we cannot break by the popped value if it is outdated. We need to keep popping until we get a valid one? 
+
+        Revised plan:
+
+          We do:
+            while heap and added_edges_count < target:
+                neg_val, u, v = heapq.heappop(heap)
+                current_val = -neg_val
+                if g[u][v]:
+                    continue
+                # Check if the stored value is outdated: 
+                if deg[u] + deg[v] > current_val:
+                    # This entry is outdated: we have a newer state? Actually, we know that the current degree sum is at least current_val? 
+                    # But we don't have a newer entry? Actually, we should have pushed a newer entry when we updated the degrees of u or v? 
+                    # So we skip this outdated entry and continue to the next.
+                    continue
+                # If the stored value is less than k? Then we break? Because the current degree sum is the stored value? 
+                if deg[u] + deg[v] < k:
+                    # Then we break the entire while loop? But note: the heap might have other entries that are valid and >=k? 
+                    # But we have a max-heap: we popped the largest entry. If the largest entry (that is still current) is less than k, then all are less than k.
+                    # However, we just popped the top. But we might have skipped some outdated ones that were at the top? Then the next one might be valid and >=k? 
+                    # Actually, we break the inner while loop? But we cannot break the entire process until we have no more edges to add? 
+
+                Actually, we cannot break by the popped value because we might have skipped outdated entries that were large? Then the next entry might be valid and large enough? 
+
+          Therefore, we must not break the entire process until we have popped the entire heap? But that is inefficient.
+
+        Alternatively, we can restructure:
+
+          We maintain a heap, and we know that the maximum current degree sum for any non-edge might be stored in the heap. But we don't know until we pop and check.
+
+        How about: we do not break when we see an entry < k? Instead, we break when the maximum possible degree sum (which is the top of the heap) is less than k? But we have to check the top without popping? We can't because the top might be outdated.
+
+        We can do:
+
+          while True:
+             while heap and (g[u][v] or ...) ... : we pop until we get a valid top? 
+             if heap is empty: break
+             neg_val, u, v = heap[0]  (peek) without popping? But then we check the current degree sum for (u,v): 
+                if deg[u] + deg[v] >= k: then we pop and process.
+                else: break (because then the top is the largest and it's <k)
+
+          However, we cannot peek and then pop only if valid? Because the heap doesn't allow updating the top without popping? 
+
+        We can do:
+
+          while heap:
+              neg_val, u, v = heapq.heappop(heap)
+              if g[u][v]:
+                  continue
+              current_sum = deg[u] + deg[v]
+              # But note: the stored value (current_val = -neg_val) might be less than current_sum? Then we have to push a new entry? 
+              # Actually, we can check: if current_sum > current_val: 
+              if current_sum > current_val:
+                  # We push a new entry with current_sum and skip this one.
+                  heapq.heappush(heap, (-current_sum, u, v))
+                  continue
+              # Now, if current_sum == current_val: then we can process.
+              if current_sum < k:
+                  # Then we break because we cannot add this edge, and the heap top (which we popped) is the largest? 
+                  # But note: we might have other entries that are valid and with higher current_sum? 
+                  # However, we have a max-heap: the top should be the largest. But we just popped the top and found it is <k. Then we break.
+                  break
+
+              # Then we add the edge (u,v) and update degrees, and push updates for neighbors.
+
+        But note: the heap is a min-heap for negative values. So the top is the smallest negative (i.e., the largest positive). But when we push a new entry for (u,v) with a higher current_sum, it becomes a more negative value? Then it goes to the top? 
+
+        However, we break when we pop an edge that has current_sum < k? But what if after pushing a new entry for (u,v) (because we found current_sum > stored value) we then push and then the next top might be the same (u,v) again? Then we might loop? 
+
+        Actually, we must avoid infinite loops. How many times can we push the same non-edge? At most O(N) times? Because the degree of each vertex can only increase from initial to at most N-1. So the degree sum for a non-edge can change at most O(N) times? Then total heap operations is O(N^3) which is acceptable for N=500? 
+
+        But worst-case: 500^3 = 125e6, which is acceptable in C++ but in Python? We have to hope that the constants are low? Or we need to optimize.
+
+        Alternatively, we can avoid pushing an updated entry if the current_sum is already above the maximum possible? Not really.
+
+        Let's design the check(k) function with the lazy update:
+
+          g: the current graph (adjacency matrix) -> we start with the initial graph.
+          deg: the current degree list -> we start with the initial degrees.
+
+          heap = []   # min-heap for (-(degree sum), u, v)
+
+          # Precompute: for every non-edge (u,v): push (-(deg[u]+deg[v]), u, v)
+
+          added_edges_count = 0
+          # We are going to process until we break.
+
+          while heap and added_edges_count < target_edges_to_add:
+              neg_val, u, v = heapq.heappop(heap)
+              current_val = -neg_val
+
+              if g[u][v]: 
+                  continue
+
+              current_sum = deg[u] + deg[v]
+              if current_sum < k:
+                  # Then we break: because we cannot add this edge. And since the heap is a max-heap, the rest are <= current_sum? 
+                  # But note: we might have skipped some larger ones that are outdated? Actually, we have a max-heap: we popped the largest stored value. But if the stored value was outdated, we pushed a new one? Then we break? 
+                  # Actually, we break the entire process: because if the stored value was outdated, we pushed a new one and that new one would be larger? Then we would have popped that new one? 
+                  # But we break only when we pop an entry that is current and current_sum < k? 
+                  break
+
+              if current_val != current_sum:
+                  # This entry is outdated: the current_sum is larger? Then we push a new entry and skip.
+                  heapq.heappush(heap, (-current_sum, u, v))
+                  continue
+
+              # Now, we add the edge (u, v)
+              g[u][v] = True
+              g[v][u] = True
+              added_edges_count += 1
+              deg[u] += 1
+              deg[v] += 1
+
+              # Now, for each neighbor of u and v, we don't need to update the heap for the edge we just added? 
+              # But we do need to update the non-edges incident to u and v? 
+              # For u: for every node x (x != u) such that the edge (u,x) is not present, we push a new entry? 
+              # But note: we cannot push for every x? Because we only care about non-edges? And we don't want to push duplicates? 
+              # However, we are pushing a new entry for (u,x) with the updated deg[u] and deg[x]. But note: the degree of x might not have changed? But we updated u. 
+              # So for each x in the entire graph? 
+              for x in range(1, n+1):
+                  if x == u: continue
+                  if not g[u][x]:
+                      new_sum = deg[u] + deg[x]
+                      heapq.heappush(heap, (-new_sum, u, x))
+                  if x != v: 
+                      # We skip if x==v? Actually, v is updated similarly? 
+                      # But we are iterating for u: then we do the same for v? 
+                      continue
+              for x in range(1, n+1):
+                  if x == v: continue
+                  if not g[v][x]:
+                      new_sum = deg[v] + deg[x]
+                      heapq.heappush(heap, (-new_sum, v, x))
+
+          Then we return added_edges_count == target_edges_to_add
+
+        However, the above double loops for u and v: O(N) per edge added, and we add O(N^2) edges? Then worst-case O(N^3) which is 125e6 for N=500? But note: we are pushing for every non-edge incident to u and v, but the same non-edge might be pushed multiple times? 
+
+        But worst-case total operations: 
+          Each non-edge (u,v) might be pushed as many times as the degrees of u and v change? The degree of a vertex can change at most N-1 times (from initial to N-1). So each non-edge might be pushed O(N) times? Then total heap operations is O(N^3) which is 500^3 = 125000000. In Python, with heap operations log(N^3) which is about 20, then 125e6 * 20 = 2.5e9 operations? This might be borderline in Pyton in 1 second? 
+
+        We need to optimize: we cannot push the same non-edge multiple times? 
+
+        Alternatively, we can avoid pushing the same non-edge by not pushing if we know we have a more recent update? But we don't track that.
+
+        We'll try to run the simulation and hope that the average is better? Or we note that the problem constraints say N<=500, and worst-case M=0, then we add 124750 edges? Then the total heap operations: each edge added we push 2*(n-1) new entries? Then total pushes: about (n-1)* (number of edges added) * 2? = 2*(n-1)*(n*(n-1)/2) = n*(n-1)^2, which for n=500: 500*499*499 = 500 * 249001 = 124500500, which is about 1.245e8 pushes? Then heap operations (push and pop) are O(1.245e8 * log(1.245e8))? log2(1.245e8) is about 27, so 1.245e8 * 27 = 3.36e9, which is too high in Python.
+
+        We need a better approach.
+
+        Insight from known solutions: 
+          We can use a static list of non-edges and update the degrees, but then we need to find the non-edge with the maximum current degree sum? We can do:
+
+          Instead of a heap, we can maintain an array `candidate` for each non-edge? And then each time we add an edge, we update the degrees and then update the degree sums for non-edges incident to u and v? Then we find the non-edge with the maximum degree sum? 
+
+          Then we do:
+
+            non_edges = set of non-edges? 
+            deg_sum[i][j] = deg[i]+deg[j] for each non-edge (i,j)
+
+            Then we can use a priority queue that we update? But updating the priority queue is O(n) per update? 
+
+          Alternatively, we can use a list and then each time scan the entire list for the maximum? That would be O(N^2) per edge added -> O(N^4) which is 500^4 = 62.5e9, too high.
+
+        Known efficient algorithm for closure: 
+
+          There is an algorithm that runs in O(N+M) per candidate k? 
+
+        Actually, the known solution for the closure is to use the following:
+
+          The closure is complete if and only if the graph is complete? 
+
+          But we are building the closure by adding edges. 
+
+        Another known approach: 
+
+          Sort the vertices by degree (in increasing order) and then check the condition: 
+            deg[i] >= k - deg[j] for j>i? 
+
+        Actually, we can use the following: 
+
+          The closure is complete if and only if the graph has a complete closure? 
+
+        There is an algorithm: 
+
+          while there are two non-adjacent vertices u, v with deg[u] + deg[v] >= k:
+             add the edge (u, v) and update the degrees.
+
+          Then check if the graph is complete? 
+
+        How to do this without a heap? 
+
+          We can use a linked list of non-edges? 
+
+        But worst-case we still have O(N^3).
+
+        Alternatively, we can use a two-dimensional array to store the current degree sum for non-edges? Then we maintain:
+
+          best = -1
+          candidate_edge = None
+          For each non-edge (u, v) that is still non-present:
+             s = deg[u] + deg[v]
+             if s > best:
+                 best = s
+                 candidate_edge = (u, v)
+
+          Then if best >= k, we add candidate_edge and update the degrees and then update the degree sums for all non-edges incident to u and for v? 
+
+          Then we do:
+
+             while best >= k and added_edges_count < target_edges_to_add:
+                 add candidate_edge (u, v)
+                 deg[u]++, deg[v]++
+                 then update: 
+                    for each x: non-edge (u,x): update the degree sum: new_sum = deg[u] + deg[x] (but note: we updated deg[u] so we add 1 to the previous value? Actually, we can update by: for each x, if the non-edge (u,x) exists, then we add 1 to the degree sum for (u,x). Similarly for (v,x). Then we update the best?
+
+          But updating the best: we have to scan all non-edges? Then per edge added we do O(N) work? Then total O(N^3) which is acceptable for N=500? Because 500^3=125e6.
+
+        Steps for check(k) without heap:
+
+          g: n+1 x n+1 matrix (current graph, initially the input graph)
+          deg: list of degrees
+
+          # Precompute: non_edges: we don't need to store all? We can have a 2D array for the current degree sum for non-edges? Actually, we can compute on the fly? 
+          # We'll maintain an array `cur_sum` for each non-edge? But we don't need to store? 
+
+          # We'll maintain a variable `best` and `best_u, best_v` for the non-edge with the maximum current degree sum.
+
+          However, after updating the degrees, we have to update the degree sums for non-edges incident to u and v? and then update the global best? 
+
+          Alternatively, we can do:
+
+            added = set()   # but we don't need? We use g.
+
+            # Precompute a list of non-edges? But we are going to add edges and remove non-edges? 
+
+            # Instead, we can use:
+
+            non_edges = set()
+            for i in range(1, n+1):
+                for j in range(i+1, n+1):
+                    if not g[i][j]:
+                        non_edges.add((i, j))
+
+            Then we maintain an array `s` for the current degree sum for each non-edge? 
+
+            But updating: when we add an edge (u, v), we remove (u,v) from non_edges. Then for each x, we update the non-edges (u,x) and (v,x) by adding 1 to their degree sum? 
+
+            Then we find the best by: 
+                best_val = -10**9
+                candidate = None
+                for (i, j) in non_edges:
+                    if s[i][j] > best_val:
+                        best_val = s[i][j]
+                        candidate = (i, j)
+
+            Then if best_val >= k, we add candidate.
+
+            But the update per edge added: we update O(n) non-edges (for u: all non_edges (u,x) for x in the graph) and similarly for v. Then we do a scan of O(n^2) non-edges to find the best? That would be O(n^2) per edge added, and we add O(n^2) edges? Then total O(n^4) which is 500^4 = 62.5e9, which is too high.
+
+        We can maintain a priority queue for the non-edges by current degree sum. But then when we update one non-edge, we update the heap? But we are updating many non-edges per edge added.
+
+        Alternatively, we can maintain a global max-heap for the non-edges. But then we update the keys? There is no efficient way to update many keys in the heap.
+
+        Given the constraints (n<=500), we can do:
+
+          while True:
+             best = -1
+             candidate = None
+             for (i, j) in non_edges:
+                 s = deg[i] + deg[j]
+                 if s > best:
+                     best = s
+                     candidate = (i, j)
+             if best < k:
+                 break
+             # add candidate (u, v) = candidate
+             u, v = candidate
+             non_edges.discard((u, v))
+             non_edges.discard((v, u))? Actually, we stored (i,j) with i<j? 
+             deg[u] += 1
+             deg[v] += 1
+             added_edges_count += 1
+             # and update: for all x, if (u,x) is in non_edges, then we don't update anything in the data structure? because in the next iteration we will compute the sum? 
+             # Similarly for v.
+
+          Then the total work: 
+             The outer loop runs at most O(n^2) times.
+             The inner loop is O(n^2) per iteration? Then total O(n^4) which is 500^4 = 62.5e9, which is too high in Python.
+
+        We need to optimize the inner loop: we can maintain an array `best_candidate` of size n? or we can precompute a list of non-edges and then update only the affected ones? 
+
+        How about: 
+
+          We maintain an array `max_degree_sum` of size n+1, where for each vertex i, we want to know the maximum degree sum over j such that (i,j) is a non-edge? 
+
+          But then we want the global maximum? 
+
+          Alternatively, we maintain a global data structure:
+
+            We keep an array `A` of size n+1, and a set of non_edges per vertex? 
+
+          Actually, we can do:
+
+            Let non_edges_list = list(non_edges)   # we store (i,j) for i<j and not present.
+
+            But we update the degrees and then we want to find the maximum deg[i]+deg[j] for (i,j) in non_edges_list? 
+
+          We can store the non_edges in a list and then after updating the degrees of u and v, we only update the degree sums for the non_edges incident to u and v? Then we can have a global variable `best` that is the maximum over the entire list. But then we have to update after each edge addition? 
+
+          Steps:
+
+            best_val = -1
+            candidate = None
+            # We maintain an array `last_updated` for vertices? Not exactly.
+
+            Instead, we can maintain an array `cur_sum` for each non-edge? And then also a global heap or a sorted list? 
+
+          Given the time, we decide to use the O(n^4) approach for n=500? 
+
+          Worst-case: 500^4 = 62500000000, which is 62.5e9, which is too high.
+
+        We must use the heap with lazy deletion? Then worst-case total operations O(n^3 log(n^2)) which is about 125e6 * log(125e6) ~ 125e6 * 27 = 3.375e9, which is too high in Python.
+
+        We need a more efficient algorithm.
+
+        Insight from the known problem: This is the "graph closure" problem and it can be solved by the following:
+
+          k is at most 2*(n-1). And the closure is complete if and only if the graph is complete? 
+
+        Another known solution: 
+
+          We can use the following theorem: 
+          The closure of the graph is complete if and only if there is no subset S of vertices such that the sum of degrees in the induced subgraph is too low? 
+
+        Or: use the condition from the Havel-Hakimi algorithm? 
+
+        But there is a known solution: 
+
+          Sort the degrees in increasing order: d1 <= d2 <= ... <= dn.
+          Then the closure is complete if and only if:
+             for every i, d_i >= some value? 
+
+        Actually, there is a condition for the closure to be the complete graph: 
+
+          We must have that for every pair of non-adjacent vertices (i,j), there is a sequence of edge additions that eventually makes the degree sum of (i,j) at least k. 
+
+        But the known solution for this exact problem (from past competitions) is to do the heap simulation and hope that the number of updates is not worst-case? or use a more efficient data structure.
+
+        Alternatively, we can use a link/cut tree? That's too heavy.
+
+        Given the constraints (n<=500), we can try to optimize the heap version:
+
+          We note that we only need to push updates for non-edges that are incident to the vertices whose degree has changed. And the total number of non-edges is O(n^2). And the total number of times a vertex's degree changes is at most (n-1) times? So the total number of updates (pushes) is at most: 
+             for each vertex, when its degree changes, we push O(n) non-edges (all non-edges incident to it). 
+          And the degree of a vertex changes at most (n-1) times (from initial to at most n-1). So total pushes = O(n * n * n) = O(n^3) = 125e6.
+
+          And we pop at most O(n^3) times? Then total operations = O(n^3 log(n^3)) = 125e6 * log(125e6) = 125e6 * 27 = 3375e6, which is 3.375e9, which is borderline in C++ but in Python we need to optimize the constant.
+
+        We will try to optimize by: 
+          - Using a list for the heap and then heapq makes the constant relatively low? 
+          - But 3.375e9 operations might be too high in Python.
+
+        We might need to use a more efficient algorithm.
+
+        Known efficient algorithm: 
+          https://en.wikipedia.org/wiki/Binomial_heap might not help.
+
+        Or we can use a sorted list for each row? 
+
+        Alternatively, we can use a global sorted list of non-edges by current degree sum. And then when we update a vertex u, we update all non-edges incident to u: remove them and reinsert with new degree sum? 
+
+          Then the cost per update for a vertex u: O(deg_non_edges(u) * log(n^2))? And deg_non_edges(u) is O(n). And we update a vertex u when its degree changes, and it changes O(n) times? Then total cost for one vertex: O(n * n * log(n^2)) = O(n^2 * log(n)), and for all vertices: O(n^3 * log(n)) = 500^3 * log(500) = 125e6 * 9 = 1.125e9, which is acceptable in Pyton? Maybe not in 1 second? 
+
+        How to maintain a sorted list of non-edges? 
+
+          We can use a balanced BST? In Python, we can use a sorted list and use bisect to insert, but removal and insertion are O(n) per operation? Then per non-edge update: O(n), and total updates O(n^3) non-edge updates? Then total O(n^4) = 62.5e9, too high.
+
+        Given the complexity, we decide to implement the heap with lazy deletion and hope that the constants are low or that the worst-case doesn't happen.
+
+        Or we try to use a priority queue that supports updating priorities? We can use the "heap with lazy deletion" pattern: 
+
+          We'll have a heap, and when we want to update a non-edge (u,v), we push a new entry. And when popping, we skip outdated ones.
+
+        We already have that. 
+
+        Let's try with the sample: 
+
+          Sample Input 1: 4 3, edges: (1,2), (2,3), (3,4)
+
+          non-edges: (1,3), (1,4), (2,4)
+
+          degrees: [0,1,2,2,1] for index 1..4.
+
+          We push:
+             (1,3): - (1+2) = -3
+             (1,4): - (1+1) = -2
+             (2,4): - (2+1) = -3
+
+          The heap: [(-3,1,3), (-3,2,4), (-2,1,4)]   -> the smallest in heapq (min-heap) is -3? But we want the largest? So we pop the smallest negative (which is the largest positive). But heapq in Python is min-heap, so we store negative. Then the top is the smallest negative -> the largest positive.
+
+          Actually, heapq will return the smallest negative first? But we want the largest positive. So we store (-sum, u, v), then the top of the heap is the smallest element in the min-heap of (-sum), so it is the largest sum.
+
+          So the heap: 
+             [ -3, -3, -2] -> the smallest is -3? But there are two -3. We pop one: say (1,3) or (2,4)? heapq doesn't guarantee which one? 
+
+          Then we process (1,3): 
+             current_val = 3.
+             current_sum = deg[1]+deg[3] = 1+2 = 3 -> not outdated.
+             if 3>=k (k is candidate, say 3) -> then we add the edge (1,3).
+             Update: deg[1]=2, deg[3]=3.
+             Then we update non-edges incident to 1: 
+                 (1,4): exists, we push new entry: deg[1]+deg[4]=2+1=3 -> push (-3,1,4)
+                 non-edges incident to 3: 
+                 (3,1) is now added, so skip? 
+                 (3,2) is present? (2,3) is present -> skip.
+                 (3,4) is present -> skip.
+                 Also, (3,x) for x=1..4: we only consider non-edges? (3,1) is added, (3,2) exists, (3,4) exists -> no new non-edge for 3? 
+             Then we remove (1,3) from the graph (mark as added) and push for (1,4) again? 
+
+          Then the heap has: [ (-3,2,4), (-2,1,4), (-3,1,4) ]   -> then we pop the smallest negative: -3 -> either (2,4) or (1,4) with value 3? 
+
+          But note: (1,4) has been pushed twice. We pop one: say (2,4): 
+             current_val=3, current_sum= deg[2]+deg[4]=2+1=3 -> add.
+             Then update: deg[2]=3, deg[4]=2.
+             Update non-edges incident to 2: 
+                 (2,1): present? yes, edge (1,2) exists -> skip.
+                 (2,3): exists.
+                 (2,4): we are adding, so skip.
+                 Then non_edges incident to 2: none.
+             Incident to 4: 
+                 (4,1): we push new entry: deg[4]+deg[1]=2+2=4 -> push (-4,1,4)
+                 (4,3): exists -> skip.
+          Then we have added_edges_count=2, and we need one more: (1,4). 
+          Now the heap: [ (-2,1,4), (-3,1,4), (-4,1,4) ] -> we pop the smallest negative: -4 -> (1,4) with current_val=4.
+             current_sum = deg[1]+deg[4]=2+2=4 -> not outdated.
+             then add.
+
+          So it works.
+
+        We'll implement the heap version with lazy deletion and hope that the total number of heap operations is not worst-case? 
+
+        But worst-case is 125e6 pushes and 125e6 pops? 250e6 * 27 = 6.75e9 operations? That might be 67.5 seconds in Python? 
+
+        We must optimize further:
+
+          We note that the degree sum for a non-edge (u,v) is updated only when the degree of u or v changes. And the degree of a vertex can only increase. Therefore, we can avoid pushing a new entry if the new degree sum is not greater than the current maximum in the heap? But we don't know.
+
+        Alternatively, we can use a separate data structure per vertex? 
+
+        Given the time, and since N is only 500, we hope that in practice the number of times we have to push is not the worst-case? Or we use pypy? 
+
+        But the problem time limit is 1.0 seconds. 
+
+        We need a better algorithm. 
+
+        Known solution in C++ for the same problem (from past competitions) uses the heap and runs in O(n^3 log n) and for n=500, it is about 125e6 * log(125e6) ~ 3.375e9, which in C++ might be borderline in 1 second? In Python, we need to optimize the constants.
+
+        We can try to optimize by:
+
+          - We use a matrix to quickly check g[u][v]. We have a 2D list of booleans.
+          - We store the current degrees in a list.
+          - For the heap, we store tuples (neg_sum, u, v) and we avoid duplicates? We don't care.
+
+        We'll try to submit and hope that it passes in Pyton? But the sample inputs are small.
+
+        Sample input 2: 5 0 -> then we need to add 10 edges, and k=0. 
+          The simulation: 
+            non_edges: all pairs.
+            initial degrees: all 0.
+            We push for every non-edge: (0, i, j) -> but k=0: we will add one edge? then update degrees? 
+
+          But we must add one edge, then update degrees to 1 for two vertices, then push new values for all non-edges incident to those two vertices: about 2*(n-1) new pushes.
+
+          Then we pop again: the highest degree sum might be 1 (from an edge incident to one of the vertices we updated) or 0 (others) -> then we add an edge with sum=1 (if any) or if not, then we add an edge with sum=0? 
+
+          But we can add any edge? 
+
+          However, the order: we start by adding one edge, then we have degrees [1,1,0,0,0]. Then we push for non-edges incident to the two vertices that got updated: 
+              for vertex u (say 1): non_edges (1,3), (1,4), (1,5): push (1+0=1) for each.
+              for vertex v (say 2): non_edges (2,3), (2,4), (2,5): push (1+0=1) for each.
+          Then the heap has: 6 entries with -1, and the rest with 0. We pop one: say (1,3): add, then update degrees: deg[1]=2, deg[3]=1.
+          Then push for non_edges incident to 1 and 3: 
+              for 1: (1,4), (1,5) -> push (2+0)=2
+              for 3: (3,4), (3,5) -> push (1+0)=1, and (3,2) -> but (2,3) is not present? Actually, we haven't added (2,3) -> so we push (1+1)=2 for (2,3) ? But we did not update vertex 2? 
+
+          Actually, when we add (1,3), we update deg[1] and deg[3], and then we push for every non-edge incident to 1 and 3? 
+              incident to 1: (1,4), (1,5), (1,2) -> but (1,2) is already added? 
+              incident to 3: (3,4), (3,5), (3,2) -> (3,2) is a non-edge.
+
+          So we push (1,4):2, (1,5):2, (3,4):1, (3,5):1, (3,2): deg[3]+deg[2]=1+1=2.
+
+          Then the heap has: ... and we will eventually add all.
+
+        We'll implement the heap version and hope that it passes. We use:
+
+          def check(k):
+             if k==0:  # then we can always add? 
+                 # but we might not need to simulate? 
+                 return True   # because we can add all edges? 
+             But note: if k is large, then we might not add any edge.
+
+          However, we do the simulation as described.
+
+        Steps for check(k):
+
+          g = [row[:] for row in graph]   # 2D list of booleans
+          deg = list of degrees (copy of the initial degrees)
+
+          heap = []
+          # For every non-edge (i,j) (with i<j), we push (- (deg[i]+deg[j]), i, j)
+          for i in range(1, n+1):
+              for j in range(i+1, n+1):
+                  if not g[i][j]:
+                      s = deg[i] + deg[j]
+                      heapq.heappush(heap, (-s, i, j))
+
+          count_added = 0
+          target = n*(n-1)//2 - m
+
+          while heap and count_added < target:
+              neg_val, i, j = heapq.heappop(heap)
+              s0 = -neg_val   # the degree sum stored in the heap
+
+              if g[i][j]:  # already added by a previous step? 
+                  continue
+
+              s_current = deg[i] + deg[j]
+              if s_current < k: 
+                  # then we break because the rest are <= s_current? 
+                  # But note: we might have outdated entries that are larger? But they are not valid? 
+                  # Actually, we break out of the while loop: we cannot add this edge, and it is the largest in the heap? 
+                  # But what if there are outdated entries that are larger? We have to skip them? 
+                  # We break here and hope that the heap has no more valid and qualified edges? 
+                  # But the condition: we break and then not add any more? 
+                  # However, we might have skipped some outdated entries that were greater than s_current? But we break and set heap=[]? 
+                  # Instead, we don't break the outer while? We break and then the next time we pop, we might get an entry that is valid? 
+                  # But we break the inner step? 
+                  # We can continue to pop until the heap is empty or we find one that is >=k? 
+                  # But the problem: we popped the top, and it's <k, and the heap is a max-heap: so any other is <= this one? But wait: we have outdated entries that might have been stored with a higher value? 
+                  # But outdated entries might be for the same edge? Or for a different edge? 
+                  # We have to continue popping until we find a valid one that is current and >=k, or until we find that the stored value (current) of the top is <k? 
+                  # But we can't easily. We break and then we will not add any more? 
+                  # But we can push the current one back? 
+                  # Instead, we do: 
+                  #   if s_current < k: 
+                  #       # we cannot add this edge, and since this is the top, we break the entire while.
+                  #       heapq.heappush(heap, (neg_val, i, j))   # we have to push back? But then we break.
+                  #       break
+                  # But that might not be correct: because we might have other non-edges that are valid and with current_sum>=k? 
+                  # For example, if we have an outdated entry for (u,v) that is still in the heap with a stored value that is 10, and the current_sum is 20 (>=k), then we should not break.
+                  # Therefore, we do not break here. We simply skip this edge and continue to the next in the heap.
+
+                  # But then we might have to pop until we find one that is >=k or the heap is empty? 
+                  continue   # we skip this edge and continue the while loop.
+
+              if s0 != s_current:
+                  # This is an outdated entry: we have a more recent degree sum? Then we push a new entry with the current_sum and skip.
+                  heapq.heappush(heap, (-s_current, i, j))
+                  continue
+
+              # Then we add the edge (i,j)
+              g[i][j] = True
+              g[j][i] = True
+              count_added += 1
+              deg[i] += 1
+              deg[j] += 1
+              # For this edge (i,j), we updated the degrees of i and j. 
+              # Then for every other node x, if the edge (i,x) is not present, we push a new entry for (i,x) with updated degree sum.
+              # Similarly for (j,x).
+              for x in range(1, n+1):
+                  if x == i or x == j:
+                      continue
+                  if not g[i][x]:
+                      new_sum = deg[i] + deg[x]
+                      heapq.heappush(heap, (-new_sum, i, x))
+                  if not g[j][x]:
+                      new_sum = deg[j] + deg[x]
+                      heapq.heappush(heap, (-new_sum, j, x))
+
+          return count_added == target
+
+        But the problem: we might have an infinite loop? 
+
+          Consider: we pop (i,j) and find it is outdated, so we push it back and then pop it again? 
+
+          But we also push new entries for (i,x) and (j,x) when we add an edge. And the new entries will have higher values. Then we might eventually have a valid (i,j) that is not outdated? 
+
+        However, we might get the same (i,j) multiple times? But we push new entries and eventually we will add it or skip it.
+
+        But the degrees only increase, so the current_sum for (i,j) only increases. So if we push a new entry, it will have a higher value and will be popped later.
+
+        But the sample: it passed.
+
+        Let's run the sample input 1 with k=3 using this simulation:
+
+          Initial degrees: d1=1, d2=2, d3=2, d4=1.
+
+          Non-edges: 
+             (1,3): 1+2=3 -> push -3
+             (1,4): 1+1=2 -> push -2
+             (2,4): 2+1=3 -> push -3
+
+          Heap: [(-3,1,3), (-3,2,4), (-2,1,4)] -> but heapq in Python: it will give the smallest first: -3, so we pop (1,3) or (2,4)? 
+
+          Let's assume we pop (1,3): 
+             s0 = 3, s_current = 1+2=3 -> not outdated.
+             add the edge (1,3): then update degrees: d1=2, d3=3.
+             Then update non-edges incident to 1: (1,4) is not present? -> push new_sum = 2+1=3 -> (-3,1,4)
+                       incident to 3: none? (because (3,2) is present? (3,4) is present? -> (3,4) exists initially? in input: (2,3) and (3,4) are present, so (3,2) is the same as (2,3) -> present, (3,4) present, (3,1) we just added? 
+             So we only push (1,4) with new_sum=3.
+
+          Heap now: [(-3,2,4), (-2,1,4), (-3,1,4)]   -> the smallest is -3, so pop (2,4) or (1,4) or (2,4) is popped next? 
+          Pop (2,4): 
+             s0=3, s_current=2+1=3 -> not outdated.
+             add (2,4): then update degrees: d2=3, d4=2.
+             update non-edges incident to 2: 
+                 for x in [1,3,4]: 
+                    (2,1): present? (1,2) exists -> skip.
+                    (2,3): present.
+                    (2,4): we just added -> skip.
+             incident to 4:
+                 for x in [1,2,3]: 
+                    (4,1): not present? -> new_sum = 2 (from d4) + d1=2 -> 4, so push (-4,1,4)
+                    (4,3): present.
+          Then heap: [(-2,1,4), (-3,1,4), (-4,1,4)] -> then pop the smallest: -4 -> (1,4) with s0=4, s_current=2+2=4, add.
+
+          Then count_added=3, which is the target.
+
+          It works.
+
+        But note: we had to push (1,4) twice? and we also pushed (1,4) with 4. And we also had the old (1,4) with 2 and 3. But we skip the outdated ones by checking s0==s_current.
+
+        We'll code accordingly.
+
+        However, the sample input 2: 5 0, k=0. Then we should return True for k=0? 
+          degrees initially: [0,0,0,0,0] (for vertices 1..5)
+          non-edges: all 10 edges.
+
+          We push all 10 with 0.
+
+          Then we pop one: (i,j): s0=0, s_current=0. We add the edge, update degrees: deg[i]=1, deg[j]=1.
+          Then we push for incident to i and j: for each, we push 4 new non-edges: for i: with other 3 vertices (not j), and for j: with other 3 vertices (not i). But note: (i,x) for x not i and not j: 3 edges, and (j,x) for x not i and not j: 3 edges. But we push the same edge twice? (i,x) and then (x,i) is the same? We avoid by storing (i,x) with i<x? In our push, we don't care about order? We push (i,x) and also (x,i) is the same edge? But we have a 2D graph: so we store (i,x) and (x,i) as the same. In our simulation, we only store one representation? 
+
+          But in the code, we push (i,x) for any x, and we store as (i,x) in the heap. But in the graph, we have g[i][x] = g[x][i]. 
+
+          When we push, we don't require i<j? Then we might push (1,2) and (2,1)? But that's the same edge. But in the graph, we only have one representation. 
+
+          How do we avoid duplicates? We don't. But when we add the edge (1,2), we set g[1][2]=True and g[2][1]=True. Then when we pop an entry for (2,1), we see that g[2][1] is True and skip.
+
+          So it is safe.
+
+          But then we push for i: for x in range(1, n+1): 
+                  if x == i or x == j: skip
+                  if not g[i][x]: then push (i,x) 
+          Similarly for j: for x in range(1, n+1): 
+                  if x == i or x == j: skip
+                  if not g[j][x]: then push (j,x)
+
+          This will push (i,x) and (j,x) for the same x? 
+
+          But that's correct: we might have non-edges (i,x) and (j,x) that are distinct.
+
+        Let's run for 5 vertices, k=0:
+
+          Pop (1,2) -> add, then update degrees: deg[1]=1, deg[2]=1.
+          Then push for 1: (1,3), (1,4), (1,5) with sum=1+0=1? -> push -1 for each.
+          Then push for 2: (2,3), (2,4), (2,5) with sum=1+0=1? -> push -1 for each.
+
+          Then the heap has 8 entries with 0 and 6 entries with -1? Actually, initially we pushed 10, we popped one, then we push 6, so 15 in total? 
+
+          Then we pop the smallest negative: which is -1, so we get one of the new ones, say (1,3): 
+               s0=1, s_current= deg[1]+deg[3] = 1+0=1 -> add.
+               then update: deg[1]=2, deg[3]=1.
+               then push for 1: (1,4), (1,5) -> new_sum=2+0=2? push -2
+                         for 3: (3,4), (3,5) -> new_sum=1+0=1? push -1, and (3,2) -> not present? so push deg[3]+deg[2]=1+1=2 -> push -2.
+
+          Then we continue.
+
+          It will add all.
+
+        We'll code accordingly.
+
+        But note: the continue in the 'if s_current < k' branch: we skip this edge and continue the while loop. This is because there might be other non-edges that are qualified.
+
+        We also change the condition for breaking: we don't break, we just skip.
+
+        But then we might have an infinite loop if we keep skipping outdated and unqualified edges? 
+          The heap might have many outdated and unqualified edges? 
+          We rely on the fact that eventually we will either add an edge or the heap will be empty? 
+          But also, we are counting added_edges_count, and we break when we reach target.
+
+        And also, we push new qualified edges when we add an edge.
+
+        We hope that the process will terminate.
+
+        Let's test sample input 1 with k=4: 
+          non-edges: (1,3):3, (1,4):2, (2,4):3.
+          Pop (1,3) or (2,4): say (1,3): 
+              s0=3, s_current=3. 
+              But k=4: 3<4 -> skip (and not add) -> then we push it back? no, we skip and continue.
+          Then pop (2,4): 3<4 -> skip.
+          Then pop (1,4): 2<4 -> skip.
+          Then heap is empty: break. added_edges_count=0, not the target (3) -> return False.
+
+        Then k=4 is not valid.
+
+        k=3: we already know it is valid.
+
+        Therefore, we output 3.
+
+        This is correct.
+
+        We'll run the sample inputs:
+
+          Sample input 2: 5 0 -> then k=0 is valid? 
+             check(0) must return True.
+
+          Sample input 3: 5 2, edges: (1,2) and (3,4)
+             degrees: [0,2,0,2,0] for vertices 1,2,3,4,5? 
+                 Actually: 
+                    vertex1: connected to 2 -> deg1=1
+                    vertex2: connected to 1 -> deg2=1
+                    vertex3: connected to 4 -> deg3=1
+                    vertex4: connected to 3 -> deg4=1
+                    vertex5: 0.
+
+             non-edges: 
+                 (1,3), (1,4), (1,5), (2,3), (2,4), (2,5), (3,5), (4,5), (3,1) is the same as (1,3) -> we avoid by g[i][j] is symmetric.
+
+             We need to add 10-2=8 edges.
+
+          What is the answer? Sample output 3: 2.
+
+          Check k=2: 
+             We push non-edges with degree sum:
+                 (1,3):1+1=2 -> push -2
+                 (1,4):1+1=2
+                 (1,5):1+0=1
+                 (2,3):1+1=2
+                 (2,4):1+1=2
+                 (2,5):1+0=1
+                 (3,5):1+0=1
+                 (4,5):1+0=1
+
+             The heap: [(-2,1,3), (-2,1,4), (-1,1,5), ...]
+
+             We pop (1,3): 
+                 s0=2, s_current=1+1=2 -> add.
+                 update: deg[1]=2, deg[3]=2.
+                 Then push for 1: 
+                     (1,4): already non-edge? then new_sum=2+1=3? -> push -3
+                     (1,5): 2+0=2 -> push -2
+                 for 3:
+                     (3,1) added -> skip
+                     (3,2): non-edge? yes, new_sum=2+1=3 -> push -3
+                     (3,4): already an edge? no, wait: we have edge (3,4)? no, we have edge (3,4)? no, initially we had edge (3,4) -> no, the initial edges are (1,2) and (3,4). So (3,4) is present? -> skip.
+                     (3,5): non-edge: new_sum=2+0=2 -> push -2
+
+             Then we have added one edge.
+
+             Then we pop: the heap has many -2, -3. The smallest is -3: say (1,4): 
+                 s0=3, s_current=2+1=3 -> add.
+                 update: deg[1]=3, deg[4]=2.
+                 Then push for 1: 
+                    (1,5): new_sum=3+0=3 -> push -3
+                 for 4:
+                    (4,1) added -> skip
+                    (4,2): non-edge: deg[4]=2, deg[2]=1 -> 3, push -3
+                    (4,3): present? (3,4) is present? -> skip.
+                    (4,5): non-edge: 2+0=2, push -2.
+
+             Then pop: next smallest -3: could be (3,2) or (1,5) or (4,2) 
+                 say (3,2): 
+                    s0=3, s_current= deg[3]+deg[2]=2+1=3 -> add.
+                    update: deg[3]=3, deg[2]=2.
+                    push for 3: 
+                         (3,5): new_sum=3+0=3 -> push -3
+                    for 2:
+                         (2,1) present? yes -> skip
+                         (2,3) added -> skip
+                         (2,4): non-edge? new_sum=2+2=4 -> push -4
+                         (2,5): 2+0=2 -> push -2
+
+             Then pop: next -3: (1,5): 
+                    s0=3, s_current=3+0=3 -> add.
+                    update: deg[1]=4, deg[5]=1.
+                    push for 1: done? (1,2) present, (1,3) added, (1,4) added, (1,5) added.
+                    for 5: 
+                         (5,2): non-edge: 1+2=3 -> push -3
+                         (5,3): non-edge: 1+3=4 -> push -4
+                         (5,4): non-edge: 1+2=3 -> push -3
+
+             Then pop: next -4: (2,4) and (5,3) and (2,5) is not the top? 
+                 (2,4): s0=4, s_current=2+2=4 -> add.
+                 update: deg[2]=3, deg[4]=3.
+                 push for 2: 
+                    (2,5): new_sum=3+1=4 -> push -4
+                 for 4:
+                    (4,2) added -> skip
+                    (4,5): new_sum=3+1=4 -> push -4
+
+             Then pop: next -4: (5,3): 
+                 s0=4, s_current= deg[5]+deg[3]=1+3=4 -> add.
+                 update: deg[5]=2, deg[3]=4.
+                 push for 5: 
+                    (5,2): new_sum=2+3=5 -> push -5
+                    (5,4): new_sum=2+3=5 -> push -5
+                 for 3: 
+                    (3,5) added -> skip
+                    (3,2) added -> skip
+                    (3,1) added -> skip
+                    (3,4) added? -> skip
+
+             Then pop: next -5: (5,2) and (5,4) -> say (5,2): 
+                 s0=5, s_current=2+3=5 -> add.
+                 then push for 5 and 2: 
+                    for 5: (5,4) -> new_sum=2+3=5 -> push -5   (but we already have one)
+                 then add (5,2) -> then we have added 6 edges? 
+
+             We are not done: we need 8 edges? 
+
+             We have added: 
+                 (1,3), (1,4), (3,2), (1,5), (2,4), (3,5), (5,2) -> 7 edges? 
+             The last edge: (5,4) -> 
+                 pop (5,4): 
+                    s0=5, s_current=2+3=5 -> add.
+
+             total 8 edges.
+
+          So k=2 is valid.
+
+          Then we try k=3: 
+             We start with non-edges: push with initial sums: 
+                 (1,3):2, (1,4):2, (1,5):1, (2,3):2, (2,4):2, (2,5):1, (3,5):1, (4,5):1.
+
+             We pop (1,3): 2<3? -> skip. Similarly skip all the 2's? then we are left with 1's: skip.
+
+             Then we add 0 edges. So k=3 is not valid.
+
+          Therefore, the answer is 2.
+
+        We'll code accordingly.
+
+        We note that the heap might grow large, but the total number of non-edges is O(n^2) and the pushes are O(n^3). We hope that for n=500, the worst-case is acceptable in Pyton? 
+
+        Worst-case: n=500, the initial non-edges: about 125000. Then each edge added we push about 2*(n-1) = 998. Total edges added: 125000? Then total pushes: 125000 * 1000 = 125e6, which is acceptable? 
+
+        But also we pop: each edge added we pop at least one, but we might pop many outdated or unqualified. The total number of pops is the number of pushes. So total operations: 125e6 pushes and 125e6 pops, then 250e6 heap operations. 
+          Each heap operation: O(log( size of heap)) and the heap size is at most 125e6? Then log(125e6) is about 27. Then 250e6 * 27 = 6.75e9 operations? 
+
+        This is 6.75e9 operations, which in Python might be too slow (in Pyton, 1e9 operations per second is optimistic?).
+
+        We need to reduce the heap size: 
+
+          The actual non-edges are only 125000 initially, and we add at most 125000 * 500 = 62.5e6 pushes? 
+
+        But 62.5e6 heap operations (push and pop) * 27 = 1.6875e9, which is acceptable in Pyton in 1 second? Maybe not.
+
+        Alternatively, we can use a more efficient data structure. We can use a sorted list for each vertex's non-edges and then a global heap? 
+
+        Given the time, we output the heap version and hope that the worst-case doesn't happen or that the constants are low.
+
+        Or we run in Pyton and hope for the best.
+
+        We'll submit.
+
+        But note: we can avoid pushing if k is 0: then we can return True immediately? 
+          But in the simulation, k=0: then we add all non-edges? and we do it in any order? 
+          So we can short-circuit: 
+             if k == 0:
+                 return True   # because we can add all edges? 
+
+          However, consider: we start with a non-edge (u,v) and then we add it? and then we update and then we add the rest? 
+          So it will work.
+
+          But we can also note that for k<=min_initial_degree_sum, we might be able to add all? 
+
+          We don't short-circuit.
+
+        We run the binary search from 0 to 2*(n-1). The candidate k: at most 1000 (since n<=500, 2*(n-1)=998). Then we run check(k) about 10 times? (log2(1000)=10). Then total operations: 10 * (number of heap operations per check) = 10 * 250e6 = 2.5e9 heap operations? 
+
+        This is 2.5e9 * 27 (operations per heap op) = 67.5e9 operations? which is 67.5 seconds in Python.
+
+        We need to optimize further.
+
+        How about: in the check function, if k==0, we return True immediately.
+
+        Also, we can break early in the simulation if the maximum current degree sum in the heap is less than k? 
+
+          We can't easily get the maximum without popping. 
+
+        Alternatively, we can cache the current best for the entire heap? 
+
+        Or we can maintain a global variable: the current maximum degree sum among non-edges. But updating that is O(n) per change.
+
+        Given the complexity, we try to optimize the heap simulation by not pushing non-edges that are not necessary?
+
+        Observation: 
+          We only need to consider a non-edge (u,v) when its current degree sum is at least k. 
+          But we don't know k in advance? 
+
+        Or, in the heap, we only push if the new degree sum is at least k? 
+
+          Then in the update: 
+             for x in [1,..,n]:
+                 if not g[u][x]:
+                     new_sum = deg[u] + deg[x]
+                     if new_sum >= k:   # only push if it's at least k
+                         heapq.heappush(heap, (-new_sum, u, x))
+
+          Why is this safe? 
+             Because if new_sum < k, then we will never be able to add this edge in the future? 
+             But wait: we are going to add more edges, so the degrees of u and x might increase? Then new_sum might become >=k later? 
+
+          But if we don't push it now, how will it be pushed later? 
+
+          We rely on the fact that when we add an edge incident to u or x, we will push it then? 
+
+          However, consider: 
+            Initially, new_sum < k, so we don't push.
+            Then we add an edge incident to u: then we update u, and then we consider (u,x) again? 
+            But in the update for u, we do: 
+                for x in [1..n]:
+                    if not g[u][x]: then compute new_sum = deg[u] (updated) + deg[x] (which might not be updated? but we are updating u, so we do it) -> then we push if new_sum>=k.
+
+          So it is safe.
+
+          Then we can avoid pushing many non-edges that are not qualified.
+
+          This will reduce the heap size.
+
+          How many non-edges do we push? 
+            Initially: we only push if initial_deg_sum>=k.
+            Then in updates: only if new_sum>=k.
+
+          For k>0, this might reduce the heap size.
+
+        Let's test sample input 1 with k=3: 
+          Initial non-edges: 
+             (1,3):3>=3 -> push
+             (1,4):2<3 -> skip
+             (2,4):3>=3 -> push
+          Heap: [(-3,1,3), (-3,2,4)]
+
+          Pop (1,3): 
+             add -> then update: 
+                for u=1: 
+                   x=4: not present? and new_sum=2+1=3>=3 -> push (-3,1,4)
+                for u=3: 
+                   x=1: already added? 
+                   x=2: present? 
+                   x=4: present? 
+                so only push (1,4) with 3.
+
+          Then heap: [(-3,2,4), (-3,1,4)]
+
+          Then pop (2,4): 
+             add -> update:
+                for u=2: 
+                   x=1: present? 
+                   x=3: present? 
+                   x=4: added -> skip
+                for u=4: 
+                   x=1: not present? new_sum=2+2=4>=3 -> push (-4,4,1)  [which is the same as (1,4)]
+                   x=2: added -> skip
+                   x=3: present? 
+                so push (1,4) again? 
+
+          But we already have (1,4) in the heap? 
+
+          Then we have two (1,4): one with -3 and one with -4.
+
+          Then we pop the next: the smallest negative is -4: (1,4) -> then we add.
+
+          So it works.
+
+        This reduces the initial heap size: from 3 to 2.
+
+        In the worst-case, initially, the number of non-edges with deg_sum>=k might be small? But k is in the binary search: the candidate k. For large k, we push few. For k=0, we push all? 
+
+        But we have a short-circuit for k=0.
+
+        We'll add: 
+          if k==0: 
+             return True   # because then we can add all edges.
+
+        Then in the heap simulation for k>=1, we only push non-edges with current_sum>=k.
+
+        This will reduce the total heap operations.
+
+        Let's test sample input 3 (n=5, m=2) for k=2: 
+          Initial non-edges: 
+             (1,3):2>=2 -> push
+             (1,4):2>=2 -> push
+             (1,5):1<2 -> skip
+             (2,3):2>=2 -> push
+             (2,4):2>=2 -> push
+             (2,5):1<2 -> skip
+             (3,5):1<2 -> skip
+             (4,5):1<2 -> skip
+
+          Then heap: 4 non-edges: (1,3), (1,4), (2,3), (2,4) -> all with -2.
+
+          Then we pop one: say (1,3): 
+             add, update deg[1]=2, deg[3]=2.
+             Then for u=1: 
+                 x=4: present? not initially, but we haven't added? -> so non-edge: new_sum=2+1=3>=2 -> push (-3,1,4)
+                 x=5: 2+0=2>=2 -> push (-2,1,5)
+             for u=3:
+                 x=2: non-edge? new_sum=2+1=3>=2 -> push (-3,3,2)
+                 x=5: 2+0=2 -> push (-2,3,5)
+
+          Then heap: now has the remaining 3 initial ones and 4 new ones: total 7.
+
+          Then we continue.
+
+        This reduces the initial heap from 8 to 4.
+
+        We hope that for large k, we push only a fraction.
+
+        Then we run the binary search: at most 10 iterations, and the total heap operations per iteration might be acceptable.
+
+        We'll code accordingly.
+
+        Steps for check(k) (with k>=1) without the k==0:
+
+          if k==0:  # we are not calling for k==0? because we short-circuit in the binary search? 
+             return True   # but we do: we call check(0) in the binary search? 
+          However, we can do:
+
+          In the binary search, if k==0: then we know it's always possible? So we don't need to simulate.
+
+          But in the code, we have:
+
+          low = 0
+          high = 2*(n-1)
+          ans = 0
+          while low<=high:
+             mid = (low+high)//2
+             if check(mid):
+                 ans = mid
+                 low = mid+1
+             else:
+                 high = mid-1
+
+          Then we call check(0) and we want it to be True.
+
+          We can handle in check(k): 
+              if k == 0:
+                  return True   # because we can always add all edges.
+
+          Then we do:
+
+          g = ... (copy of graph)
+          deg = ... (copy of initial degrees)
+
+          heap = []
+          for i in range(1, n+1):
+             for j in range(i+1, n+1):
+                 if not g[i][j]:
+                    s = deg[i] + deg[j]
+                    if s >= k:
+                         heapq.heappush(heap, (-s, i, j)
+
+          count_added = 0
+          target = total_edges - m
+
+          while heap and count_added < target:
+             neg_val, i, j = heapq.heappop(heap)
+             if g[i][j]:
+                 continue
+             s_current = deg[i] + deg[j]
+             if s_current < k:
+                 # skip and do nothing: because we will never add it? 
+                 # But note: we may have an outdated entry that we skip, but we don't push new ones until it becomes eligible? 
+                 # But we are not pushing here? 
+                 # Actually, we break out of the edge for this non-edge and continue to next.
+                 continue
+
+             # But what if s_current >= k, but the stored value is not s_current? 
+             # We stored s0 = -neg_val, and if s0 != s_current, then we consider it outdated? 
+             # However, we don't know the stored value? We stored the value at the time of push. 
+             # We need to check: if the stored value is not the current, we skip? 
+             # But we have: if we pushed with s0, and now s_current (which is at least k) but might be greater than s0? 
+             # Then we should have pushed a new entry? 
+             # But we didn't, so we have to push a new entry now? 
+             # Or we can simply use the current_sum? 
+
+             # Actually, the condition for addition is the current_sum. 
+             # So we can add if s_current>=k, regardless of the stored value? 
+             # But the stored value might be greater than the current_sum? Not possible: because degrees only increase. 
+
+             # Actually, the stored value is the degree sum at the time of push, and the current_sum is at least that? 
+             # But we did not update the heap when the degrees increased? 
+             # We update only when we add an edge and then we push the new entries for the non-edges that become eligible (s>=k). 
+             # But we did not update for this non-edge? 
+
+             # How about: we do not check the stored value at all? 
+             # But then we might add an edge that was pushed with a stored value that is outdated and the current_sum is eligible? 
+
+             # Why do we need the stored value? 
+
+             # Actually, we don't. The stored value is only used to order the heap. We are popping the one with the largest stored value. 
+             # But if the stored value is less than the current_sum, then the current_sum is the true value? and we only care that the current_sum>=k. 
+             # However, the heap order might be wrong: the stored value is the old one, so it might be that there is a non-edge with a larger current_sum that we haven't popped? 
+
+             # But we want to add the non-edge with the largest current_sum? We are not guaranteed because the heap is ordered by the stored value. 
+
+             # However, we are using a lazy heap: we want to process non-edges in an order that is approximately the current_sum. 
+
+             # But the problem: the stored value is a lower bound of the current_sum. So the heap is a max-heap by the stored value, and the current_sum is at least the stored value. 
+             # Therefore, if the popped non-edge has current_sum>=k, we can add it. But it might not be the one with the largest current_sum? 
+
+             # The problem requires: Go evaluates in the order of the list L. But we are free to choose L arbitrarily? 
+             # Actually, we are required to find the highest k for which there exists an order L that yields the complete graph. 
+
+             # And the simulation with the heap (always adding the one with the largest stored value) is one particular order? 
+
+             # But we are not required to produce L, only to decide if there exists an order. 
+
+             # And it is known that the following greedy works: 
+                 at each step, add any edge that is eligible? 
+                 or add the edge with the largest degree sum? 
+
+             # But the problem: adding in one order might yield complete graph, but in another order might not. 
+
+             # However, the known result is that the closure is unique: 
+                 The closure of a graph (the final graph after adding every edge that can be added in any order) is unique.
+
+             # So if we can add all edges by one order, then the closure is the complete graph? 
+
+             # Therefore, we can use any order? 
+
+             # But the procedure of always taking the one with the largest stored value might not add all edges? 
+
+             # But we are not taking the largest current_sum, but the largest stored value (which might be outdated). 
+
+             # How to fix? We can simply not care about the stored value and use the current_sum to decide if we add. 
+             # But then we also use the heap to choose the next edge: we want to add an edge that is eligible, but we don't need the largest? 
+             # However, if we add in any order, then we only need to know if we can add all. 
+
+             # Therefore, we can use a queue (any order) and it would work? 
+
+             # But we choose the largest stored value to be the next, and if it is eligible (current_sum>=k) we add it. 
+             # And if not, we skip and continue. 
+             # Then we might not add an edge that is eligible because it is not at the top? 
+
+             # But then we break out of the while loop? 
+
+             # Actually, we continue the while loop: we pop the next. 
+
+             # How about we do not use a heap at all? Use a FIFO queue? 
+                 then the simulation might be: 
+                    we start with a queue of non-edges that are initially eligible (s>=k).
+                    we pop one, if it is still not present and s_current>=k, then add it and update, and then push any non-edge incident to the two vertices that has s>=k (and not already in the queue? avoid duplicates) 
+                    but duplicates: we mark as in the queue? 
+
+             # This is BFS order. And it might work. 
+
+             # But is the closure unique? Then BFS order should work. 
+
+             # Then we don't need the heap? 
+
+             # Algorithm for check(k) (for k>=0): 
+                 if k==0: return True
+
+                 from collections import deque
+                 q = deque()
+                 g = copy of graph
+                 deg = copy of degrees
+
+                 # We maintain a 2D array or a set to mark if a non-edge is in the queue? 
+                 # But we don't care duplicates? We can use a set in_queue for non-edges (by (min(i,j), max(i,j)) to avoid duplicates.
+
+                 in_queue = set()
+                 # initialize: 
+                 for i in range(1, n+1):
+                     for j in range(i+1, n+1):
+                         if not g[i][j] and deg[i]+deg[j]>=k:
+                             in_queue.add((i,j))
+                             q.append((i,j))
+
+                 count_added = 0
+                 while q and count_added < target:
+                     i, j = q.popleft()
+                     in_queue.discard((i,j))   # we are going to process it, so remove from in_queue
+
+                     if g[i][j]:
+                         continue
+                     if deg[i]+deg[j] < k:
+                         # not eligible anymore? but it was when we pushed? and we haven't updated? 
+                         # actually, we update the degrees, but we haven't updated the queue? 
+                         # so it might become ineligible? 
+                         continue
+
+                     # add the edge
+                     g[i][j] = True
+                     g[j][i] = True
+                     count_added += 1
+                     deg[i] += 1
+                     deg[j] += 1
+
+                     # for the two vertices, iterate on their neighbors: 
+                     for x in [i,j]:
+                         # x is i or j
+                         for y in range(1, n+1):
+                             if y==x: continue
+                             if not g[x][y] and (min(x,y), max(x,y)) not in in_queue:
+                                 s = deg[x] + deg[y]
+                                 if s >= k:
+                                     in_queue.add((min(x,y), max(x,y)))
+                                     q.append((min(x,y), max(x,y)))
+
+                 return count_added == target
+
+             # But is this correct? 
+
+             # Sample input 1 with k=3: 
+                 non-edges: 
+                    (1,3):3>=3 -> add to queue: q=[(1,3)], in_queue={(1,3)}
+                 pop (1,3): 
+                    add the edge: deg[1]=2, deg[3]=3.
+                    for x in {1,3}:
+                       for y: 
+                          for x=1: 
+                             y:2: present? skip.
+                             y:4: not present, and (1,4) not in in_queue: s=2+1=3>=3 -> add to queue: q=[(1,4)] and in_queue={(1,4)}
+                             y:5: no in 4 vertices.
+                          for x=3: 
+                             y:2: present? skip.
+                             y:4: present? skip.
+                 then pop (1,4): 
+                    add: deg[1]=3, deg[4]=2.
+                    for x in {1,4}:
+                       for x=1: 
+                          y:2: present.
+                          y:3: present.
+                          y:4: added.
+                       for x=4: 
+                          y:1: added.
+                          y:2: not present: s=2+2=4>=3 -> and (2,4) not in in_queue: add to queue: q=[(2,4)]
+                 then pop (2,4):
+                    add: deg[2]=3, deg[4]=3.
+                    for x=2: 
+                         y:1: present.
+                         y:3: present.
+                         y:4: added.
+                    for x=4: 
+                         ... all present.
+
+                 count_added=3, done.
+
+             # This works.
+
+             # Sample input 3 (5,2) with k=2: 
+                 initial: 
+                    (1,3):2>=2 -> add (1,3)
+                    (1,4):2>=2 -> add (1,4)
+                    (2,3):2>=2 -> add (2,3)
+                    (2,4):2>=2 -> add (2,4)
+                 q = deque([(1,3), (1,4), (2,3), (2,4)])
+
+                 pop (1,3): 
+                    add: deg[1]=2, deg[3]=2.
+                    for x in {1,3}:
+                       for y: 
+                         for 1: y=2: present, y=4: not present -> s=2+1=3>=2 -> and (1,4) is in in_queue? it is, so skip.
+                                  y=5: s=2+0=2>=2 -> and (1,5) not in in_queue: add to queue: q=[ (1,4), (2,3), (2,4), (1,5) ]
+                         for 3: y=2: not present? -> (2,3) is in in_queue? it is, so skip.
+                                 y=4: present? -> skip.
+                                 y=5: s=2+0=2>=2 -> add (3,5) -> q.append((3,5))
+
+                 then q: [ (1,4), (2,3), (2,4), (1,5), (3,5) ]
+
+                 pop (1,4): 
+                    add: deg[1]=3, deg[4]=2.
+                    for 1: 
+                         y=5: already in queue? -> skip.
+                    for 4:
+                         y=2: not present: s=2+1=3>=2, and (2,4) is in the queue? -> skip.
+                         y=5: not present: s=2+0=2>=2, and (4,5) not in queue: add.
+                    q: [ (2,3), (2,4), (1,5), (3,5), (4,5) ]
+
+                 pop (2,3): 
+                    add: deg[2]=2, deg[3]=3.
+                    for 2: 
+                         y=4: not present: s=2+2=4>=2, and (2,4) is in queue? -> skip.
+                         y=5: not present: s=2+0=2>=2, and (2,5) not in queue: add.
+                    for 3: 
+                         y=5: in queue? -> skip.
+                    q: [ (2,4), (1,5), (3,5), (4,5), (2,5) ]
+
+                 pop (2,4): 
+                    add: deg[2]=3, deg[4]=3.
+                    for 2: 
+                         y=5: in queue? -> skip.
+                    for 4: 
+                         y=5: in queue? -> skip.
+
+                 pop (1,5): 
+                    add: deg[1]=4, deg[5]=1.
+                    for 1: nothing new.
+                    for 5: 
+                         y=2: not present? -> (2,5) is in queue? -> skip.
+                         y=3: not present? -> (3,5) in queue? -> skip.
+                         y=4: not present? -> (4,5) in queue? -> skip.
+
+                 pop (3,5): 
+                    add: deg[3]=4, deg[5]=2.
+                    for 3: nothing.
+                    for 5: 
+                         y=2: in queue? (2,5) -> we will process it next.
+                 pop (4,5): 
+                    add: deg[4]=4, deg[5]=3.
+                 pop (2,5): 
+                    add: deg[2]=4, deg[5]=4.
+
+                 count_added=8.
+
+             It works.
+
+             Complexity: 
+                Each non-edge is added to the queue at most once? (because we use in_queue set to avoid duplicates). 
+                Each non-edge is added only if it is not in the queue and if it is eligible (s>=k).
+
+                When we process a non-edge, we do O(n) work (scan through neighbors).
+
+                Total work: O(n^3) per check. 
+                Binary search: O(log(2*n)) = 10 iterations.
+
+                Total: 10 * O(n^3) = 10 * 125e6 = 1.25e9, which in Python might be borderline? 
+
+                But 1.25e9 operations in Pyton might be 12.5 seconds? 
+
+             We hope that the constant factor is low.
+
+        We'll implement the BFS version.
+
+        Steps for the final solution:
+
+          Precomputation: 
+             n, m, graph, deg.
+
+          If m == total_edges: then we output 0 (or we can let the binary search handle: check(k) for any k will be true only if we add 0 edges, which we do).
+
+          We have:
+             total_edges = n*(n-1)//2
+             target = total_edges - m
+
+          def check(k):
+              if k == 0:
+                  return True
+
+              g = [row[:] for row in graph]   # 2D list of booleans, size (n+1) x (n+1)
+              deg_copy = deg[:]  # list of length n+1, degrees
+
+              from collections import deque
+              q = deque()
+              in_queue = set()   # will store tuples (min, max) for the non-edge
+
+              # Initialize: for every non-edge (i,j) with i<j, if deg_copy[i]+deg_copy[j] >= k, then add to the queue and mark in_queue.
+              for i in range(1, n+1):
+                  for j in range(i+1, n+1):
+                      if not g[i][j] and deg_copy[i] + deg_copy[j] >= k:
+                          in_queue.add((i, j))
+                          q.append((i, j))
+
+              count_added = 0
+              while q and count_added < target:
+                  i, j = q.popleft()
+                  in_queue.discard((i, j))
+
+                  if g[i][j]:
+                      continue
+
+                  if deg_copy[i] + deg_copy[j] < k:
+                      continue
+
+                  # add the edge
+                  g[i][j] = True
+                  g[j][i] = True
+                  count_added += 1
+                  deg_copy[i] += 1
+                  deg_copy[j] += 1
+
+                  for node in [i, j]:
+                      for neighbor in range(1, n+1):
+                          if neighbor == node:
+                              continue
+                          if not g[node][neighbor]:
+                              # This non-edge: (node, neighbor)
+                              a, b = min(node, neighbor), max(node, neighbor)
+                              if (a, b) not in in_queue:
+                                  if deg_copy[node] + deg_copy[neighbor] >= k:
+                                      in_queue.add((a, b))
+                                      q.append((a, b))
+
+              return count_added == target
+
+          Then binary search.
+
+        We'll test with the samples.
+
+        We run sample input 1: n=4, m=3, edges (1,2),(2,3),(3,4). 
+          check(3): 
+             non-edges: 
+                 (1,3):1+2=3>=3 -> add to queue.
+                 (1,4):1+1=2<3 -> skip.
+                 (2,4):2+1=3>=3 -> add to queue.
+             q = deque([(1,3), (2,4)])
+             in_queue = {(1,3), (2,4)}
+
+             pop (1,3): 
+                 not added, and 1+2=3>=3 -> add.
+                 update: deg[1]=2, deg[3]=3.
+                 for node in [1,3]:
+                     for neighbor in [1..4]:
+                         for node=1: 
+                             neighbor=2: present -> skip.
+                             neighbor=3: added -> skip.
+                             neighbor=4: not present -> a=min(1,4)=1, b=4 -> (1,4) not in in_queue, and deg[1]+deg[4]=2+1=3>=3 -> add to queue: q=[(2,4), (1,4)], in_queue = {(2,4), (1,4)}
+                 for node=3: 
+                     neighbor=1: added -> skip.
+                     neighbor=2: present -> skip.
+                     neighbor=4: present -> skip.
+
+             pop (2,4): 
+                 add: deg[2]=3, deg[4]=2.
+                 for node=2: 
+                     neighbor=1: present.
+                     neighbor=3: present.
+                     neighbor=4: added.
+                 for node=4: 
+                     neighbor=1: not present: (1,4) in in_queue -> skip.
+                     neighbor=2: added.
+                     neighbor=3: present.
+
+             then pop (1,4): 
+                 not added, and deg[1]+deg[4]=2+2=4>=3 -> add.
+                 count_added=3 -> done.
+
+          returns True.
+
+        Then we try k=4: 
+            non-edges: 
+               (1,3):3<4 -> skip.
+               (1,4):2<4 -> skip.
+               (2,4):3<4 -> skip.
+            q is empty: returns count_added=0 !=3 -> False.
+
+        Therefore, the binary search will find the highest k=3.
+
+        We hope this is efficient enough for n=500.
+
+        The worst-case: 
+           In the BFS, the queue might contain all non-edges initially (if k is low) and then we add more? 
+           But note: each non-edge is pushed at most once.
+
+           Then the total number of non-edges we process is O(n^2). And for each non-edge, we do O(n) work (scanning neighbors). 
+           Then total work per check: O(n^3).
+
+           Binary search: O(log(2*n)) = about 10.
+
+           Total: 10 * O(n^3) = 10 * 500^3 = 10 * 125000000 = 1.25e9.
+
+        In Python, 1.25e9 operations might take 10 seconds? 
+
+        But we hope that the constant factor is low, and that the inner loop is not heavy.
+
+        We'll submit.
+
+        Note: for k=0, we return True immediately.
+
+        Also, we can avoid the BFS for k=0.
+
+        Let's code accordingly.
+
+        We note: the machine might be fast.
+
+        We run locally with n=500, m=0, then target = 125000, and then the BFS will have 125000 non-edges initially. For each non-edge we do O(n) work: 500*125000 = 62.5e6 per initialization? 
+
+        But wait: the initialization is:
+
+            for i in range(1, n+1):
+                for j in range(i+1, n+1):
+                    ... and inside we do a constant work.
+
+            Then we do the BFS: 
+               We start with 125000 non-edges in the queue.
+
+            Then we pop one and do O(n) work per non-edge? 
+
+            Total work: 125000 * 500 = 62.5e6 per edge added? and we add 125000 edges? Then 62.5e6 * 125000 = 7.8125e12 operations? 
+
+        But this is not: 
+
+          The BFS: we have 125000 non-edges to process initially, and then we will add more non-edges? But no: we use in_queue to avoid duplicate additions. And we only add a non-edge once. 
+
+          But note: we only add a non-edge if it is not in the queue. 
+
+          The total number of non-edges is 125000. 
+
+          Then the BFS will process 125000 non-edges. 
+
+          For each non-edge we pop, we do:
+
+             for node in [i,j]:   # 2 nodes
+                 for neighbor in range(1, n+1):   # n iterations per node
+
+          Then per non-edge: 2 * n = 1000.
+
+          Total operations: 125000 * 1000 = 125e6.
+
+          Then per check: 125e6 operations.
+
+          Then 10 iterations: 1.25e9, which in Python might be 10 seconds? 
+
+          We hope that the constant factor is low (each inner operation is light: a few conditionals and set lookups?).
+
+          The set lookups: we have a set `in_queue` that has up to 125000 elements. The lookup is O(1) average.
+
+        We'll implement and hope.
+
+        Code for check(k) (with BFS) for k>=1, and for k==0 we return True.
+
+        Note: we must use min and max to store the non-edge in the set.
+
+        We'll run with the sample inputs.
+
+        We also note: when we update the graph and the degrees, we are using a local copy per check.
+
+        Memory: we have a 2D list for g: 500x500 = 250000 booleans, and a list for deg, and a set for in_queue (up to 125000 tuples) and a queue of size up to 125000. Total memory: about 250000*4 (for the graph) + 500 (for deg) + 125000*2 (for the set) -> about 1e6, which is acceptable.
+
+        Let's code accordingly.
+
+        We'll write:
+
+          total_edges = n*(n-1)//2
+          target = total_edges - m
+
+          def check(k):
+              if k == 0:
+                  return True
+
+              g = [[graph[i][j] for j in range(n+1)] for i in range(n+1)]
+              deg_copy = deg[:]   # copy the initial degrees
+
+              from collections import deque
+              q = deque()
+              in_queue = set()
+
+              # iterate for all non-edges: i<j, not g[i][j] and deg[i]+deg[j]>=k
+              for i in range(1, n+1):
+                  for j in range(i+1, n+1):
+                      if not g[i][j] and deg_copy[i] + deg_copy[j] >= k:
+                          in_queue.add((i, j))
+                          q.append((i, j))
+
+              count_added = 0
+              while q and count_added < target:
+                  i, j = q.popleft()
+                  in_queue.discard((i, j))
+
+                  if g[i][j]:
+                      continue
+
+                  if deg_copy[i] + deg_copy[j] < k:
+                      continue
+
+                  # add the edge (i,j)
+                  g[i][j] = True
+                  g[j][i] = True
+                  count_added += 1
+                  deg_copy[i] += 1
+                  deg_copy[j] += 1
+
+                  for node in (i, j):
+                      for neighbor in range(1, n+1):
+                          if neighbor == node:
+                              continue
+                          if not g[node][neighbor]:
+                              a, b = min(node, neighbor), max(node, neighbor)
+                              if (a, b) not in in_queue:
+                                  s = deg_copy[node] + deg_copy[neighbor]
+                                  if s >= k:
+                                      in_queue.add((a, b))
+                                      q.append((a, b))
+
+              return count_added == target
+
+        Then binary search.
+
+        Let's run sample input 2: 5 0 -> then k=0: True. 
+          But we don't call check(0) in the binary search? 
+          We start with low=0, high=2*(n-1)=8.
+          mid=4: check(4) -> ? 
+          But we know that the answer is 0, and we are looking for the highest k. 
+          We'll check k=0: True -> then we try k=1,2,3,4,5,6,7,8? 
+
+          However, we start at mid=4, then if it is True, we set ans=4 and low=5, then check k=6, ... until k=8 is True? 
+          But we know k=0 is the only one that works? 
+
+          But sample input 5 0: the answer is 0.
+
+          How do we get 0? 
+             We want the highest k such that there exists an order L that yields a complete graph.
+             For k=0: we can add all.
+             For k>=1: initially, the degree sum of any non-edge is 0, so we cannot add any edge? 
+                 So we return False for k>=1.
+
+          Then in the binary search:
+
+             low=0, high=8
+             mid=4: check(4) -> False -> then high=3.
+             mid= (0+3)//2 = 1 -> check(1) -> False -> then high=0.
+             then mid=0: check(0) -> True -> then ans=0, and then we set low=1, and break.
+
+          So we output 0.
+
+        We'll run sample input 1: 
+             n=4, m=3, so target=3.
+             low=0, high= 2*(4-1)=6.
+             mid=3: check(3) -> True -> then ans=3, low=4.
+             mid=(4+6)//2=5: check(5) -> False -> high=4.
+             mid=4: check(4) -> False -> then high=3, and low=4 -> break.
+
+          output 3.
+
+        We'll run sample input 3: 
+             n=5, m=2, target=8.
+             low=0, high= 2*(5-1)=8.
+             mid=4: check(4) -> False -> high=3.
+             mid= (0+3)//2 = 1 -> check(1) -> True -> then ans=1, low=2.
+             mid= (2+3)//2 = 2: check(2) -> True -> ans=2, low=3.
+             mid= (3+3)//2 = 3: check(3) -> False -> high=2, break.
+             output 2.
+
+        But wait: we must find the highest k. We found 2 for sample 3.
+
+        It is correct.
+
+        We'll code accordingly.
+
+        Note: we must be cautious with the graph representation.
+
+        We assume the graph is represented as a 2D list of booleans, size (n+1) x (n+1). Initially, we are given the existing edges.
+
+        We create the initial graph as a 2D list of Falses, then set g[a][b]=True and g[b][a]=True for each input edge.
+
+        And the degrees: we start with zeros, then for each edge, we do deg[a]++ and deg[b]++.
+
+        We'll do:
+
+          graph = [[False]*(n+1) for _ in range(n+1)]
+          deg = [0]*(n+1)
+
+          for i in range(m):
+              a = int(data[idx]); b = int(data[idx+1]); idx+=2
+              if a > b: a,b = b,a   # but the input has a_i < b_i, so not needed.
+              graph[a][b] = True
+              graph[b][a] = True
+              deg[a] += 1
+              deg[b] += 1
+
+        Then run.
+
+        We hope it passes.
+
+        Let's write the code.
+
+        We note: n can be 500, and m can be 0 to about 124000.
+
+        We create a 2D list of 501x501, which is 250000 elements, acceptable.
+
+        We'll do:
+
+          total_edges = n*(n-1)//2
+          target = total_edges - m
+
+          if target == 0:
+              print(0)
+              return
+
+          Then binary search.
+
+        We'll include this in the main.
+
+        Code:
+
+          low = 0
+          high = 2*(n-1)
+          ans = 0
+          while low <= high:
+              mid = (low+high)//2
+              if check(mid):
+                  ans = mid
+                  low = mid+1
+              else:
+                  high = mid-1
+          print(ans)
+
+        But note: we must call check(mid) only for mid>=0.
+
+        We'll run.
+
+        Let's run sample input 2: 5 0 -> then we do not skip (since target=10), then we do the binary search and output 0.
+
+        We hope.
+
+        We'll submit.
+
+        Note: we assume the graph has no self-loop, and the input has a_i < b_i.
+
+        We'll run the provided samples.
+
+        We note: the worst-case total operations in the BFS over the binary search: 10 * (number of non-edges * 2 * n) = 10 * (O(n^2) * n) = 10 * O(n^3) = 10 * 125e6 = 1.25e9.
+
+        In Python, we hope it runs in 1 second? 
+
+        But worst-case 1.25e9 iterations in Python might be 10 seconds? 
+
+        We must optimize the inner loop.
+
+        In the inner loop:
+
+            for node in (i, j):   # 2 iterations
+                for neighbor in range(1, n+1):   # n iterations per node -> 2*n iterations per non-edge.
+
+            Then per non-edge: O(n).
+
+        And there are O(n^2) non-edges? Then per check: O(n^3).
+
+        But we only do the BFS once per check? 
+
+        And we do 10 checks -> 10 * O(n^3).
+
+        For n=500, 10 * 500^3 = 10 * 125000000 = 1.25e9.
+
+        We hope that the inner loop is optimized in Pyton.
+
+        Alternatively, we can break out early in the inner loop: 
+            if we have already added all edges, we break.
+
+        But that is already handled.
+
+        We'll hope.
+
+        If it TLE, we might need to use a different language.
+
+        Given the constraints, we output the BFS version.
+
+        Let's code accordingly.

@@ -1,0 +1,167 @@
+### Approach
+The problem involves finding two distinct routes for a round trip from city 1 to city n and back, such that the sets of distinct roads used in each direction are different. The goal is to minimize the total traversal time, which includes the sum of travel times for all roads traversed (counting multiple traversals of the same road).
+
+#### Key Insights:
+1. **Connectivity Check**: If there is no path from city 1 to city n, the answer is immediately -1.
+2. **Base Path**: The shortest path from city 1 to city n (base path) is fundamental. The total traversal time for two identical base paths is \(2 \times \text{base\_time}\), but this violates the distinct sets requirement.
+3. **Alternative Routes**:
+   - **Candidate A**: Use two different simple paths (if available) for the forward and backward journeys. The second shortest path from 1 to n (allowing non-simple paths) is computed.
+   - **Candidate B1**: For an edge connecting two nodes on the base path but not part of it, replace the segment between these nodes in one journey with this edge. This reduces the traversal time by the segment's time plus the edge's time.
+   - **Candidate B4**: For an edge connecting a node on the base path to a node not on it, extend one journey to include this edge and the shortest path from the new node to the destination.
+4. **Minimization**: The solution is the minimum total traversal time among the valid candidates (A, B1, B4).
+
+#### Algorithm:
+1. **Dijkstra for Shortest Paths**:
+   - Compute the shortest path from city 1 to all cities (d1) and from city n to all cities (dn).
+   - If d1[n] is infinity, output -1.
+2. **Second Shortest Path**:
+   - Use a modified Dijkstra to compute the second shortest path from 1 to n, storing two distances per node (shortest and second shortest).
+3. **Base Path Reconstruction**:
+   - Reconstruct the base path (shortest path) to identify nodes and edges on this path.
+4. **Edge Processing**:
+   - For each edge not on the base path:
+     - If both endpoints are on the base path, compute Candidate B1: \(2 \times \text{base\_time} - \text{segment\_time} + \text{edge\_time}\).
+     - If one endpoint is on the base path, compute Candidate B4: \(\text{base\_time} + \min(\text{d1}[u] + \text{edge\_time} + \text{dn}[v], \text{d1}[v] + \text{edge\_time} + \text{dn}[u])\).
+5. **Result Calculation**:
+   - The answer is the minimum of Candidate A (sum of shortest and second shortest paths), Candidate B1, and Candidate B4. If no valid candidate exists, output -1.
+
+### Solution Code
+```python
+import heapq
+import sys
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    n = int(data[0])
+    m = int(data[1])
+    graph = [[] for _ in range(n+1)]
+    edges = []
+    index = 2
+    for i in range(m):
+        u = int(data[index])
+        v = int(data[index+1])
+        t = int(data[index+2])
+        index += 3
+        edges.append((u, v, t))
+        graph[u].append((v, t))
+        graph[v].append((u, t))
+    
+    INF = 10**18
+    d1 = [INF] * (n+1)
+    parent_arr = [0] * (n+1)
+    heap = []
+    d1[1] = 0
+    heapq.heappush(heap, (0, 1))
+    
+    while heap:
+        dist, u = heapq.heappop(heap)
+        if dist != d1[u]:
+            continue
+        for (v, w) in graph[u]:
+            nd = dist + w
+            if nd < d1[v]:
+                d1[v] = nd
+                parent_arr[v] = u
+                heapq.heappush(heap, (nd, v))
+    
+    T = d1[n]
+    if T == INF:
+        print(-1)
+        return
+
+    dn = [INF] * (n+1)
+    heap = []
+    dn[n] = 0
+    heapq.heappush(heap, (0, n))
+    while heap:
+        dist, u = heapq.heappop(heap)
+        if dist != dn[u]:
+            continue
+        for (v, w) in graph[u]:
+            nd = dist + w
+            if nd < dn[v]:
+                dn[v] = nd
+                heapq.heappush(heap, (nd, v))
+    
+    dist0 = [INF] * (n+1)
+    dist1 = [INF] * (n+1)
+    heap = []
+    dist0[1] = 0
+    heapq.heappush(heap, (0, 1))
+    
+    while heap:
+        d, u = heapq.heappop(heap)
+        if d > dist1[u]:
+            continue
+        for (v, w) in graph[u]:
+            nd = d + w
+            if nd < dist0[v]:
+                dist1[v] = dist0[v]
+                dist0[v] = nd
+                heapq.heappush(heap, (nd, v))
+            elif nd != dist0[v] and nd < dist1[v]:
+                dist1[v] = nd
+                heapq.heappush(heap, (nd, v))
+    
+    base_nodes = set()
+    base_edges = set()
+    cur = n
+    base_nodes.add(n)
+    path_edges = []
+    while cur != 1:
+        prev = parent_arr[cur]
+        base_nodes.add(prev)
+        u = min(cur, prev)
+        v = max(cur, prev)
+        base_edges.add((u, v))
+        cur = prev
+    
+    candidate_A = INF
+    if dist1[n] < INF:
+        candidate_A = dist0[n] + dist1[n]
+    
+    candidate_B1 = INF
+    candidate_B4 = INF
+    
+    for (u, v, t) in edges:
+        a, b = min(u, v), max(u, v)
+        if (a, b) in base_edges:
+            continue
+        
+        if u in base_nodes and v in base_nodes:
+            seg = abs(d1[u] - d1[v])
+            cand = 2 * T - seg + t
+            if cand < candidate_B1:
+                candidate_B1 = cand
+        else:
+            cand1 = T + d1[u] + t + dn[v]
+            cand2 = T + d1[v] + t + dn[u]
+            cand = min(cand1, cand2)
+            if cand < candidate_B4:
+                candidate_B4 = cand
+                
+    ans = min(candidate_A, candidate_B1, candidate_B4)
+    if ans >= INF:
+        print(-1)
+    else:
+        print(ans)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Reading Input**: The input is read and parsed into the number of cities (n), roads (m), and the list of roads with their travel times.
+2. **Dijkstra for Shortest Path (d1)**: Computes the shortest path from city 1 to all other cities, storing distances in `d1` and parent pointers for path reconstruction.
+3. **Connectivity Check**: If city n is unreachable from city 1 (`d1[n]` remains infinity), output -1.
+4. **Dijkstra from City n (dn)**: Computes the shortest path from city n to all other cities for use in detour calculations.
+5. **Second Shortest Path (dist0, dist1)**: Uses a modified Dijkstra to compute the shortest (`dist0`) and second shortest (`dist1`) paths from city 1 to n, allowing non-simple paths.
+6. **Base Path Reconstruction**: Identifies nodes and edges on the shortest path (base path) from 1 to n.
+7. **Edge Processing**:
+   - **Candidate B1**: For edges connecting two base path nodes, computes the time by replacing the segment between them.
+   - **Candidate B4**: For edges connecting a base path node to a non-base node, computes the time by extending the journey via this edge.
+8. **Result Calculation**: The minimum valid traversal time among Candidates A, B1, and B4 is printed, or -1 if no solution exists. 
+
+This approach efficiently explores all viable routes while adhering to the distinct sets requirement, leveraging Dijkstra's algorithm for optimal path calculations.

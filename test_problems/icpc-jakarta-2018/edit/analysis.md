@@ -1,0 +1,5 @@
+If the problem requires us to find a binary string $T$ of the same length as the input $S$ which has the largest edit distance to $S$, then this problem can be more challenging. Fortunately, that’s not the case; this problem only asks us to find a binary string $T$ of the same length as input which has an edit distance strictly larger than half of $S$’s length.
+
+There are many possible outputs which satisfy the requirement. Here, we will discuss a simple one.
+
+First, count how many $0$ and $1$ does $S$ has. If $S$ has more $0$ than $1$, then simply set $T$ to be all $1$. If $S$ has more $1$ than $0$, then simply set $T$ to be all $0$. The problem is what we should do with the case where the number of $0$ and $1$ are equal. In this case, we can set $T$ to be either `01111..` or `10000..` depends on the first character of $S$, i.e. $S_1$. Specifically, if $S_1$ is `0`, then $T$ is `10000..`; otherwise, $T$ is `01111..`

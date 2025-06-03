@@ -1,0 +1,155 @@
+### Approach
+The problem involves constructing a lexicographically smallest sign sequence (comprising -1 and 1) of length \( N \) that satisfies \( K \) constraints and some prefilled positions. Each constraint specifies that the sum of elements in a subarray \([A_i, B_i]\) must be at least \( C_i \). The solution involves a greedy algorithm that processes constraints in a specific order to ensure minimal flips (from -1 to 1) while maintaining lexicographical order.
+
+#### Key Insights:
+1. **Lexicographical Order**: To achieve the lexicographically smallest sequence, we start by initializing all free positions (non-prefilled) to -1. This is the smallest possible value. We then flip only necessary free positions to 1 to meet constraints, preferring to flip the leftmost free positions first to leave the rightmost positions as -1, which helps in maintaining lex order.
+2. **Constraints Handling**: Each constraint requires the sum of a subarray to be at least \( C_i \). The difference between the current sum and \( C_i \) (deficit) determines the number of flips needed (each flip increases the sum by 2).
+3. **Efficiency**: Given the constraints (up to \( 10^5 \) for \( N \) and \( K \)), an efficient approach using Fenwick trees (or segment trees) is necessary for range queries and updates.
+
+#### Algorithm:
+1. **Initialization**:
+   - **Base Prefix Array**: Compute the initial prefix sums where prefilled positions use their values, and free positions are set to -1.
+   - **Data Structures**: Use two Fenwick trees:
+     - `flip_tree` to track the number of flips (1 for flipped positions, 0 otherwise).
+     - `available_tree` to count available free positions (1 for free positions, 0 for fixed or flipped).
+   - **Set of Free Positions**: Maintain a set of indices of free positions for efficient access.
+
+2. **Constraint Processing**:
+   - **Order**: Sort constraints primarily by increasing \( B_i \) (right endpoint) and secondarily by decreasing \( A_i \) (left endpoint). This ensures processing smaller intervals first and prioritizing constraints that start later within the same \( B_i \).
+   - **Deficit Calculation**: For each constraint, compute the deficit \( d = C_i - \text{base\_interval} - 2 \times \text{already\_flips} \), where:
+     - `base_interval` is the initial sum of the subarray \([A_i, B_i]\).
+     - `already_flips` is the count of already flipped positions in \([A_i, B_i]\).
+   - **Flip Handling**: If \( d > 0 \), calculate the required flips \( t = \lceil d/2 \rceil \). If there are fewer available free positions than \( t \), output "Impossible". Otherwise, flip the \( t \) smallest available free positions in \([A_i, B_i]\) (to use leftmost positions first, preserving rightmost for potential -1).
+
+3. **Output**: After processing all constraints, output the sequence where prefilled positions are unchanged, free positions are 1 if flipped, else -1.
+
+### Solution Code
+```python
+import sys
+from bisect import bisect_left, bisect_right
+
+class Fenw:
+    def __init__(self, n):
+        self.n = n
+        self.tree = [0] * (n + 1)
+    
+    def update(self, index, delta):
+        while index <= self.n:
+            self.tree[index] += delta
+            index += index & -index
+    
+    def query(self, index):
+        s = 0
+        while index:
+            s += self.tree[index]
+            index -= index & -index
+        return s
+    
+    def range_query(self, l, r):
+        return self.query(r) - self.query(l - 1)
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    
+    n = int(data[0])
+    k = int(data[1])
+    P = list(map(int, data[2:2 + n]))
+    constraints = []
+    index = 2 + n
+    for i in range(k):
+        a = int(data[index])
+        b = int(data[index + 1])
+        c = int(data[index + 2])
+        index += 3
+        constraints.append((a, b, c))
+    
+    base_prefix = [0] * (n + 1)
+    for i in range(1, n + 1):
+        val = P[i - 1]
+        if val == 0:
+            base_prefix[i] = base_prefix[i - 1] + (-1)
+        else:
+            base_prefix[i] = base_prefix[i - 1] + val
+            
+    flip_tree = Fenw(n)
+    available_tree = Fenw(n)
+    set_available = []
+    sorted_set = []
+    ans = [0] * (n + 1)
+    free_positions = []
+    
+    for i in range(1, n + 1):
+        if P[i - 1] != 0:
+            ans[i] = P[i - 1]
+        else:
+            ans[i] = -1
+            free_positions.append(i)
+            available_tree.update(i, 1)
+    
+    set_available = set(free_positions)
+    sorted_free = sorted(free_positions)
+    
+    constraints_by_B = {}
+    for B in range(1, n + 1):
+        constraints_by_B[B] = []
+    for (a, b, c) in constraints:
+        constraints_by_B[b].append((a, c))
+    
+    for B in range(1, n + 1):
+        if B not in constraints_by_B:
+            continue
+        cons_list = constraints_by_B[B]
+        cons_list.sort(key=lambda x: x[0], reverse=True)
+        
+        for (a, c) in cons_list:
+            base_interval = base_prefix[B] - base_prefix[a - 1]
+            already = flip_tree.range_query(a, B)
+            d = c - base_interval - 2 * already
+            if d <= 0:
+                continue
+            t = (d + 1) // 2
+            count_avail = available_tree.range_query(a, B)
+            if count_avail < t:
+                print("Impossible")
+                return
+                
+            to_flip = []
+            for _ in range(t):
+                l_index = bisect_left(sorted_free, a)
+                if l_index >= len(sorted_free) or sorted_free[l_index] > B:
+                    print("Impossible")
+                    return
+                pos = sorted_free[l_index]
+                to_flip.append(pos)
+                sorted_free.pop(l_index)
+                set_available.discard(pos)
+                available_tree.update(pos, -1)
+                flip_tree.update(pos, 1)
+                ans[pos] = 1
+                
+    output = []
+    for i in range(1, n + 1):
+        output.append(str(ans[i]))
+    print(" ".join(output))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Initialization**:
+   - **Input Parsing**: Reads sequence length \( N \), number of constraints \( K \), prefilled sequence \( P \), and constraints.
+   - **Base Prefix Array**: Computes initial prefix sums with free positions as -1.
+   - **Fenwick Trees**: `flip_tree` tracks flipped positions; `available_tree` counts available free positions.
+   - **Free Positions Set**: Maintains indices of free positions for quick access.
+
+2. **Constraint Processing**:
+   - **Sorting Constraints**: Sorts by increasing \( B_i \) (right endpoint) and, for same \( B_i \), by decreasing \( A_i \) (left endpoint) to prioritize smaller and later-starting intervals.
+   - **Deficit Handling**: For each constraint, calculates the deficit \( d \). If \( d > 0 \), computes required flips \( t \). If insufficient free positions exist, outputs "Impossible".
+   - **Flipping Positions**: Flips the \( t \) leftmost free positions in the constraint's interval to 1, updating data structures and the answer array.
+
+3. **Output**: After processing, outputs the sequence with prefilled values and flipped or original free positions (-1 if not flipped).
+
+This approach efficiently meets constraints while ensuring lexicographically smallest sequence by strategically flipping minimal leftmost free positions. The use of Fenwick trees ensures optimal performance for large inputs.

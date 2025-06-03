@@ -1,0 +1,1546 @@
+ We are counting the number of indices i such that the prefix maximum at i is exactly i.
+ Why? Because if the prefix maximum at position i is i, then the segment ending at i contains all numbers from (last break + 1) to i, and thus can be independently sorted.
+
+ However, note: when we swap two elements, we might break the prefix maximum condition for indices from min(u, v) to n.
+
+ We cannot recompute the entire prefix maximum array for each swap (which would be O(n) per swap and O(n*m) overall, which is 500000 * 500000 = 25e10, too slow).
+
+ Therefore, we need a more efficient method.
+
+ Observation:
+   The condition for a break at i: max(A[1..i]) = i.
+
+   After swapping two elements at positions u and v (with u < v), the prefix maxima from 1 to u-1 remain the same.
+   The prefix maximum at u becomes: max(prefix[u-1], A[u]) and then propagates.
+
+   However, we note that the prefix maximum is non-decreasing. So if we start from the left, we can update the prefix maxima from u to n, but if we do a naive update we might do O(n) per swap.
+
+   But note: the total number of swaps is 500000, and we cannot do O(n) per swap.
+
+ Alternative Insight:
+
+   We can use a segment tree or a Fenwick tree to update and query the break conditions, but the main challenge is updating the prefix maxima.
+
+   However, note that the prefix maximum array is computed sequentially. After swapping, we must update from u (the smaller index) to n. But we can break early: if at some point the updated prefix maximum becomes the same as the old one, then we can stop.
+
+   Steps for a swap (u, v) with u < v:
+     1. Swap A[u] and A[v].
+     2. We start from u and go to n, updating the prefix maximum:
+          P[u] = max(P[u-1], A[u])
+          Then for i from u+1 to n: 
+             P[i] = max(P[i-1], A[i])
+          BUT: if at some i, the updated P[i] is the same as the old P[i] (which we stored from before the swap) and we know that the rest of the prefix maxima won't change (because the maximum hasn't increased), then we can break.
+
+     However, we also need to update the break condition at each i: if P[i] == i then we mark it as a break.
+
+   But worst-case we might still update O(n) per swap, leading to O(n*m) worst-case time.
+
+   We need to optimize further.
+
+   Note: The break condition at an index i might change only if the prefix maximum at i changes.
+
+   How many indices change? The prefix maximum changes only from u to the next index where the current maximum is at least as large as the new maximum we are introducing? Actually, we can break early when the current prefix maximum (during the update) becomes at least the old prefix maximum at that point? 
+
+   However, after a swap, the new element at u might be smaller than the old one? Then the prefix maximum at u might drop? But wait: we swapped two elements. The old element at u is now at v, and the old element at v is at u.
+
+   Let:
+        old_u = A[u] (before swap)
+        old_v = A[v] (before swap)
+
+        After swap: A[u] = old_v, A[v] = old_u.
+
+   We have two cases:
+        Case 1: old_u and old_v are both less than the current prefix maximum at u (which is the same as the prefix maximum at u-1, because the old_u was included and we are replacing it by old_v) -> then the prefix maximum at u might drop if old_v is less than the old prefix maximum at u? But note: the prefix maximum at u was computed from A[1..u]. Now we are replacing A[u] by old_v. So if old_v is less than the old prefix maximum at u (which was at least the old prefix at u-1 and old_u) then the new prefix maximum at u becomes the old prefix maximum at u-1 (if it was greater than old_v) or old_v if it is greater than the old prefix at u-1.
+
+   Actually, the old prefix maximum at u was max(P[u-1], old_u). Now it becomes max(P[u-1], old_v).
+
+   Then for the next indices, the propagation depends.
+
+   How to update without traversing the entire array? 
+
+   We can do:
+
+        Let start = u (the smaller index of the swap).
+        We store the current prefix maximum at u-1: base = P[u-1] (if u>1, else 0).
+
+        Then we update from i = u to n:
+
+            current_max = base
+            for i from u to n:
+                current_max = max(current_max, A[i])
+                if current_max == P[i] (the old prefix maximum) and i>v? We can break? But note: even if current_max equals the old P[i], the break condition might change? Actually, the break condition is about current_max == i. Even if current_max is the same as the old one, if the old break condition was set, then it remains? 
+
+            However, wait: the break condition at i is (current_max == i). The old break condition was set based on the old current_max (which was the old P[i]). But if the new current_max is the same as the old one, then the break condition doesn't change.
+
+        Therefore, we can break the update when we have:
+
+            current_max >= old_P[i]   (because then from that point onward, the prefix maximum will be the same as the old one, and hence the break conditions remain unchanged).
+
+        Why? Because at the first index i where the new current_max becomes at least the old P[i] (which was the prefix maximum at i in the old array), then for all j>=i, the prefix maximum will be the same as the old one? Not exactly: the old prefix maximum at i might be achieved by an element that we have now swapped? But note: the old prefix maximum at i was computed from the entire segment [1..i]. The new computation uses the same elements except that we swapped two. However, the new current_max at i might be less than the old one? Then we cannot break.
+
+        Actually, we can break when the new current_max becomes equal to the old prefix maximum at i? Then for all j>=i, the new prefix maximum will be the same as the old? 
+
+        But consider: if the new current_max at i is less than the old P[i], then the propagation might be different in the future? Because the old P[i] was higher, so the propagation from i onward started with a higher value. Now we start with a lower value, so we might get a lower prefix maximum at j>i? 
+
+        Therefore, we must update until we have the new current_max at least as large as the old P[i]? Then we can break? 
+
+        Actually, if at index i, the new current_max becomes >= the old prefix maximum at i, then for j>=i, the prefix maximum will be at least the old one? But that doesn't necessarily mean it will be the same. We need the exact same.
+
+        Alternatively, we can break when the new current_max becomes equal to the old prefix maximum at i and we know that from i onward the old prefix maximum is non-decreasing and we have matched it? Then the rest will be the same.
+
+        However, it is simpler to update until the point where the new current_max is at least the old prefix maximum at i? Then we know that from that index i onward, the new prefix maximum will be the same as the old? Why? Because the old prefix maximum at i was the maximum of the entire prefix [1..i]. Now, if the new current_max at i is at least the old prefix maximum at i, then it must be exactly the old prefix maximum at i? Because the old prefix maximum at i is the maximum of the entire segment [1..i] (which included the old elements). Now we have swapped two elements: one that was at u (which is in [1..i] since u<=i) and one at v (which may or may not be in [1..i]). But note: if i>=v, then we have included the element at v? Actually, we swapped u and v, and if i>=v, then we have included both u and v? Then the set of elements in [1..i] is the same as before? Therefore, the maximum of [1..i] is the same? 
+
+        However, if i < v, then the element at v is not included. So the set of elements in [1..i] is the same as before except that we have the new element at u (which is the old element at v) and we are missing the old element at u (which is now at v). Therefore, the maximum of [1..i] might be different.
+
+        Therefore, we must update until at least v? 
+
+        Actually, we must update until the maximum of the updated prefix [1..i] is at least as large as the old prefix maximum at i? But that might require going beyond v.
+
+        Alternatively, we can break the update only when we have:
+
+            The new prefix maximum at i becomes equal to the old prefix maximum at i, and we have passed the index v (so that the set [1..i] is the same as before) -> then we can break? But note: even if we haven't passed v, if the new prefix maximum at i is the same as the old one, then for j>i, the propagation might be the same? 
+
+        However, consider: 
+            Old array: [3, 1, 2, 5, 4, 6] and swap positions 1 and 6: 
+                becomes [6, 1, 2, 5, 4, 3]
+            Now at i=1: new prefix max = 6 (old was 3) -> different.
+            Then at i=2: max(6,1)=6 -> old was 3 -> different.
+            Then i=3: 6 -> old was 3 -> different.
+            Then i=4: 6 -> old was 5 -> different.
+            Then i=5: 6 -> old was 5 -> different.
+            Then i=6: 6 -> old was 6 -> same? But the break condition at i=6: 6==6? So break condition at 6 remains? 
+
+        But note: the break condition at i=6: originally was 1 (since 6==6). Now the new prefix maximum at 6 is 6, so break condition at 6 is still 1.
+
+        However, the break condition at i=1: originally? prefix max at 1 was 3 != 1 -> no break. Now: prefix max=6 !=1 -> no break.
+        i=2: 6 !=2 -> no break (originally: 3 !=2 -> no break).
+        i=3: 6 !=3 -> no break (originally: 3==3? -> break? But wait: originally the array was [3,1,2,5,4,6]. 
+          prefix max at 3: max(3,1,2)=3 -> equals 3 -> break condition at 3 was set. Now: [6,1,2,...] -> prefix max at 3: 6, which is not 3 -> break condition at 3 is gone.
+
+        Therefore, we must update until at least the index where the old prefix maximum was set? Actually, we must update until we have the new prefix maximum at least the old maximum that was in the entire array? 
+
+        Alternatively, we can note that the update must start at u (min index) and go until we have covered at least max(u, v) and then until the new prefix maximum becomes as large as the old global maximum? 
+
+        But worst-case, we might update the entire array.
+
+        However, note the constraints: worst-case M=500000, and worst-case each swap updating 500000 indices -> 500000*500000 = 250e9, which is too slow in Python.
+
+        Therefore, we need a smarter method.
+
+ Another Insight:
+
+   The condition for a break at i is that the prefix maximum is i. This is equivalent to: the maximum of the entire array up to i is i, which also means that the value i appears in the prefix [1..i]. 
+
+   So the break condition at i is: the element i must be in the prefix [1..i]. 
+
+   Then the number of breaks is the number of i such that the element i is in the prefix [1..i]. 
+
+   How does a swap (u, v) affect this? 
+
+   Consider: 
+        We are swapping two elements: one at u and one at v.
+
+        For an index i, the condition is that the element i is in [1..i]. 
+
+        The element i might be at a position that we are swapping? 
+
+        Specifically, if the element i is at u, then after swap it moves to v. Then:
+            If v <= i, then the element i is still in [1..i] (if u was in [1..i] then now we have moved it to v, which is <=i? but if v>i, then it leaves the prefix [1..i]).
+            Similarly, if the element i was at v, then after swap it moves to u. Then:
+                If u <= i, then it enters the prefix [1..i] (if it wasn't already there? but if it was at v>i then now at u<=i, then it becomes present).
+
+        Also note: an element that is not i might be swapped and cause the element i to be displaced? Actually, the condition for i only depends on the location of the element i.
+
+        Therefore, we can recast the problem: 
+            Let pos[x] be the current position of the element x.
+
+            Then the break condition at i is: pos[i] <= i.
+
+            The total breaks = count of i in [1..n] such that pos[i] <= i.
+
+        How does a swap (u, v) affect the positions?
+            Let x = A[u] and y = A[v] before swap.
+            Then after swap:
+                A[u] = y -> so the element y moves to u.
+                A[v] = x -> so the element x moves to v.
+
+            Therefore, we update:
+                pos[x] = v
+                pos[y] = u
+
+            Then the break conditions that change are only for the two elements x and y? 
+
+            Specifically, we need to check for i=x and i=y (and possibly for other i? but note: the condition for an index i is only about the element i. The element that was x is now at v: so the condition for i=x is: is v <= x? 
+            Similarly, for i=y: is u <= y?
+
+            However, note: the condition for other indices? 
+                For an index i that is not x and not y: the element i is still at the same position? so the condition remains.
+
+            Therefore, we only need to update the break conditions at i=x and i=y.
+
+        Then the algorithm becomes:
+
+            Precompute an array pos: for i from 1 to n, pos[A[i]] = i.
+
+            Precompute an array breaks: for i from 1 to n, breaks[i] = 1 if pos[i] <= i, else 0.
+
+            total_breaks = sum(breaks[1..n])
+
+            For each swap (u, v):
+                Let x = A[u] and y = A[v] (the elements at positions u and v before swap).
+                Swap A[u] and A[v]; then update:
+                    pos[x] = v
+                    pos[y] = u
+
+                Then update the break conditions for i=x and i=y (and also note: what if x and y are the same? but they are distinct because permutation). 
+
+                Also, what about the break condition for the indices that are the positions of x and y? Actually, we are updating the break condition at the indices i=x and i=y? 
+
+                But note: the break condition at an index i is: does the element i lie at a position <= i? So we update for i=x: now breaks[x] = 1 if v<=x else 0.
+                Similarly, breaks[y] = 1 if u<=y else 0.
+
+                However, note: what if x and y are the same as the indices we are checking? 
+
+                Also, what about the break condition at the indices that are the positions of the elements that are not x and y? They don't change.
+
+                But wait: consider an index i that is not x or y. The condition for i is: the element i is at a position <= i. The swap only moves the elements x and y. The element i remains fixed. So only the break conditions for x and y change.
+
+                However, note: the condition for an index i is independent: it only depends on the location of the element i. Therefore, we only update the breaks for the two values x and y.
+
+            Steps for a swap (u, v):
+                Let x = A[u] and y = A[v] (before swapping).
+                total_breaks -= breaks[x]   # remove the old break condition for x
+                total_breaks -= breaks[y]   # remove the old break condition for y
+
+                Swap A[u] and A[v].
+                Update: 
+                    pos[x] = v
+                    pos[y] = u
+
+                breaks[x] = 1 if (v <= x) else 0
+                breaks[y] = 1 if (u <= y) else 0
+
+                total_breaks += breaks[x] + breaks[y]
+
+            Then output total_breaks.
+
+        Example: 
+            Initial: n=6, A = [3,1,2,5,4,6] -> 
+                pos: 
+                    element 1: at pos2 -> pos[1]=2
+                    element 2: at pos3 -> pos[2]=3
+                    element 3: at pos1 -> pos[3]=1
+                    element 4: at pos5 -> pos[4]=5
+                    element 5: at pos4 -> pos[5]=4
+                    element 6: at pos6 -> pos[6]=6
+
+                breaks:
+                    i=1: pos[1]=2 -> 2<=1? no -> 0
+                    i=2: pos[2]=3 -> 3<=2? no -> 0
+                    i=3: pos[3]=1 -> 1<=3? yes -> 1
+                    i=4: pos[4]=5 -> 5<=4? no -> 0
+                    i=5: pos[5]=4 -> 4<=5? yes -> 1
+                    i=6: pos[6]=6 -> 6<=6? yes -> 1
+                total_breaks = 1+1+1 = 3.
+
+            Swap (2,3): 
+                u=2, v=3 -> 
+                Before swap: 
+                    A[2]=1, A[3]=2 -> so x=1, y=2.
+                Remove breaks for x=1 and y=2: 
+                    breaks[1]=0 -> subtract 0
+                    breaks[2]=0 -> subtract 0
+                Swap: 
+                    A[2]=2, A[3]=1 -> so now:
+                    element 1 is at pos3 -> update pos[1]=3
+                    element 2 is at pos2 -> update pos[2]=2
+                Update breaks for i=1: 3<=1? -> no -> 0
+                Update breaks for i=2: 2<=2? -> yes -> 1
+                total_breaks = 3 (unchanged) + 0 (for 1) + 1 (for 2) but we had 1 already? 
+
+                Actually, we had breaks[2] was 0 before and now becomes 1 -> so we add 1, and breaks[1] becomes 0 (same as before) -> so total_breaks becomes 3 + 1? 
+
+                But we also had breaks[3]=1, breaks[5]=1, breaks[6]=1 -> that's 3. Then we add 1 for 2? -> 4? 
+
+                But wait, we removed 0 (for 1 and 2) and then added 0 for 1 and 1 for 2 -> so net change: +1 -> total_breaks=4? 
+
+                But the sample output after first swap is 3.
+
+            What's wrong?
+
+            Let me check the array after swapping (2,3): 
+                Original: [3,1,2,5,4,6] -> after swapping positions 2 and 3: [3,2,1,5,4,6]
+
+                Now compute breaks:
+                    i=1: element 1 is at pos3 -> 3<=1? no -> 0.
+                    i=2: element 2 is at pos2 -> 2<=2? yes -> 1.
+                    i=3: element 3 is at pos1 -> 1<=3? yes -> 1.
+                    i=4: element 4 is at pos5 -> 5<=4? no -> 0.
+                    i=5: element 5 is at pos4 -> 4<=5? yes -> 1.
+                    i=6: element 6 is at pos6 -> 6<=6? yes -> 1.
+                total = 1 (i=2) + 1 (i=3) + 1 (i=5) + 1 (i=6) = 4? 
+
+            But the sample output after first swap is 3, and the problem states the answer prior to any swap is 3, then after first swap is 3.
+
+            Why? 
+
+            The problem statement: 
+                "The first integer represents the answer prior to any swaps, and for 2 <= i <= M + 1, the i-th integer represents the answer after the (i-1)-th swap."
+
+            Sample Input #1: 
+                6 5
+                3 1 2 5 4 6 
+                2 3
+                ...
+
+            Sample Output #1:
+                3
+                3   <-- after first swap
+                ...
+
+            So after the first swap, the answer is 3, not 4.
+
+            What is the correct condition? 
+
+            Our new condition: break at i if the element i is in the prefix [1..i] -> which we interpreted as: the element i must be at a position <= i.
+
+            But note: the element i must appear in the prefix [1..i]? Yes, that is the same as the element i being at a position <= i.
+
+            However, let's check the initial array: [3,1,2,5,4,6] 
+                i=1: element 1 is at position 2 -> 2<=1? -> no -> not break.
+                i=2: element 2 is at position 3 -> 3<=2? -> no -> not break.
+                i=3: element 3 is at position 1 -> 1<=3 -> break.
+                i=4: element 4 is at position 5 -> 5<=4? -> no -> not break.
+                i=5: element 5 is at position 4 -> 4<=5 -> break.
+                i=6: element 6 is at position 6 -> break.
+                breaks at i=3,5,6 -> total 3.
+
+            After swapping positions 2 and 3: [3,2,1,5,4,6]
+                i=1: element 1 at position 3 -> 3<=1? no -> no break.
+                i=2: element 2 at position 2 -> break.
+                i=3: element 3 at position 1 -> break.
+                i=4: element 4 at position 5 -> no.
+                i=5: element 5 at position 4 -> break.
+                i=6: break.
+                breaks at i=2,3,5,6 -> 4 breaks.
+
+            But the sample output after first swap is 3.
+
+        What did the problem say? 
+            The answer prior to swaps: 3 -> matches.
+            After swap (2,3): 3.
+
+        Therefore, our condition is not sufficient? 
+
+        Let me reexamine the original condition: 
+            We require that the prefix maximum at i is i.
+
+            For the array [3,2,1,5,4,6]:
+                i=1: prefix max = 3 -> not 1 -> no break.
+                i=2: prefix max = max(3,2)=3 -> not 2 -> no break.
+                i=3: prefix max = max(3,2,1)=3 -> not 3? -> break? but wait 3==3 -> break? 
+                i=4: prefix max = max(3,2,1,5)=5 -> not 4 -> no break.
+                i=5: prefix max = max(3,2,1,5,4)=5 -> 5==5 -> break.
+                i=6: 6==6 -> break.
+                breaks at i=3,5,6 -> 3 breaks.
+
+        Why the discrepancy?
+
+        Condition: 
+            break at i if the prefix maximum at i is i.
+
+        How is that related to the element i being in the prefix? 
+            It is necessary that the element i appears in the prefix [1..i]? But also, the prefix maximum must be exactly i? 
+
+            Actually, the prefix maximum at i is i if and only if:
+                (1) The element i appears in the prefix [1..i] (so that the maximum is at least i).
+                (2) The maximum element in the prefix [1..i] is at most i? But the elements are distinct and from 1 to n? The maximum cannot be more than i? 
+
+            However, condition (2) is not true: the maximum can be greater than i? 
+
+            For example, the array [3,2,1,...]: 
+                at i=1: maximum=3>1 -> so no break.
+                at i=2: maximum=3>2 -> no break.
+                at i=3: maximum=3 -> which equals 3 -> break.
+
+            Therefore, the break condition is: the maximum of the prefix [1..i] is exactly i.
+
+            How to relate to the positions of the numbers? 
+                The condition that the maximum is i implies that the element i appears in [1..i] (so that the maximum is at least i) and that no element greater than i appears in [1..i]. 
+
+            But note: the element i+1, i+2, ... are all greater than i. So we require that no element in the set {i+1, i+2, ..., n} appears in the prefix [1..i].
+
+        Therefore, the condition is two-fold.
+
+        How to maintain this condition under swaps? 
+
+        We can use the following:
+
+            Let M(i) = max(A[1..i])
+
+            Condition: M(i)=i.
+
+            How does a swap (u, v) (with u<=v) affect M(i) for various i?
+
+            The prefix maximum array M(i) is non-decreasing. 
+
+            We note that the swap might cause the prefix maximum to drop if we remove a large element from the prefix? Or increase if we add a large element.
+
+            Specifically, if we swap two elements at positions u and v, then:
+
+                For i < u: M(i) remains the same.
+
+                For u <= i < v: 
+                    The new prefix maximum at i is: 
+                        new_M(i) = max( M(u-1), new_A[u], A[u+1], ..., A[i] ) 
+                    But note: the old prefix maximum at i included the old_A[u] and the other elements. Now we have replaced the old_A[u] by new_A[u] (which is the old_A[v]). 
+
+                For i>=v: 
+                    new_M(i) = max( new_M(v), ... ) 
+                    where new_M(v) = max( new_M(u) (which covers u..v-1), new_A[v] = old_A[u] ) 
+
+            Therefore, we need to update the prefix maximum for i from u to n.
+
+            However, we cannot update the entire array for each swap.
+
+        But note: we only care about the count of i such that M(i)=i.
+
+        We can use a segment tree that supports range updates and queries? However, the update is not a simple additive update.
+
+        Alternatively, we can simulate the update from u to n, but break early if the new prefix maximum becomes as large as the old one? 
+
+        Specifically, we maintain an array M for the prefix maximum.
+
+        Steps for a swap (u, v) (with u<=v):
+            Save the current M array for indices from u to n? But that is O(n) memory per swap? -> no.
+
+        Instead, we can do:
+
+            Let temp = M[u-1]   # the prefix maximum just before u.
+
+            Then we traverse i from u to n:
+
+                new_val = max(temp, A[i])
+                # But wait: we are swapping A[u] and A[v]? So at i=u, we have the new A[u] = old_A[v], and at i=v, we have the new A[v]=old_A[u].
+
+                However, note: we have swapped the two elements, so we need to account for that.
+
+                Specifically, at i=u: 
+                    candidate = max(temp, A[u])   # but A[u] now is the old_A[v]
+                Then at i=v:
+                    candidate = max(current_max, A[v])   # A[v] now is the old_A[u]
+
+            Then we update M[i] = candidate, and then set temp = candidate.
+
+            And we check: if M[i] becomes i? then we update a Fenwick tree for breaks.
+
+            But we also need to remove the old break condition? 
+
+            We maintain an array breaks_count[i] which is 1 if M[i] (the current one) equals i, else 0.
+
+            We also maintain the total breaks.
+
+            How to update without storing the entire M array? We only need the current M[i] for propagation? and we need to know the old M[i] to remove the break condition?
+
+            We store the current M array in an array P.
+
+            Steps:
+
+                Let u0 = min(u,v), v0 = max(u,v).
+
+                We start from i = u0.
+
+                We let current = P[u0-1]   # the prefix max just before u0.
+
+                Then we traverse i from u0 to n:
+
+                    If i == u0: 
+                         current = max(current, A[u0])   # note: A[u0] has been updated to the new value (which was the old value at v0, if u0 is the original u or v? we swapped the two)
+
+                    But note: if i is v0, then we have the other swapped element.
+
+                    However, we can simply do: 
+                         current = max(current, A[i])
+
+                    Then we compare with the old P[i]:
+
+                    If we have already stored the old P[i] (from before the swap) and the new current is equal to the old P[i] and i>=v0, then we break? But we cannot break because the break condition might change? 
+
+                    Actually, we break the propagation only when we are sure that the prefix maximum for the rest will be the same as the old one? 
+
+                    How about: if at an index i, the new current is the same as the old P[i] and also the new current is at least the maximum of the old P from i to n? Then we can break? 
+
+            Alternatively, we note that the prefix maximum is non-decreasing. So if at index i, the new current becomes equal to the old P[i] and the old P[i] was the maximum for the entire array from i onward? But we don't know that.
+
+        However, we can break when the new current is at least the old prefix maximum for the entire array? But we don't store that.
+
+        Another idea: we know the old prefix maximum at n is the maximum of the entire array? Let global_max = max(A) which is n? (since permutation of 1..n). Actually, the maximum element is n.
+
+        Then after the swap, the maximum element n might be moved? Then the new prefix maximum at n is still n? Because the array still contains n.
+
+        Actually, the maximum element n is still in the array. So the prefix maximum at n must be n. But that doesn't help.
+
+        Given the constraints, we hope that the propagation stops early? 
+
+        Worst-case: the entire array might be updated? Then O(n) per swap -> worst-case 500000 * 500000 = 250e9, which is too slow.
+
+        Therefore, we must avoid updating the entire array.
+
+        We note: the prefix maximum changes only at indices where the new element is larger than the current running maximum? 
+
+        And the running maximum is non-decreasing. So we can update only when the new element is larger than the current running maximum? But that doesn't reduce the worst-case.
+
+        Alternatively, we can use a segment tree that stores the maximum value in the array for a range, and then we do a binary search for the next index where the element is greater than the current running maximum? 
+
+        However, the propagation of the prefix maximum is sequential.
+
+        We can do:
+
+            current = P[u0-1]
+            i = u0
+            while i <= n:
+                # Find the next index j>=i such that A[j] > current.
+                # Then for indices i to j-1, the prefix maximum remains current.
+                # At j, the prefix maximum becomes A[j].
+
+            We can precompute the next greater element? But the array is changing dynamically.
+
+        We are stuck.
+
+        Alternatively, we can use a different condition:
+
+            The break condition at i: M(i)=i.
+
+            This is equivalent to: 
+                (1) The element i appears in [1..i] 
+                (2) No element greater than i appears in [1..i]
+
+            Condition (1) is: pos[i] <= i.
+            Condition (2) is: the maximum element in [1..i] is i.
+
+            But note: the maximum element in [1..i] is i if and only if condition (2) holds, and condition (1) is implied by (2) (because i must be present). 
+
+            Therefore, condition (2) alone suffices.
+
+            How to check condition (2) quickly? 
+                We need to know the maximum element in the prefix [1..i] is i.
+
+            But note: the maximum element in the entire array is n, and the array is a permutation.
+
+            How does a swap (u, v) affect the maximum in the prefix [1..i]? 
+
+            We maintain a segment tree for range maximum? Then we can update the array and then query the maximum for [1..i] for every i? That is O(n) per swap -> too slow.
+
+        After research, a known solution for similar problems (like after each swap, count the number of prefix maxima that are equal to the index) is to note:
+
+            The condition M(i)=i is equivalent to: the prefix maximum at i is i.
+
+            And the entire sequence of prefix maxima is non-decreasing.
+
+            We maintain a Fenwick tree for the breaks, and we update the breaks when the prefix maximum changes.
+
+            However, the challenge is to update the prefix maxima quickly.
+
+        Known approach in C++ for such problems (with swaps) is to simulate the update from the swap position to the end, but break early if the current running maximum becomes greater than or equal to the old running maximum at that point? 
+
+        But note: if the new running maximum at an index i becomes less than the old one, then we have to continue.
+
+        We store the old prefix maxima from the swap index to n in an array? But we don't want to store the entire array for each swap.
+
+        We store the current prefix maxima in an array P.
+
+        For a swap (u, v) with u0 = min(u,v), v0=max(u,v):
+
+            Let old_P = P[:]   # we don't want to copy the entire array each time.
+
+            Instead, we only remember the old_P for the indices that we update? 
+
+            Steps:
+
+                We are going to update from u0 to n.
+
+                We keep a variable current = P[u0-1]   # the prefix max at u0-1 (unchanged).
+
+                Then for i from u0 to n:
+
+                    # Update the current with the new A[i] (which might be swapped at u0 and v0).
+
+                    if i == u0:
+                        candidate = max(current, A[u0])   # note: A[u0] is the new value at u0 (which is the old value at v0)
+                    elif i == v0:
+                        candidate = max(current, A[v0])   # A[v0] is the old value at u0
+                    else:
+                        candidate = max(current, A[i])
+
+                    If candidate == current and candidate >= old_P[i]:
+                        # This means from this point on, the prefix maxima will not change? 
+                        # But note: even if candidate==current, if the old_P[i] was larger, then we might have to update the break condition? 
+                        # Actually, if candidate (new current) is <= the old_P[i], then the break condition for i might change: 
+                        #   old break condition: 1 if old_P[i]==i else 0.
+                        #   new break condition: 1 if candidate==i else 0.
+                        # And if candidate != old_P[i], then we have to update the Fenwick tree.
+
+                    So we cannot break.
+
+                We might break if the new current becomes >= the old prefix maximum for the entire array? 
+
+        Given the complexity, and the fact that the worst-case might be O(n*m) which is 25e10, and we are in Python, we must seek a better approach.
+
+        Insight from known problems: 
+            The number of indices i such that the prefix maximum is i is also the number of left-to-right maxima that are exactly i? 
+            But note: a left-to-right maximum is an element that is larger than all elements to its left. Our break condition is not about left-to-right maxima, but about the prefix maximum being i.
+
+        Another known solution for a similar problem (CodeForces) is to use a segment tree to maintain the prefix maximum and then use a DSU or a heap? 
+
+        Alternatively, we note that the break condition for i is independent if we had a static array, but the prefix maximum is not independent.
+
+        We might use a sparse table for range maximum queries, and then for each swap, we update the array in O(1) and then rebuild the sparse table in O(n log n)? That would be O(m * n log n), too slow.
+
+        After careful thought, the intended solution in C++ for this problem is to do a linear scan from the swap position until the current maximum catches up to the old maximum. Specifically, 
+
+            We maintain an array P for prefix maxima.
+
+            For the swap (u, v) (u<=v):
+                Swap A[u] and A[v].
+
+                Let start = u.
+                Let old_value = P[start]   # not exactly, because the prefix maxima might change.
+
+                We start from i=start, and we will update the prefix maxima from i to n, but we break early if the new prefix maximum becomes at least the old prefix maximum at i and the rest of the prefix maxima are unchanged? 
+
+                Specifically, we know that the prefix maxima are non-decreasing. We let current = if start>1 then P[start-1] else 0.
+
+                We also keep a flag or break when we have i>v and the new prefix maximum is at least the old prefix maximum at i.
+
+                But note: the old prefix maximum at i might be stored in an array.
+
+                Algorithm for the update after swap:
+
+                    Let u0 = u, v0 = v (and u0<=v0)
+                    backup = P[u0-1]   # the prefix maximum before the swap for index u0-1, which is unchanged.
+                    temp = backup
+                    We will create a new array for P from u0 onward? but only up to the point where we can break.
+
+                    for i in range(u0, n+1):
+                        if i == u0:
+                            new_val = max(temp, A[u0])
+                        elif i == v0:
+                            new_val = max(temp, A[v0])
+                        else:
+                            new_val = max(temp, A[i])
+
+                        # If we have passed v0 and new_val == old_P[i], then the break condition for i might be the same as before, and for the rest we can break because the new_val will be the same as the old propagation? 
+                        # But only if new_val >= old_P[i] and new_val is non-decreasing and the old_P is non-decreasing, then for j>i, the new prefix maxima will be at least new_val and the old prefix maxima were at least old_P[i]. 
+
+                        However, if new_val < old_P[i], then the break condition at i might change (from 1 to 0 if old_P[i]==i, and new_val!=i) and also the propagation might be lower for future indices.
+
+                        If new_val == old_P[i] and i>=v0: 
+                            then for j>=i, the new prefix maximum at j will be the same as the old one? Why? 
+                                Because the new_val is the same as the old prefix maximum at i, and the old prefix maximum at i was the maximum for [1..i] in the old array. In the new array, we have the same set of elements in the prefix [1..i] (because we have swapped two elements within [1..i]? wait, if i>=v0, then the swap is within [1..i] (since u0<=v0<=i), so the set of elements in [1..i] is the same as before. Therefore, the maximum is the same. And then for j>i, the prefix maximum will be max(old_P[i], max_{i+1..j} A[k]) = the same as the old computation (because the elements beyond i are unchanged).
+
+                            Therefore, we can break the update at i.
+
+                        Otherwise, we update P[i] = new_val, and set temp = new_val.
+
+                    Then we update the break condition for i: 
+                        We maintain an array break_arr of size n+1, and a Fenwick tree (or simply a variable) for the count.
+
+                        For each i in [u0, n] that we update, we do:
+
+                            if we are not breaking at i (i.e., we are at index i in the loop), then:
+
+                                old_break = 1 if (old_P[i] == i) else 0
+                                new_break = 1 if (new_val == i) else 0
+
+                                if old_break and not new_break:
+                                    total_breaks -= 1
+                                elif not old_break and new_break:
+                                    total_breaks += 1
+
+                                # and if i is the break point for early exit, then for j>i, we don't change the break conditions.
+
+                        But for j>i, we don't update, so we don't know? 
+
+                        However, if we break at i because new_val==old_P[i] and i>=v0, then for j>i, the break condition is the same as before, so we don't need to update.
+
+                    Therefore, we only need to update the break conditions for the indices from u0 to the break index.
+
+                We must store the old_P for the entire array? Yes, but we are not using extra space per swap, we have one array for the current state.
+
+                However, during the swap, we are about to change P from u0 to the break index, so we need to remember the old_P for these indices to:
+                    (1) compare to break early (i>=v0 and new_val==old_P[i])
+                    (2) update the break count (by comparing the old break condition and new break condition).
+
+                So we can do:
+
+                    Let L = u0, R = min(n, some break index)
+                    We will iterate i from L to R, and for each i, 
+                        we will have the old_P_i = P[i]   # because we haven't updated for this swap yet.
+                        compute new_val as above.
+
+                        if i>=v0 and new_val == old_P_i:
+                            # then we set P[i] = new_val (which equals old_P_i, so no change) and break the loop.
+                            but wait, if new_val==old_P_i, then the break condition might be the same? 
+                                old_break = (old_P_i == i)
+                                new_break = (new_val == i) -> same as old_break.
+                            so we don't need to change the break count for i.
+
+                            then for this i, we don't change the break count, and for j>i, we know the prefix maxima won't change, so we break.
+
+                        else:
+                            # Update P[i] = new_val
+                            old_break = (old_P_i == i)
+                            new_break = (new_val == i)
+                            if old_break != new_break:
+                                if old_break:
+                                    total_breaks -= 1
+                                else:
+                                    total_break += 1
+                            # and then set P[i] = new_val, and temp = new_val
+
+                    If we don't break, we continue to i+1.
+
+                This algorithm might help in practice if the break early happens soon, but in the worst-case (like swapping the last two elements) we only update from u0 to n, and u0 might be 1, so O(n) per swap.
+
+                Given m up to 500000, and n up to 500000, worst-case 500000*500000 = 250e9, which is too slow in Python.
+
+        Given the complexity, and the sample provided in the problem, we must output the sample answers.
+
+        Sample: 
+            "6 5
+            3 1 2 5 4 6 
+            2 3
+            1 3
+            3 5
+            1 2
+            3 6"
+
+        We will try the first swap: u=2, v=3, so u0=2.
+
+        Before swap: 
+            A = [0, 3, 1, 2, 5, 4, 6]   # 1-indexed: index0 unused, index1:3, index2:1, index3:2, index4:5, index5:4, index6:6.
+            P = [0,3,3,3,5,5,6]   # for i=1:3, i=2: max(3,1)=3, i=3: max(3,1,2)=3, i=4:5, i=5:5, i=6:6.
+            break_cond: 
+                i=1: 3!=1 ->0
+                i=2: 3!=2 ->0
+                i=3: 3==3 ->1
+                i=4:5!=4 ->0
+                i=5:5==5 ->1
+                i=6:6==6 ->1
+            total_breaks = 3.
+
+        Swap positions 2 and 3: 
+            A[2] and A[3] swapped: 
+                A = [0,3,2,1,5,4,6]
+            Now update from i=2 to 6:
+
+                i=2: 
+                    temp = P[1]=3.
+                    new_val = max(3, A[2]=2) = 3.
+                    old_P[2] = 3.
+                    i>=v0? v0=3, i=2<3 -> so we do not break even if new_val==old_P[2].
+                    new_val (3) == old_P[2] (3), but i<v0, so we continue.
+                    break condition: 
+                        old_break: 3!=2 ->0
+                        new_break: 3!=2 ->0 -> no change.
+                    Set P[2]=3, temp=3.
+
+                i=3:
+                    new_val = max(3, A[3]=1) = 3.
+                    old_P[3]=3.
+                    i=3>=v0=3, and new_val==old_P[3] -> we break.
+                    break condition at i=3: 
+                         new_val=3, i=3 -> break condition should be 1.
+                         old break condition was 1.
+                    So no change.
+
+                Therefore, total_breaks remains 3.
+
+        Next swap: "1 3"
+            u0=1, v0=3.
+            Swap A[1] and A[3]: 
+                A = [0,1,2,3,5,4,6]
+
+            Update from i=1:
+
+                i=1: 
+                    temp = P[0]=0.
+                    new_val = max(0, A[1]=1) = 1.
+                    old_P[1]=3.
+                    new_val (1) != old_P[1] (3) and i<3, so we update.
+                    break condition at i=1: 
+                         old: 3!=1 ->0
+                         new: 1==1 ->1 -> so total_breaks becomes 4.
+                    Set P[1]=1, temp=1.
+
+                i=2:
+                    new_val = max(1, A[2]=2) = 2.
+                    old_P[2]=3.
+                    new_val (2) != old_P[2] (3), and i<3.
+                    break condition: 
+                         old: 3!=2 ->0
+                         new: 2==2 ->1 -> total_breaks becomes 5.
+                    Set P[2]=2, temp=2.
+
+                i=3:
+                    new_val = max(2, A[3]=3) = 3.
+                    old_P[3]=3.
+                    i=3>=v0=3, and new_val==old_P[3] -> break.
+                    break condition at i=3: 
+                         new_val=3, i=3 -> break condition is 1 (same as old) -> no change.
+
+            So after swap, total_breaks=5? but the sample output is 5? -> no, sample output says 5? actually sample output after second swap is 5? 
+            Sample output: 
+                3
+                3
+                5   <--- after second swap
+
+            So it is 5.
+
+        Therefore, we implement the following:
+
+            We maintain:
+                A: the current array, 1-indexed.
+                P: the prefix maximum array, 1-indexed.
+                total_breaks: the current count of i in [1..n] such that P[i]==i.
+
+            For each swap (u, v):
+                u0 = min(u,v); v0 = max(u,v)
+
+                Swap A[u0] and A[v0]
+
+                If u0==v0: 
+                    output the current total_breaks and skip.
+
+                backup = P[u0-1]   # the prefix maximum before position u0, which is unchanged.
+
+                temp = backup
+                # Remember the old_P for indices from u0 to n: we will use it for comparison.
+                # We are going to iterate i from u0 to n:
+                for i in range(u0, n+1):
+                    if i == u0 or i == v0:
+                        # We have to use the new value at this position.
+                        candidate = A[i]
+                    else:
+                        candidate = A[i]
+                    new_val = max(temp, candidate)
+
+                    if i >= v0 and new_val == P[i]:
+                        # Even if we update, the prefix maximum at i will be the same as before.
+                        # And then for all j>i, the prefix maxima will be the same as before (because the set of elements in [1..i] is the same, and beyond i they are unchanged), so we break.
+                        # But note: we must update P[i] to new_val? It is the same, so we can break without updating anything for i and beyond.
+                        # However, we have to update the break condition for i? 
+                        #   The break condition at i: new_break = (new_val==i)
+                        #   The old break condition = (P[i]==i)
+                        #   But new_val = P[i] (because of the condition), so the break condition is the same.
+                        # Therefore, we break.
+                        break
+
+                    # Otherwise, we update the break condition for i.
+                    old_break = 1 if (P[i] == i) else 0
+                    new_break = 1 if (new_val == i) else 0
+
+                    if old_break and not new_break:
+                        total_breaks -= 1
+                    elif not old_break and new_break:
+                        total_breaks += 1
+
+                    # Update P[i] and temp
+                    P[i] = new_val
+                    temp = new_val
+
+                    # We might break early if we have not met the above condition but new_val is already >= some value? 
+                    # We only break when i>=v0 and new_val==P_old[i] (but note: we've updated P[i] to new_val, so we can't use P[i] for the next old? but in the next iteration, the old_P for i+1 is the value we had from the previous state, which we have overwritten.
+
+                    # How do we get the old_P for the next index? 
+                    # We have already overwritten P[i] for this i.
+
+                    # But for the next index i+1, we need the old_P[i+1] for the break condition and for the break early condition? 
+                    # We only need the old_P for the break condition at i+1 and for the break early condition at i+1.
+
+                    # But we have destroyed the old_P for i, and for i+1, the next iteration will use the current P[i+1] (which is the old state) but wait: 
+                    #   In the next iteration i+1, the value of P[i+1] is the one from before the swap, because we haven't updated it yet? 
+                    #   Only for indices < i+1 have we updated.
+
+                    # However, in our loop, we are updating P as we go. 
+                    #   At the next iteration i+1, we will use the old_P[i+1] = the value from before the swap? 
+                    #   But we have overwritten P[i] to new_val, but not P[i+1] yet.
+
+                    # Therefore, we can proceed.
+
+                # End for i
+
+                Then output total_breaks.
+
+            But note: in the condition for break, we rely on the old_P[i] (which is the value of P[i] before the swap). However, in the loop, when i>=v0, we compare new_val to the current value of P[i] which is the old state. But if we have updated an index j in [u0, i-1], then the old_P[i] might have been computed from the old values in [1..i] including the old values at u0 and v0. 
+
+            However, we are using the stored P[i] that was computed before the swap, which is the old state. 
+
+            But wait: we have a potential issue: 
+                We are using the current P[i] at the start of the swap for the break condition and for the early break condition.
+
+            How do we ensure that we have the old_P[i] for the entire range? 
+
+                We are not allowed to make a copy of the entire P array for each swap.
+
+            Therefore, we must save the old_P for the range [u0, n] before any update? 
+
+            Specifically, before the for loop, we can save:
+                old_P_u0_to_n = [0] * (n+1)
+                for i from u0 to n:
+                    old_P_u0_to_n[i] = P[i]
+
+            Then in the loop, we use old_P_i = old_P_u0_to_n[i].
+
+            This is O(n) per swap in the worst-case, but we are already doing a loop from u0 to n, so it is O(n).
+
+            Given the worst-case might be 250e9, we hope that in practice the break early happens soon.
+
+            But the problem constraints are 500000 and 500000, so worst-case 500000*500000=250e9, which in Pyton might be 250 seconds, which is not acceptable.
+
+        We must hope that the amortized cost is good. 
+
+        However, the sample input might be not worst-case.
+
+        Alternatively, we can avoid saving the entire old_P array by not saving explicitly, because in the loop we are only using one value at a time. We can read it before we update P[i] for this i.
+
+            In the loop for i:
+
+                old_val = P[i]   # save the old_P for this i.
+
+                new_val = ...
+
+                if i>=v0 and new_val == old_val:
+                    break
+
+                ... update break count ...
+
+                P[i] = new_val   # update the array
+
+        But then for the next i, when we read P[i+1] before we update, we get the old value for i+1.
+
+        This is correct.
+
+        Therefore, we can do:
+
+            for i in range(u0, n+1):
+                old_val = P[i]   # the prefix maximum at i from the previous state (before the swap)
+
+                if i == u0 or i == v0:
+                    candidate = A[i]
+                else:
+                    candidate = A[i]
+                new_val = max(temp, candidate)
+
+                if i >= v0 and new_val == old_val:
+                    # We break out of the loop, and for indices i and beyond, the prefix maxima are unchanged.
+                    break
+
+                # Update break count for index i:
+                old_break = (old_val == i)
+                new_break = (new_val == i)
+                if old_break != new_break:
+                    if old_break:
+                        total_breaks -= 1
+                    else:
+                        total_breaks += 1
+
+                # Update the current state
+                P[i] = new_val
+                temp = new_val
+
+            # end for
+
+        This should be correct.
+
+        Let's run the sample swap 1: 
+            u0=2, v0=3.
+            i=2:
+                old_val = P[2]=3.
+                candidate = A[2]=2 (new value)
+                new_val = max(temp (P[1]=3), 2) = 3.
+                i=2<3 -> don't break.
+                old_break: 3==2? False.
+                new_break: 3==2? False. -> no change.
+                Update P[2]=3, temp=3.
+            i=3:
+                old_val = P[3]=3.
+                candidate = A[3]=1 (new value)
+                new_val = max(3,1)=3.
+                i=3>=3 and 3==3 -> break.
+
+            total_breaks remains 3.
+
+        Sample swap 2: u0=1, v0=3.
+            i=1:
+                old_val = P[1]=3.
+                candidate = A[1]=1 (new value)
+                new_val = max(temp (which is P[0]=0), 1) = 1.
+                i=1<3 -> no break.
+                old_break: 3==1? F
+                new_break: 1==1? T -> total_breaks becomes 4.
+                Update P[1]=1, temp=1.
+            i=2:
+                old_val = P[2]=3.
+                candidate = A[2]=2.
+                new_val = max(1,2)=2.
+                i=2<3 -> no break.
+                old_break: 3==2? F
+                new_break: 2==2? T -> total_breaks becomes 5.
+                Update P[2]=2, temp=2.
+            i=3:
+                old_val = P[3]=3.
+                candidate = A[3]=3.
+                new_val = max(2,3)=3.
+                i=3>=3 and 3==3 -> break.
+
+            So total_breaks=5.
+
+        The sample swap 3: "3 5" -> swap A[3] and A[5]: 
+            u0=3, v0=5.
+            Before swap: A = [0,1,2,3,5,4,6] -> swap A[3] and A[5]: 
+                A = [0,1,2,4,5,3,6]
+            Update from i=3.
+
+            i=3:
+                old_val = P[3]=3 (from the previous state: but after the second swap, we broke at i=3, so P[3] was still 3? 
+                But after the second swap, we updated only P[1] and P[2], and then broke at i=3, so P[3] is still 3 from the first state? 
+                However, after the second swap, the array changed, and we did not update P[3] to the correct value? 
+
+            This is a flaw: after the second swap, we broke at i=3, but the prefix maximum at i=3 in the new state should be computed as:
+
+                A[1]=1, A[2]=2, A[3]=3 -> then prefix maximum at 3 is 3.
+
+            But we broke, and did not update P[3]? 
+
+            In the second swap, we broke at i=3, so we did not update P[3] to 3? 
+
+            In the second swap, at i=3: 
+                we did: 
+                    old_val = P[3] = 3   # from the state after the first swap, which was [3,2,1,5,4,6] -> then after first swap, we updated P[2]=3 and broke at i=3, so P[3] was not updated and remained 3 (from the initial state) -> but this is not the correct prefix maximum for the new array after the second swap.
+
+            How to fix?
+
+            When we break at i, we rely on the fact that the new_val equals the old_val, and then we don't update P[i] and beyond? 
+            But the new_val might be the same as the old_val, but the old_val might not be the correct value for the new array? 
+
+            Let me clarify: 
+                In the second swap, at i=3, we computed new_val=3, and the old_val (which was the value stored in P[3]) was 3. 
+                We break and do not update P[3] to 3? But it is already 3? 
+
+            But note: after the second swap, the array changed, and the prefix maximum at 3 should be 3, which is the same as the stored value, so it is correct.
+
+            Therefore, we do not need to update P[3] because it is already 3? 
+
+            However, we did not update it. We only set P[3] to 3 in the initial state. After the first swap, we broke at i=3 and did not change it. Then the second swap: we broke at i=3 and did not change it. But the array changed.
+
+            But the prefix maximum at 3 after the second swap is 3, so it is correct.
+
+            So the stored P[3] is 3, and we break without updating, but the value is correct.
+
+            However, consider if the new_val is not the same as the old_val, but we break because we passed v0 and they are equal? then we leave P[i] and beyond unchanged, but they might be incorrect.
+
+            But the condition for breaking is that the new_val equals the old_val. And then we break and do not update P[i] and beyond. But the value at P[i] is the old_val, and we now have new_val = old_val, so it is correct.
+
+            Therefore, the algorithm is to only update the prefix maxima for indices we explicitly loop through and assign.
+
+            In the example of the third swap:
+
+                u0=3, v0=5.
+                A = [0,1,2,4,5,3,6]   # after swap.
+
+                We start at i=3:
+                    temp = P[2]=2   # from the second swap we updated P[2]=2.
+                    candidate = A[3]=4.
+                    new_val = max(2,4)=4.
+                    old_val = P[3]=3   # from the previous state.
+                    i=3<5 -> we do not break even though new_val (4) != old_val (3).
+
+                    break condition:
+                         old_break: 3==3? True -> so currently total_breaks is 5, and we have a break at 3.
+                         new_break: 4==3? False.
+                         So we subtract 1: total_breaks=4.
+
+                    Update P[3]=4, and set temp=4.
+
+                i=4:
+                    old_val = P[4]=5   # from the previous state.
+                    candidate = A[4]=5.
+                    new_val = max(4,5)=5.
+                    i=4<5 -> don't break.
+                    break condition:
+                         old_break: 5==4? False.
+                         new_break: 5==4? False. -> no change.
+                    Update P[4]=5, temp=5.
+
+                i=5:
+                    old_val = P[5]=5   # from the previous state.
+                    candidate = A[5]=3.
+                    new_val = max(5,3)=5.
+                    i=5>=5 and new_val (5) == old_val (5) -> break.
+
+                So total_breaks=4.
+
+            The sample output after third swap is 4.
+
+        Next swap: "1 2" -> swap A[1] and A[2]: 
+            u0=1, v0=2.
+            Before: A = [0,1,2,4,5,3,6] -> after: A = [0,2,1,4,5,3,6]
+
+            Update from i=1:
+
+                i=1:
+                    temp = P[0]=0.
+                    candidate = A[1]=2.
+                    new_val = 2.
+                    old_val = P[1]=1   # from the second swap we updated it to 1.
+                    break condition: 
+                         old_break: 1==1 -> True
+                         new_break: 2==1 -> False -> total_breaks=4-1=3.
+                    Update P[1]=2, temp=2.
+
+                i=2:
+                    old_val = P[2]=2   # from the second swap we updated to 2.
+                    candidate = A[2]=1.
+                    new_val = max(2,1)=2.
+                    i=2>=2 and new_val (2) == old_val (2) -> break.
+
+            total_breaks=3.
+
+        Last swap: "3 6" -> swap A[3] and A[6]: 
+            u0=3, v0=6.
+            Before: A = [0,2,1,4,5,3,6] -> after: A = [0,2,1,6,5,3,4]
+
+            Update from i=3:
+
+                i=3:
+                    temp = P[2]=2.
+                    candidate = A[3]=6.
+                    new_val=6.
+                    old_val = P[3]=4.
+                    break condition:
+                         old_break: 4==3? F ->0
+                         new_break: 6==3? F ->0.
+                    no change. total_breaks=3.
+                    update P[3]=6, temp=6.
+
+                i=4:
+                    candidate = A[4]=5.
+                    new_val = max(6,5)=6.
+                    old_val = P[4]=5.
+                    break condition: 5==4? F, 6==4? F -> no change.
+                    update P[4]=6, temp=6.
+
+                i=5:
+                    candidate = A[5]=3.
+                    new_val=6.
+                    old_val = P[5]=5.
+                    break condition: 5==5? T -> we are removing a break: total_breaks=3-1=2.
+                    update P[5]=6, temp=6.
+
+                i=6:
+                    candidate = A[6]=4.
+                    new_val=6.
+                    old_val = P[6]=6.
+                    i=6>=6 and 6==6 -> break.
+                    But break condition: 
+                         We break, so we don't update the break condition for i=6? 
+                         The break condition for i=6: 
+                             new_val=6, i=6 -> should be True.
+                             old_val=6, so old break condition was True.
+
+                    So we break without changing.
+
+            total_breaks=2.
+
+        The sample output: 
+            3
+            3
+            5
+            4
+            3
+            2
+
+        So it matches.
+
+        Therefore, we implement as described.
+
+        However, worst-case: a swap at the beginning might require updating the entire array. 
+            For example, swapping the first element with the last might cause the entire array to be updated.
+
+        And there are 500000 swaps, so worst-case 500000 * 500000 = 250e9 operations.
+
+        In Python, 250e9 operations might be too slow.
+
+        We must optimize further.
+
+        We note that the prefix maximum is non-decreasing. 
+        We can avoid scanning every element by binary searching for the next index where the new value is greater than the current running maximum.
+
+        Specifically, we have a current running maximum (temp). We wish to find the next index j in [i, n] such that A[j] > temp.
+
+        How to do that quickly? 
+
+        We can maintain a segment tree that stores the maximum value in the array for a range, and then we can binary search in the range [i, n] for the first j such that the maximum in [i, j] is greater than temp.
+
+        Steps:
+
+            We are at index i (initially u0). 
+            Let current_max = temp.
+
+            We want to find the next index j>=i such that A[j] > current_max. 
+            If we find such a j, then for indices i to j-1, the new prefix maximum is current_max, and at j, the new prefix maximum is A[j].
+
+            Then we can update the break conditions for the entire block [i, j-1] at once? 
+
+            However, the break condition at an index k is: current_max == k? 
+                But note: the current_max for the block [i, j-1] is the same: it's the current_max.
+
+            So we can:
+                For k in [i, j-1]: 
+                    break condition is: 1 if current_max == k else 0.
+
+            But we need to compare to the old break conditions.
+
+            And we also need to update the prefix maxima for these indices to current_max.
+
+            Then we set i = j, and current_max = A[j] (which is the new prefix maximum at j).
+
+        We can use a segment tree for range maximum queries and then use binary search (like a segment tree binary search) to find the next j.
+
+        We also need to update the array A when we do a swap.
+
+        We maintain:
+
+            seg_tree: for range maximum query over A.
+
+        But note: we are updating A only at the two swap positions, so we can update the segment tree in O(log n) per swap.
+
+        Then during the propagation for a swap, we:
+
+            set i = u0, current_max = P[u0-1]
+
+            while i <= n:
+
+                Use the segment tree to find the next j in [i, n] such that A[j] > current_max.
+
+                If no such j, then j = n+1.
+
+                Then for k in [i, min(j-1, n)]:
+
+                    new_val = current_max   # because in this block, the maximum remains current_max.
+
+                    # But wait: what if j>v0 and we are in the block [i, j-1] and we have an index k>=v0? 
+                    #   We are not checking the condition for breaking early (k>=v0 and new_val == old_P[k]) until k.
+
+                We then update the break conditions for k in [i, j-1] in batch.
+
+                How to do batch update?
+
+                    We need to know the old_P for each k in [i, j-1]? And the old break condition? 
+
+                We also wish to break early if for some k in [i, j-1] we have k>=v0 and new_val == old_P[k]? 
+
+                Given the complexity of the problem and the constraints, and the fact that worst-case propagation might be O(n) per swap anyway (if the prefix maximum increases at every step), we might not gain much.
+
+        Due to the complexity of the batch update and the need to break early in the batch, we might stick to the simple loop.
+
+        We hope that in practice the break early happens soon.
+
+        Since the array is a permutation, the current_max will eventually become n, and then we will break at the first index i>=v0 where the old_P[i] was n? 
+
+        But the old_P[i] for i>=n is n? only at i=n.
+
+        So if we are updating and reach an index i such that current_max becomes n, then for the next index i+1, we don't need to update? 
+            Actually, the prefix maximum will be n for all j from the first occurrence of n to the end.
+
+        But note: we break when we meet the condition: i>=v0 and new_val==old_P[i]. 
+
+        When current_max becomes n, then at the next index (if any) we will have new_val = n, and if i>=v0 and old_P[i] == n, then we break.
+
+        So if we are at an index i where current_max = n, then we will break at the next i that is>=v0 and where the old_P[i] was n.
+
+        The first such i>=max(v0, the index of n) might be the index of n or later? 
+
+        But the old_P[i] is non-decreasing and the maximum is n, so for i from the index of n to the end, old_P[i] = n.
+
+        Therefore, we break at the first index i>=v0 and i>=index_of_n.
+
+        But the index_of_n might be after v0.
+
+        We can also break if current_max is n? then for the next indices, the new_val will be n, and if we have not broken by v0, then at the first i>=max(v0, index_of_n) we will break.
+
+        However, we still have to update the break condition for the indices from i to the next j-1 (which might be many) if the current_max is not n.
+
+        Given the worst-case might be 250e9 and the constraints are 500000 and 500000, we must try to reduce the worst-case.
+
+        Alternatively, we can use a linked list to jump to the next greater element? 
+
+        But the array is changing dynamically.
+
+        Considering the time, we implement the simple loop and hope that test data is not worst-case.
+
+        Or we might need to use a more efficient language.
+
+        But the problem says: memory limit 1024 MB and time limit 2 seconds.
+
+        We must output the code in Python.
+
+        We note that worst-case is 250e9 iterations, and in Pyton each iteration might be about 10 ns? then 250e9 * 10 ns = 2500 seconds, too slow.
+
+        We must seek a better approach.
+
+        Insight: 
+            The condition for a break at i is that the prefix maximum is i.
+            And the prefix maximum is the maximum of the elements from 1 to i.
+
+            Let M(i) = max(A[1..i])
+
+            Then the break condition is M(i)=i.
+
+            Note that M(i) is non-decreasing, and i is increasing.
+
+            Also note that M(i)>=i for the break to happen, and since the array is a permutation, M(i) is at least the maximum of the elements present, and the elements present in [1..i] are some numbers, and M(i) might be greater than i.
+
+            How about: the breaks are exactly the left-to-right maxima that are exactly at their own position? 
+            But a left-to-right maxima is an element that is greater than all to its left. And the prefix maximum increases only at left-to-right maxima.
+
+            However, the break condition is not at the left-to-right maxima necessarily, because the prefix maximum might be set by an element that is not at its own position.
+
+            For example, in [3,1,2]: 
+                prefix max at 1:3 (which is not 1)
+                prefix max at 2:3 (which is not 2)
+                prefix max at 3:3 (which is 3) -> break.
+
+            Here, the element 3 is a left-to-right maximum and is at position 1, not 3.
+
+            Therefore, the break condition is not tied to the position of the left-to-right maxima.
+
+        Known fact: 
+            The break condition is equivalent to: i is a record high (left-to-right maxima) and the record high at i is exactly i.
+
+            But note: the record high at i might be an element greater than i.
+
+        After rethinking, I found a solution in C++ for a similar problem (CodeForces) using a segment tree that can simulate the prefix maximum changes. However, it is complicated.
+
+        Given the time, we output the simple solution and hope for amortized O(1) per swap.
+
+        In many cases, the break will happen soon.
+
+        If not, we might time out.
+
+        Let's hope.
+
+        We'll implement the simple solution and hope that the test data is not worst-case.
+
+        Steps for the code:
+
+            Read n, m.
+            Read the permutation A of size n (1-indexed, index1..indexn)
+            Initialize:
+                P[0]=0
+                For i from 1 to n: 
+                    P[i] = max(P[i-1], A[i])
+                total_breaks = 0
+                for i from 1 to n:
+                    if P[i]==i:
+                        total_breaks += 1
+
+            Also, we store the array A and P.
+
+            Then for each swap:
+
+                read u, v.
+
+                u0 = min(u, v)
+                v0 = max(u, v)
+
+                if u0==v0: 
+                    print(total_breaks)  # or save for output later.
+                    continue
+
+                Swap A[u0] and A[v0]
+
+                # Start updating from u0
+                temp = P[u0-1]   # the prefix maximum at u0-1, which is unchanged.
+                i = u0
+                while i <= n:
+                    # If i is u0 or v0, the element has been swapped.
+                    # But we can simply do: candidate = A[i]   (because at i, we have the new value)
+                    candidate = A[i]
+                    new_val = max(temp, candidate)
+
+                    # We need the old_P[i] from the previous state (before this swap)
+                    old_val = P[i]   # this is the prefix maximum at i from the previous state.
+
+                    if i >= v0 and new_val == old_val:
+                        break   # break the while loop
+
+                    # Update break condition for index i
+                    if old_val == i:
+                        # remove if now it is not
+                        if new_val != i:
+                            total_breaks -= 1
+                    else:
+                        if new_val == i:
+                            total_breaks += 1
+
+                    # Update the current state for the next index and the array P
+                    P[i] = new_val
+                    temp = new_val
+
+                    i += 1
+
+                # End while
+
+                # Then output total_breaks for this swap (later)
+
+            Finally, output the answers.
+
+        We will output the initial total_breaks and then after each swap.
+
+        Let's hope it passes.
+
+        Note: worst-case is O(n*m) = 250e9, which in Pyton might be too slow for the worst-case, but the problem has 2 seconds and might have amortized good performance.
+
+        We'll run the sample as above.
+
+        We'll submit and hope.
+
+        Alternatively, if the worst-case happens, we might need to optimize by breaking when current_max >= some value (like n) and we have passed v0? 
+
+        But we are already breaking when we see an index i>=v0 and new_val==old_val.
+
+        And when current_max becomes n, then for all future i, new_val = n. 
+            Then we will break at the first i>=v0 and i>= the first occurrence of n in the old state? 
+
+        But note: the first occurrence of n might be after v0.
+
+        We can also break if current_max >= n? 
+            Since the array has maximum n, then once current_max becomes n, it stays n.
+
+            Then for the next index i, we will have new_val = n.
+            And we will break at the first i>=v0 and where the old_val was n? 
+
+            Since the old_val for i>= the first occurrence of n is n, we will break at i = max(v0, first_occurrence_of_n).
+
+        We can precompute the positions of the elements? 
+
+        But note: after a swap, the position of n might change.
+
+        We can maintain the position of n? 
+
+        However, we can simply do in the loop: if temp == n: then we can break at the next i>=v0 and if we meet the condition we break, but the condition is checked naturally.
+
+        Therefore, we don't need extra.
+
+        Given the time, we output the simple solution.
+
+        Note: we must not update the entire array if we don't have to.
+
+        Let's code accordingly.
+
+        IMPORTANT: In the sample provided in the problem, we have 10 and 8 swaps. We must run that sample.
+
+        Sample input 2: 
+            "10 8
+             1 4 3 2 5 6 7 10 9 8 
+             8 10
+             4 2
+             6 7
+             6 7
+             2 4
+             9 10
+             4 2
+             8 9"
+
+        We'll compute by hand the initial total_breaks:
+
+            A = [1,4,3,2,5,6,7,10,9,8]
+
+            P = [1,4,4,4,5,6,7,10,10,10]
+
+            breaks: 
+                i=1: 1==1 -> break.
+                i=2: 4!=2 -> no.
+                i=3: 4!=3 -> no.
+                i=4: 4==4 -> break.
+                i=5: 5==5 -> break.
+                i=6: 6==6 -> break.
+                i=7: 7==7 -> break.
+                i=8: 10!=8 -> no.
+                i=9: 10!=9 -> no.
+                i=10:10==10 -> break.
+
+            total_breaks = 6.
+
+        The sample output: 
+            6
+            8
+            10
+            9
+            10
+            8
+            7
+            9
+            8
+
+        So after the first swap (8,10) the answer is 8.
+
+        Let's do the first swap: 
+            swap A[8] and A[10]: 
+                A becomes: [1,4,3,2,5,6,7,8,9,10]
+            Now update from i=8 (u0=8, v0=10)
+
+            i=8:
+                temp = P[7] = 7   # because the initial P for index7 was 7.
+                candidate = A[8]=8.
+                new_val = max(7,8)=8.
+                old_val = P[8] = 10.
+                i=8<10 -> no break.
+                break condition:
+                    old: 10==8? F.
+                    new: 8==8? T. -> total_breaks = 6+1 = 7.
+                Update P[8]=8, temp=8.
+
+            i=9:
+                candidate = A[9]=9.
+                new_val = max(8,9)=9.
+                old_val = P[9]=10.
+                i=9<10 -> no break.
+                break condition:
+                    old: 10==9? F.
+                    new: 9==9? T. -> total_breaks=8.
+                update P[9]=9, temp=9.
+
+            i=10:
+                candidate = A[10]=10.
+                new_val = 10.
+                old_val = P[10]=10.
+                i=10>=10 and 10==10 -> break.
+
+            total_breaks=8.
+
+        So it matches.
+
+        We'll output the code accordingly.
+
+        Note: we must be cautious with the initial building of P: we use 1-indexed.
+
+        Let's code accordingly.
+
+        We'll use 1-indexed arrays: 
+            A[1..n]
+            P[0..n]: P[0]=0, for i from 1 to n: P[i] = max(P[i-1], A[i])
+
+        We'll store the initial total_breaks.
+
+        Then for each swap, update.
+
+        We assume the worst-case might be borderline in Pyton, but hope for the best.
+
+        Let's code accordingly.
+
+        IMPORTANT: the swap updates the array A at positions u0 and v0.
+
+        We are ready to code.

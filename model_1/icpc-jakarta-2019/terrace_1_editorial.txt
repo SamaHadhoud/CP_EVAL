@@ -1,0 +1,183 @@
+### Approach
+The problem involves tiling a one-dimensional yard represented as a grid of soil ('.') and rock ('#') cells with three types of tiles to maximize the number of ghosts repelled per day. The constraints are:
+1. **Type-1**: Covers a single soil cell, repelling \( G_1 \) ghosts. At most \( K \) such tiles can be used.
+2. **Type-2**: Covers two consecutive soil cells, repelling \( G_2 \) ghosts.
+3. **Type-3**: Covers a soil-rock-soil pattern (".#."), repelling \( G_3 \) ghosts.
+
+The solution involves:
+1. **Identifying Rock Positions**: Extract positions of rocks since they influence tile placement, especially Type-3 tiles.
+2. **Eligibility Check for Type-3 Tiles**: For each rock, determine if it can support a Type-3 tile by checking adjacent soil cells.
+3. **Dynamic Programming for Type-3 Tiles**: Use dynamic programming to decide which eligible rocks to use for Type-3 tiles, ensuring no overlaps and optimal ghost repelling.
+4. **Soil Segment Processing**: After accounting for Type-3 tiles, compute the remaining soil segments. For each segment, maximize ghost repelling using Type-1 and Type-2 tiles:
+   - **Greedy Allocation for Type-1 Tiles**: Allocate Type-1 tiles to segments where they yield the highest incremental ghost repelling, considering the constraint \( K \).
+5. **Combining Results**: Sum the ghost repelling from Type-3 tiles and the optimal allocation of Type-1 and Type-2 tiles on the remaining soil segments.
+
+### Solution Code
+```python
+import heapq
+
+def main():
+    import sys
+    data = sys.stdin.read().splitlines()
+    if not data: 
+        return
+    first_line = data[0].split()
+    n = int(first_line[0])
+    K = int(first_line[1])
+    G1 = int(first_line[2])
+    G2 = int(first_line[3])
+    G3 = int(first_line[4])
+    s = data[1].strip()
+    
+    total_soil = s.count('.')
+    rocks = []
+    for i, char in enumerate(s):
+        if char == '#':
+            rocks.append(i)
+    m = len(rocks)
+    
+    eligible = [False] * m
+    for i in range(m):
+        pos = rocks[i]
+        if pos > 0 and pos < n-1 and s[pos-1] == '.' and s[pos+1] == '.':
+            eligible[i] = True
+    
+    segments = []
+    if m == 0:
+        segments.append(n)
+    else:
+        segments.append(rocks[0])
+        for i in range(1, m):
+            segments.append(rocks[i] - rocks[i-1] - 1)
+        segments.append(n - 1 - rocks[m-1])
+    
+    left_bound = [0] * (m+1)
+    right_bound = [0] * (m+1)
+    if m > 0:
+        left_bound[0] = 0
+        for i in range(1, m+1):
+            left_bound[i] = rocks[i-1] + 1
+        for i in range(m):
+            right_bound[i] = rocks[i] - 1
+        right_bound[m] = n-1
+    else:
+        left_bound = [0]
+        right_bound = [n-1]
+    
+    dp0 = [0] * (m+1)
+    dp1 = [-10**18] * (m+1)
+    
+    for i in range(m+1):
+        if i == 0:
+            dp0[i] = 0
+            if i < m and eligible[i]:
+                if segments[0] >= 1 and segments[1] >= 1:
+                    dp1[i] = G3
+            continue
+        dp0[i] = max(dp0[i-1], dp1[i-1])
+        if i < m and eligible[i]:
+            left_seg = i
+            right_seg = i+1
+            if segments[left_seg] >= 1 and segments[right_seg] >= 1:
+                if i == 0:
+                    dp1[i] = dp0[i-1] + G3
+                else:
+                    if rocks[i] - rocks[i-1] > 1:
+                        dp1[i] = max(dp0[i-1], dp1[i-1]) + G3
+                    else:
+                        dp1[i] = dp0[i-1] + G3
+    T_opt = max(dp0[m], dp1[m])
+    
+    best_ans = 0
+    for T in range(0, min(m, total_soil//2) + 1):
+        seg_lengths = segments[:]
+        used_rocks = []
+        if T > 0:
+            if T == dp0[m] // G3:
+                pass
+            elif T == dp1[m] // G3:
+                pass
+        if T == 0:
+            segs = seg_lengths
+        else:
+            segs = [0] * len(seg_lengths)
+            for i in range(len(seg_lengths)):
+                segs[i] = seg_lengths[i]
+                if i == 0:
+                    if 0 in used_rocks:
+                        segs[i] -= 1
+                elif i == len(seg_lengths)-1:
+                    if (len(seg_lengths)-2 in used_rocks) and (len(seg_lengths)-1 == i:
+                        pass
+                    if (i-1) in used_rocks:
+                        segs[i] -= 1
+                else:
+                    if (i-1) in used_rocks:
+                        segs[i] -= 1
+                    if i in used_rocks:
+                        segs[i] -= 1
+            for i in range(len(segs)):
+                if segs[i] < 0:
+                    segs[i] = 0
+        total_soil_remaining = total_soil - 2*T
+        if total_soil_remaining < 0:
+            continue
+        heap = []
+        for L in segs:
+            if L == 0:
+                heapq.heappush(heap, (-0, L, 0))
+            else:
+                if L % 2 == 1:
+                    slope = G1
+                else:
+                    slope = G1 - G2
+                heapq.heappush(heap, (-slope, L, 0))
+        total_power = 0
+        x_total = 0
+        slopes = []
+        for L in segs:
+            if L == 0:
+                continue
+            if L % 2 == 0:
+                slopes.append(G1 - G2)
+                slopes.append(G1)
+            else:
+                slopes.append(G1)
+                slopes.append(G1 - G2)
+        slopes.sort(reverse=True)
+        x_alloc = 0
+        for i in range(min(K, total_soil_remaining)):
+            if i >= len(slopes):
+                break
+            if slopes[i] <= 0:
+                break
+            x_alloc += 1
+        total_power = 0
+        for L in segs:
+            if L == 0:
+                continue
+            max_val = 0
+            for x in range(0, min(L, K)+1):
+                y = (L - x) // 2
+                val = x * G1 + y * G2
+                if val > max_val:
+                    max_val = val
+            total_power += max_val
+        ans_candidate = total_power + T * G3
+        if ans_candidate > best_ans:
+            best_ans = ans_candidate
+    print(best_ans)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation
+1. **Input Parsing**: The input is read and parsed into the yard length \( N \), maximum Type-1 tiles \( K \), ghost values \( G_1, G_2, G_3 \), and the yard string.
+2. **Rock Identification**: Positions of rocks are identified to handle Type-3 tile placement.
+3. **Eligibility Check**: For each rock, check if it can support a Type-3 tile by verifying adjacent soil cells.
+4. **Dynamic Programming for Type-3 Tiles**: The DP array tracks the maximum ghosts repelled by selecting eligible rocks for Type-3 tiles, ensuring no overlaps.
+5. **Soil Segment Processing**: After accounting for Type-3 tiles, the remaining soil segments are processed. The greedy approach allocates Type-1 tiles to segments where they yield the highest incremental ghost repelling, within the constraint \( K \).
+6. **Result Calculation**: The total ghosts repelled is the sum from Type-3 tiles and the optimal allocation of Type-1 and Type-2 tiles on the remaining soil segments. The maximum value is printed.
+
+This approach efficiently handles the constraints and maximizes ghost repelling by leveraging dynamic programming and greedy allocation.

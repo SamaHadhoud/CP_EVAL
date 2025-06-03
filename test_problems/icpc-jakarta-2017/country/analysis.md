@@ -1,0 +1,9 @@
+For easier discussion, let us assume the countries are sorted in the ascending order of country name.
+
+For each country, we want to greedily assign the lexicographically smallest possible country code, but still lexicographically larger than the previous country's country code, so that the next countries can have more valid country code possibilities. Therefore, we can loop the countries while keeping track of the last country's country code, and for the current country, we generate the lexicographically smallest possible country code that is still lexicographically larger than the last country's country code.
+
+How to achieve that? Let $S$ be the current country name, $T'$ be the last country code, and $T$ is the current country code that we want to generate. Since $T > T'$, then there exists an integer $k$ where $T[k] > T'[k]$ and $T[i] = T'[i]$ for all $1 \le i \le k$. Since we want to make $T$ as lexicographically small as possible, we want to maximise the value of $k$. In other words, we want the common prefix of $T$ and $T'$ to be as long as possible.
+
+We can check whether it is possible for $T$ and $T'$ to have a common prefix of length $l$ by checking whether we can construct a subsequence of $S$ which starts with $T[1..l] + c$ for some $c > T[l + 1]$. To do this, we can define a function $\text{nxt}(c, i)$ be the index of the next occurrence of character $c$ in $S$ after the $i$-th index, and then checking whether $\text{nxt}(c, \text{nxt}(T'[l], \text{nxt}(T'[l - 1], \ldots, \text{nxt}(T'[1], 0) \ldots)))$ is less than some upper limit.
+
+Once we found the maximum $l$ possible, and the corresponding smallest $c$ that makes $l$ possible, we can greedily construct the lexicographically smallest subsequence that starts with $T[1..l] + c$ to become $T'$.

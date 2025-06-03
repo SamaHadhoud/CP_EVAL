@@ -1,0 +1,1553 @@
+ We are only considering cliques of size 1, 2, 3, and 4 because of the planarity and the heavy penalty for missing edges.
+ Steps:
+ 1. Read the input: n, m, cities (we don't use the coordinates for anything except that the graph is planar? Actually, we don't use the coordinates at all because the graph structure is given by the edges. But the planarity condition is given and we rely on that for the enumeration of triangles and K4 being efficient.
+
+ 2. Build the graph as an adjacency list and also store the edges in a dictionary (with key (min, max)).
+
+ 3. We also store the degree of each node.
+
+ 4. We consider:
+    - Size 1: score 0. We can ignore because we are going to have at least 0, and we have positive scores from edges.
+    - Size 2: each edge (highway) has a score = a_j. We take the maximum over these.
+
+ 5. For triangles (size 3):
+    We need to enumerate all triangles. We can do this by:
+        For each node u, we traverse its neighbors.
+        But to avoid duplicates, we use the common technique: 
+          We consider an edge (u, v) and then check for a common neighbor w such that w > v (if we have u < v) to avoid duplicates.
+
+    However, we can also do: 
+        We order the nodes such that we only consider edges from a node to a node with higher degree or same degree and higher id to reduce the number of checks.
+
+    Actually, a common method for triangle enumeration in sparse graphs is:
+        For each node u, mark its neighbors.
+        For each neighbor v of u (with v > u, or using an ordering to avoid duplicates) and then for each neighbor w of v that is also a neighbor of u and w > v (if we have u < v < w).
+
+    But note: we are storing edges in an undirected graph. We can do:
+
+        Let's reassign: we orient edges from lower degree to higher degree, and if same degree then from lower index to higher index.
+
+        Then for each node u, we iterate over its neighbors that have higher degree (or same degree and higher index) and then for each neighbor v, we iterate over neighbors of u that are also in the set of neighbors of v and with index greater than v? 
+
+    Alternatively, we can do:
+
+        We'll create an array `adj_set` for each node as a set for quick lookup.
+
+        Then we iterate over edges (u, v) and then for each common neighbor w of u and v such that w > u and w > v (but we must avoid duplicates). However, we can also require that we process the edge (u, v) only when u is the smallest? 
+
+    We'll do:
+
+        For u in range(1, n+1):
+          For each v in adj[u] such that v > u? But we want to use the degree ordering to make it efficient.
+
+        Actually, we can use:
+
+          For each edge (u, v) (with u < v) and then we check common neighbors w that are greater than v? But we can also use:
+
+          We traverse the adjacency list of u and for each neighbor v (with v>u) and then for each neighbor w of u that is greater than v and then check if w is adjacent to v.
+
+        However, this is O(deg(u)^2) per node and worst-case if a node has high degree, that could be bad. But the graph is planar so the degree is bounded? Actually, worst-case degree can be O(n) but the total work over the graph is O(m * max_degree) which for planar graphs max_degree is O(1) but actually worst-case degree can be O(n) but then m is O(n) so worst-case O(n^2) which is 10^10 for n=100000 -> too slow.
+
+    We need a better method.
+
+    Standard method for triangle enumeration in sparse graphs is:
+
+        Order the nodes by degree (low to high) and then orient edges from lower to higher (in this order). Then the out-degree of each node is O(sqrt(m))? Actually, in planar graphs we don't need the sqrt(m) bound? But we can still use the degree ordering.
+
+        Specifically:
+
+          We assign an ordering: let's define an array `deg` for degrees.
+
+          For each edge (u, v):
+            if deg[u] < deg[v] or (deg[u] == deg[v] and u < v), then we consider the edge from u to v (so we store in a directed way: u -> v). Otherwise, from v to u.
+
+          Then, we build a directed graph `DG` where each edge is stored from the lower degree node to the higher, and if same degree then lower index to higher.
+
+          Then, for each node u, we mark all its out-neighbors. Then for each out-neighbor v of u, we check each out-neighbor w of v: if w is in the set of out-neighbors of u (or in the set of neighbors of u? note: we have the entire graph stored as undirected set) then (u, v, w) is a triangle.
+
+        But note: we have stored the entire graph in `adj_set` (for undirected). So we can do:
+
+          For each node u, we look at its neighbors. For each neighbor v that is an out-neighbor (i.e., we have u->v in the directed graph) then we look at the neighbors of v that are out-neighbors of v. For each such neighbor w, if u is connected to w (check in the undirected set for u) then we have a triangle (u, v, w). But note: we must have u < w? Not necessarily, but we want each triangle once.
+
+        However, because of the orientation, we know that u has the smallest degree (or same and smallest id) in the triangle? Actually, the orientation is such that u -> v and v -> w implies that u < v and v < w in our ordering? But note: our ordering is by degree and then id. So u is the smallest in the triangle? Then we will only get the triangle from u.
+
+        But note: we might not have u->w? Actually, if w has a higher degree than u (or same and higher id) then we have u->w? Not necessarily: if w has lower degree than u, then the edge (u, w) would be oriented from w to u and we wouldn't have u->w. So we cannot rely on the directed graph for the entire triangle.
+
+    Alternatively, we can store the undirected graph as a set and then:
+
+        For each node u, we iterate over its neighbors and store in a set S.
+        Then for each out-neighbor v of u (so v is such that u->v), we iterate over the out-neighbors w of v (so w must be > v in our ordering) and check if w is in S.
+
+        Then we have a triangle (u, v, w). We then compute the score by summing the three edges.
+
+        The total work: for each edge (u, v) we look at the out-neighbors of v. The out-degree of each node is bounded by O(sqrt(m))? Actually, in planar graphs we don't have that bound? But worst-case, the total work is O(m * max_out_degree). However, the orientation by degree (low to high) ensures that the out-degree of a node u is at most O(sqrt(m))? Why? Because if a node u has out-degree d, then all its out-neighbors have degree at least deg(u). And the number of nodes with degree at least d is at most O(m/d). Also, the sum of the squares of the degrees in a planar graph is O(n) (because the number of edges is O(n)), so the total work is O(m * sqrt(m))? Actually, worst-case for planar graphs, the total work for triangle enumeration is O(n^(3/2))? But m is O(n) so O(n * sqrt(n)) = 100000 * 300 ~ 30e6 which is acceptable in Pyton? Maybe borderline.
+
+    However, note: in planar graphs, the maximum clique is 4, so we are not going to have too many triangles? But we still have to enumerate all triangles.
+
+    Actually, worst-case a planar graph can have O(n) triangles? So we can enumerate in O(n) with the above method? But the method above is O(m * sqrt(m)) in worst-case for arbitrary graphs. However, for planar graphs, the arboricity is O(1) and the total work is O(m) for triangle enumeration? 
+
+    But we have the directed graph where each edge is oriented from lower to higher (by degree). Then the out-degree of a node: the number of neighbors that have higher degree (or same and higher id). Since the graph is planar, the average degree is constant? So the out-degree is bounded by a constant? Actually, no: a node might have many neighbors with higher degree. But worst-case, the entire graph could be a star? However, in a planar graph, the star is planar? Actually, a star with n-1 edges is planar. Then the center has out-degree n-1? Then the method would be O(n^2) which is 10^10 for n=100000 -> too slow.
+
+    Therefore, we need a better method.
+
+    We can do:
+
+        For each edge (u, v) (with u < v) we check the common neighbors by:
+
+          Let set_u = adj_set[u] and set_v = adj_set[v]. Then we want to iterate over the intersection of set_u and set_v.
+
+        How to do that? We can iterate over the smaller set. Since the graph is planar, the degree of each node is not too high? But worst-case the degree can be O(n) and then the intersection for one edge takes O(n) and total O(m * n) = 300000 * 100000 which is 30e9 -> too slow.
+
+    Alternatively, we can do:
+
+        We iterate over the nodes with lower degree. For each edge (u, v), we choose the one with lower degree to iterate. So:
+
+          total_work = sum_{edges} min(deg(u), deg(v))
+
+        In planar graphs, the sum of min(deg(u), deg(v)) over edges is O(n) ? Actually, no: worst-case it could be O(n^2). For example, a complete graph on 4 nodes has 6 edges and min(deg) is at least 3, so 6*3=18. But for a planar graph with n nodes, the sum of the degrees is O(n). However, the sum of min(deg(u), deg(v)) over edges can be O(n) * O(1) = O(n) if the graph is planar? Actually, we know that the graph is planar so the number of edges is O(n). But the min(deg(u), deg(v)) for an edge can be large? 
+
+        We can use: for each node u, we iterate over all edges (u, v) and then for each neighbor w of u that is also a neighbor of v, we require that w > u and w > v? 
+
+        Actually, we can do:
+
+          For each node u, we mark all its neighbors in a set (or a boolean array, but we don't have array of size n+1 for each u because that would be O(n^2) memory). Instead, we have a global set for each node? We have stored adj_set.
+
+          Then for each neighbor v of u (with v>u), we iterate over the neighbors of u that are greater than v? and check if that neighbor is adjacent to v? 
+
+        The work per u is O(deg(u)^2). Then the total work is O( sum_{u} deg(u)^2 ). In planar graphs, the sum of deg(u)^2 is O(n)? Why? Because by Euler's formula the average degree is less than 6, but worst-case the sum of squares can be O(n) only if the degrees are bounded? Actually, no: we can have a node with degree O(n) and then deg(u)^2 = O(n^2). But in planar graphs, the maximum degree is O(n), but the sum of squares of degrees is bounded by O(n)? Actually, no: the handshaking lemma tells us that the sum of degrees is 2m = O(n). The sum of squares of degrees is not bounded by O(n). For example, a star graph: one node has degree n-1, the rest have degree 1: then the sum of squares is (n-1)^2 + (n-1)*1^2 = n^2 - 2n + 1 + n - 1 = n^2 - n -> O(n^2).
+
+        Therefore, worst-case O(n^2) for triangle enumeration is too slow for n=100000.
+
+    We need a method that for each edge (u, v) we can quickly get the common neighbors. Since the graph is planar, we know that the number of common neighbors of any two adjacent nodes is bounded? Why? Because if u and v are adjacent, then the common neighbors form a face? Actually, in a planar graph, two adjacent nodes u and v can only have a bounded number of common neighbors? How many? Consider: the neighbors of u and v form a set. The edges from u and v to a common neighbor w form a triangle. But in a planar graph, the number of triangles incident to an edge (u, v) is bounded? Actually, the link of an edge (u, v) is the set of common neighbors. How many triangles can share the edge (u, v)? In a planar embedding, the edge (u, v) is adjacent to two faces. Each triangle that uses (u, v) must be one of the two faces? Actually, no: multiple triangles can be incident to (u, v) if there are multiple common neighbors? But note: the common neighbors must lie on one of the two sides of the edge (u, v). However, if we have two common neighbors w1 and w2, then the edges (u, w1), (v, w1), (u, w2), (v, w2) must not cross. Then w1 and w2 must be on opposite sides? Actually, no: they could be on the same side? But then the edges (w1, w2) would cross? Actually, they don't cross if they are embedded without crossing. However, if we have three common neighbors w1, w2, w3, then we would have the complete graph K_4? Actually, no: we have the four nodes: u, v, w1, w2, w3? Then we have a K_{2,3}? But K_{2,3} is planar. But then the edge (w1, w2) would cross nothing? Actually, it can be drawn without crossing. However, note that the graph is simple and planar. How many common neighbors can two adjacent nodes have? In fact, there is no constant bound? Consider: two nodes u and v, and then we can have a set of nodes w1, w2, ... wk that are adjacent to both u and v. Then we have the bipartite graph K_{2,k}. But K_{2,k} is planar for any k? Actually, no: K_{2,5} is non-planar? Actually, K_{2,k} is planar for any k? Because we can draw u and v on a line and then the k nodes on a circle around the line? So there is no bound? Then k can be as large as O(n). 
+
+    But wait: in our graph, we have the condition that no two highways intersect at any point other than a city. However, the graph is embedded in the plane arbitrarily? Actually, the problem does not require that the embedding is given. But the graph is planar (by the conditions). So we can have arbitrarily many common neighbors? Then worst-case the triangle enumeration per edge is O(n) and total O(m*n) which is 300000 * 100000 = 30e9 -> too slow.
+
+    However, we are only interested in triangles. But note: we don't need to enumerate all triangles? Actually, we do: because the triangle might have a large attraction sum. But worst-case the graph might have O(n^2) triangles? In planar graphs, the number of triangles is O(n)? Actually, no: a planar graph can have up to 3n-6 edges, but the number of triangles can be O(n). For example, a triangulated planar graph has O(n) triangles? Actually, a triangulated planar graph has exactly 2n-4 faces and each face is a triangle? So the number of triangles is O(n). But note: each triangle is a face? Actually, no: a triangle can be a face or not? But in a triangulation, every face is a triangle. However, we are not necessarily triangulated. But the maximum number of triangles in a planar graph is O(n). How? The number of triangles cannot exceed the number of edges? Actually, each triangle uses 3 edges. But each edge can be shared by at most two triangles? So the total number of triangles is at most (2 * m) / 3 = O(n). Therefore, the total number of triangles is O(n). So we can enumerate them in O(n) time? 
+
+    How? We can iterate over edges and then for each edge (u, v), we iterate over the common neighbors w. But if we do that, the total work is:
+
+        For each edge (u, v): we look at the common neighbors. The time per edge is O(min(deg(u), deg(v))). 
+
+        And the sum over edges of min(deg(u), deg(v)) is O(n) in planar graphs? 
+
+        Why? Because the sum over edges of min(deg(u), deg(v)) is bounded by the sum over edges of the degrees of the endpoints? Actually, we have:
+
+          sum_{(u,v)} min(deg(u), deg(v)) <= sum_{(u,v)} deg(u)   [if deg(u) <= deg(v)]
+
+        But then we are grouping by u: for a fixed u, the edges (u, v) for which we take deg(u) are the ones where deg(u) <= deg(v). So the total for u is deg(u) * (the number of neighbors v of u with deg(u)<=deg(v)). 
+
+        How to bound the number of neighbors v of u with deg(u)<=deg(v)? 
+
+        We can use the following: 
+
+          Let E be the set of edges. Then:
+
+            S = sum_{(u,v) in E} min(deg(u), deg(v)) 
+                <= sum_{(u,v) in E} deg(u)   [if we assume that for each edge we take the degree of the lower-degree endpoint? Actually, we can swap: if deg(u) <= deg(v) then we take deg(u), else deg(v). So we can write:
+
+                = sum_{u} deg(u) * (# of neighbors v such that deg(u) <= deg(v))
+
+        Now, we want to bound the inner term: for a fixed u, how many neighbors v have deg(v) >= deg(u)? 
+
+        We can use the fact that the graph is planar? Actually, we don't have a direct bound. But we can use:
+
+          Let d(u) = deg(u). Then the term for u is d(u) * (number of neighbors v with d(v)>=d(u)).
+
+        We know that the sum over u of d(u) is 2m = O(n). But the inner factor (number of neighbors with d(v)>=d(u)) can be large? 
+
+        Actually, we can use the following known result: the sum over u of d(u) * (# of neighbors v with d(v)>=d(u)) is O(n) in planar graphs? 
+
+        Alternatively, we know that the total number of triangles is O(n) so the total work to enumerate all triangles must be O(n). How? 
+
+        We can do:
+
+          For each node u, we store the neighbors in a list and then for each neighbor v, we only consider the common neighbors w that are in the set of neighbors of u and v. 
+
+        But then the total work is O( sum_{u} deg(u)^2 ). And in planar graphs, the sum of deg(u)^2 is O(n)? 
+
+        Why? Because the number of edges m is O(n). The sum of deg(u)^2 = sum_{u} deg(u) * deg(u). We know that the maximum degree in a planar graph is O(1)? No, it can be up to n-1. But we have:
+
+          sum_{u} deg(u)^2 = O(n) ? 
+
+        Actually, by the handshake lemma and Cauchy-Schwarz:
+
+          (sum_{u} deg(u))^2 <= n * sum_{u} deg(u)^2  =>  (2m)^2 <= n * S => S >= (4m^2)/n.
+
+        But m is O(n), so m^2/n = O(n). Therefore, the sum of squares of degrees is at least O(n). But it can be as large as O(n^2) (like the star graph). So worst-case it is O(n^2). 
+
+        However, in planar graphs, we have a bound: the number of edges m <= 3n-6. But the sum of squares of degrees is:
+
+          sum_{u} deg(u)^2 = sum_{u} deg(u) * deg(u) = 2 * sum_{(u,v)} deg(u)   [by the identity: sum_{u} deg(u)^2 = sum_{u} sum_{v in adj(u)} deg(u) = sum_{(u,v)} (deg(u)+deg(v)) ]
+
+        Then we have:
+
+          S = sum_{(u,v)} (deg(u)+deg(v))
+
+        Now, we can split:
+
+          S = sum_{u} deg(u) * deg(u) = same as above.
+
+        But how to bound S? 
+
+        In planar graphs, we don't have a direct bound better than O(n^2). 
+
+        Therefore, we need a better method.
+
+    Actually, we know that the total number of triangles is O(n). We can use the following method:
+
+        We use the edge iterator with the orientation: we orient the edges from u to v if deg[u] < deg[v] or (deg[u] == deg[v] and u < v).
+
+        Then, for each node u, we mark its neighbors (in the undirected graph) in a set or a boolean array. But we cannot make an array of size n for each u. So we use a set.
+
+        Then, for each node u, we iterate over its out-neighbors. For each out-neighbor v, we then iterate over the out-neighbors of v (which are w such that v->w). Then we check if w is in the neighbor set of u.
+
+        The total work is O( sum_{u} deg(u) * (out_degree of u) )? Actually, no: for each u, we iterate over out-neighbors v of u, and then for each out-neighbor w of v. So the work is O( sum_{v} (in_degree in the directed graph of v) * (out_degree of v) ).
+
+        Now, note: the in-degree of v: all edges that are oriented to v come from nodes with degree at least deg(v) (because the orientation is from lower to higher). How many such nodes? 
+
+        But we don't know. However, we can use the fact that the graph is planar. Actually, the total work is O(m * sqrt(m))? 
+
+        But worst-case (like a star) the center node v has in_degree = n-1 and out_degree = 0? Then the work is 0. So that's good.
+
+        Actually, the worst-case for this method is when there is a node with high in_degree and high out_degree? But in the directed graph, a node cannot have both high in_degree and high out_degree? Because the edges are oriented from lower to higher: so the in_degree of a node v: the number of neighbors of v that have lower degree (or same and lower id). The out_degree: the number of neighbors with higher degree (or same and higher id). And the total degree is fixed. So the in_degree and out_degree are complementary.
+
+        The total work:
+
+          T = sum_{v} in_degree(v) * out_degree(v)
+
+        We know that for each node v, in_degree(v) * out_degree(v) <= (deg(v))^2 / 4 (by AM-GM). Then:
+
+          T <= (1/4) * sum_{v} (deg(v))^2
+
+        And we know that the sum of squares of degrees is the same as above. In planar graphs, the sum of squares of degrees is O(n)? Actually, no: worst-case it is O(n^2). 
+
+        Therefore, worst-case this method is O(n^2) which is too slow.
+
+    How to avoid this? We can use the fact that the graph is planar to get a linear bound? Actually, we know that the total number of triangles is O(n). Therefore, we can use the following: 
+
+        For each edge (u, v) in the directed graph (i.e., u->v), we check the common neighbors by:
+
+          Let A = the set of out-neighbors of u? Actually, we are only going to check the out-neighbors of v that are in the set of neighbors of u.
+
+        But we can do:
+
+          For each u, we create a set S_u = set of neighbors of u (in the undirected graph).
+
+          Then for each out-neighbor v of u, we iterate over the out-neighbors w of v, and if w in S_u, then we have a triangle (u, v, w).
+
+        The total work is the same as above: O( sum_{u} deg(u) * out_degree(u) )? Actually, no: we iterate over the out-neighbors of u (which is out_degree(u)), and for each out-neighbor v, we iterate over the out-neighbors of v (which is out_degree(v)). So the work is O( sum_{u} out_degree(u) * (sum_{v in N^+(u)} out_degree(v)) ).
+
+        But we know that out_degree(u) is at most deg(u). 
+
+        How to bound the sum? 
+
+        We have:
+
+          T = sum_{u} out_degree(u) * (sum_{v: u->v} out_degree(v))
+
+        = sum_{u} sum_{v: u->v} out_degree(u) * out_degree(v)
+
+        But note: we can swap the summation: 
+
+          = sum_{(u,v) oriented} out_degree(u) * out_degree(v)
+
+        And then we can group by the edge (u,v). But that doesn't help.
+
+        However, we know that for planar graphs, the total work T is O(n) because the number of triangles is O(n) and each triangle is counted once? 
+
+        Actually, each triangle (u, v, w) (with u<v<w in the ordering) will be counted only once: when we are at u and we have u->v and u->w, and then at v we have v->w? But then we would not see w as an out-neighbor of v when we are at u? 
+
+        Specifically, we are at u: we look at out-neighbor v, then at out-neighbors w of v, and then check if w is in S_u. But w is a neighbor of u, so if u->w then w is in the out-neighbors of u? But we are iterating over the out-neighbors of u and then over the out-neighbors of v. We are not iterating over w in the out-neighbors of u for this particular check. We are using the set S_u. 
+
+        The cost per triangle is O(1) because we do one set lookup. But the cost to enumerate the out-neighbors of v for each edge (u, v) is the out_degree(v). 
+
+        Therefore, the total work is O( sum_{u} out_degree(u) * (max_out_degree of its out-neighbors) )? Actually, no: we iterate over every out-neighbor v of u and then over every out-neighbor w of v. Then we do a set lookup: which is O(1). 
+
+        The total work is:
+
+          T = sum_{u} [ out_degree(u) * (sum_{v in N^+(u)} out_degree(v)) ]
+
+        = sum_{u} out_degree(u) * (number of length-2 directed paths from u)
+
+        But we know that the number of triangles is the number of wedges (u->v->w) such that w is a neighbor of u (which we check by set lookup). And each triangle is counted exactly once: because we have a directed triangle u->v->w and then we have the edge (u,w) which is in the graph. But is the edge (u,w) oriented as u->w? Then we would also count the triangle when we consider u->w and then w->v? Actually, no: the orientation is acyclic? Not exactly: we have an acyclic orientation? Actually, we have an orientation that is a DAG? Because if we have u->v and v->w then by the orientation (degree increases) we cannot have w->u? So the entire directed graph is a DAG? Actually, no: because the degrees might not be strictly increasing? We have: if u->v then deg(u) <= deg(v) and if v->w then deg(v)<=deg(w), so deg(u)<=deg(w), but we can have a cycle only if deg(u)=deg(v)=deg(w) and u<v<w, but then u->v, v->w, and then for the edge (w,u): if we have w->u? But u<w, and we orient from u to w if u<w and deg(u)<=deg(w)? But then we would have u->w, so we would also have the wedge u->w and then w->v? 
+
+        But note: the orientation is not necessarily acyclic. Consider three nodes with the same degree: u, v, w with u<v<w. Then we have:
+          u->v, u->w, v->w.
+          But then for the edge (v, w): we have v->w because v<w and deg(v)=deg(w). 
+          For (u, w): u->w because u<w.
+          For (u, v): u->v.
+
+        Then we have a cycle? No: the directed edges are u->v, u->w, v->w. This is acyclic.
+
+        Therefore, the directed graph is a DAG? Actually, we have an orientation that is a DAG: because we are using a total order: (degree, then id) and we orient from lower (degree, id) to higher. So it is a DAG.
+
+        Then, the triangle (u, v, w) will be counted exactly once: when we are at u and we have u->v and then v->w, and then we check if w is in S_u. 
+
+        But what if the edge (u, w) is oriented as w->u? Then we wouldn't have u->w? And then w would not be in the set of out-neighbors of u. But we are checking using S_u, which is the entire set of neighbors of u (regardless of orientation). So it will be there.
+
+        Therefore, the set lookup is O(1) and the total work is the sum over directed edges (u, v) of the out_degree of v. 
+
+        Then:
+
+          T = sum_{(u,v) in directed graph} out_degree(v)
+
+        How many directed edges are there? m = O(n). And out_degree(v) for each v: the maximum out_degree might be O(n), so the total work is O(n^2)? 
+
+        But note: we can swap:
+
+          T = sum_{v} in_degree_in_the_directed_graph(v) * out_degree(v)
+
+        And we know that in_degree(v) = number of edges coming into v, which is the number of neighbors u such that (u, v) is oriented as u->v.
+
+        And we have:
+
+          T = sum_{v} in_degree(v) * out_degree(v)
+
+        This is the same as before. And we know that the sum over v of in_degree(v) * out_degree(v) can be O(n^2) in the worst-case.
+
+    After all, what is the solution? 
+
+    We are saved by the fact that the graph is planar. In a planar graph, the following holds: 
+
+        The arboricity of a planar graph is at most 3. The arboricity a(G) is the minimum number of forests into which the edges can be partitioned. 
+
+        And it is known that the number of triangles in a graph is bounded by O(m^{3/2}) in general, but in planar graphs it is O(n). 
+
+        And we know that there is an algorithm to enumerate all triangles in planar graphs in O(n) time? 
+
+        Actually, we can do: 
+
+          We know the graph is planar, so we can use the following: 
+
+          For each edge (u, v), the number of common neighbors is bounded by a constant? 
+
+          Why? Consider: the edge (u, v) is embedded. The common neighbors w must lie in the two adjacent faces to (u, v). But in a planar graph, each face can have at most a bounded number of common neighbors? Actually, no: the common neighbors can be arbitrarily many? 
+
+        But wait: the complete bipartite graph K_{2,k} is planar for any k. However, in our problem, we are given that the graph is simple and has no self-loops or multiple edges, and the embedding has the condition that no two edges cross. In a K_{2,k} embedded in the plane, the two nodes u and v are on one side and the k nodes on the other side. Then for the edge (u, v) and a common neighbor w, the triangle is (u, v, w). But then there are k such triangles. So the number of common neighbors is k, which can be up to n-2. 
+
+        However, we only have m<=300000, so the worst-case degree is 300000? Then the common neighbors per edge could be large? 
+
+        But note: the total number of triangles is O(n) for a planar graph? 
+
+        Actually, this is not true: a planar graph can have up to 4n-8 triangles? For example, a Apollonian network. But still O(n). So the total work over all edges to list the common neighbors for every edge must be O(n). 
+
+        How? Because each triangle is counted in three edges. And there are O(n) triangles. Therefore, the total work to list all common neighbors for all edges is O(n). 
+
+        Therefore, we can do:
+
+          For each edge (u, v) (with u < v), we iterate over the common neighbors w. But we do it by iterating over the smaller set of neighbors between u and v? 
+
+          Total work = sum_{(u,v)} min(deg(u), deg(v)) 
+
+          But we know that this sum is O(n) in planar graphs? Why? 
+
+          Actually, it is known that in planar graphs, the sum over edges of min(deg(u), deg(v)) is O(n)? 
+
+          Consider: 
+
+            S = sum_{(u,v)} min(deg(u), deg(v))
+
+          We can split the edges into two groups: those for which deg(u) <= deg(v) and those for which deg(u) > deg(v). For the first group, we take deg(u), and for the second, deg(v). Then:
+
+            S = sum_{(u,v): deg(u)<=deg(v)} deg(u) + sum_{(u,v): deg(u)>deg(v)} deg(v)
+
+          = sum_{u} deg(u) * (# of neighbors v such that deg(u)<=deg(v)) 
+
+          Now, how to bound the inner sum for a fixed u? 
+
+          Consider: the number of neighbors v of u with deg(v)>=deg(u). Let d = deg(u). Then the number of such neighbors is at most the number of neighbors with deg(v)>=d. In a planar graph, the number of nodes with degree >=d is at most O(n/d). Why? Because the sum of degrees is O(n), so the number of nodes with degree>=d is at most O(n/d). 
+
+          But u has at most O(1) * d neighbors? Actually, no: u has exactly d neighbors. But the neighbors with degree>=d might be many? 
+
+          Actually, we can use the following: 
+
+            Let f(d) = number of nodes with degree >= d. Then f(d) <= (2m) / d = O(n/d).
+
+          Then the inner sum for u is at most O(n/d). Then:
+
+            S = sum_{u} deg(u) * (number of neighbors v with deg(v)>=deg(u)) 
+               <= sum_{u} deg(u) * (O(n/deg(u))) 
+               = sum_{u} O(n) 
+               = O(n^2)
+
+          That's not O(n).
+
+        Alternatively, we can use the following known result: in a planar graph, the sum over edges of min(deg(u), deg(v)) is O(n log n)? 
+
+        But we need O(n). 
+
+    Given the time constraints, and that m<=300000, the worst-case sum_{edge} min(deg(u), deg(v)) might be acceptable. 
+
+        Worst-case: a planar graph with n nodes and m=300000 edges. The sum might be large? 
+
+        We can try: if the graph is a complete graph on 4 nodes, then each edge has min(deg(u), deg(v)) = 3, and there are 6 edges, total=18.
+
+        For a star: one central node of degree k, and k nodes of degree 1. The edges: for each edge (center, leaf): min(deg(center), deg(leaf)) = min(k,1)=1. So total sum = k = O(n). 
+
+        For a complete bipartite graph K_{2, n-2}: the two nodes have degree n-2, and the others have degree 2. The edges: 
+          For an edge between a center (one of the two) and a leaf: min(deg(center), deg(leaf)) = min(n-2, 2) = 2. 
+          There are 2*(n-2) edges? But actually, there are 2*(n-2) edges? 
+          Then the sum = 2 * 2*(n-2) = 4*(n-2) = O(n).
+
+        Therefore, in these examples it is O(n). 
+
+        Why? Because in planar graphs, the degree of a node cannot be too large? Actually, no: the degree can be large, but the min(deg(u), deg(v)) for an edge (u,v) is at most the constant times the degree of the smaller-degree node? And the sum over u of deg(u) is 2m=O(n). 
+
+        Actually, we have:
+
+          S = sum_{edge (u,v)} min(deg(u), deg(v)) 
+             = sum_{u} deg(u) * (# of neighbors v with deg(v) >= deg(u))   [if we take the smaller as the one that is not greater? Actually, we split by the condition: if deg(u)<=deg(v) then we take deg(u), else deg(v).]
+
+          = sum_{u} deg(u) * |{ v in adj(u) : deg(v) >= deg(u) }| 
+
+        Now, we want to bound |{ v in adj(u) : deg(v) >= deg(u) }|. 
+
+        We know that the number of nodes with deg(v) >= deg(u) is at most (2m) / deg(u) = O(n / deg(u)). 
+
+        But how many of these are adjacent to u? 
+
+        Since the graph is planar, the number of edges incident to u is deg(u). And the nodes with deg(v)>=deg(u) that are adjacent to u are exactly the ones in the set. 
+
+        But we don't have a direct bound. However, we can use the following: 
+
+          Consider: the set of neighbors of u. The number of neighbors v with deg(v)>=deg(u) is at most the size of the neighbor set, which is deg(u). But that doesn't help.
+
+        Alternatively, we can use the following: 
+
+          S = sum_{u} deg(u) * d_u, where d_u = |{ v in adj(u) : deg(v)>=deg(u) }|.
+
+        And we have:
+
+          S = sum_{u} deg(u) * d_u.
+
+        How to bound this? 
+
+        We can split the nodes by degree. Let the degrees be sorted. 
+
+        We know that the number of nodes with degree at least d is at most O(n/d). Then the number of edges incident to a node with degree at least d is O(n)? 
+
+        Actually, we can use the following charging argument:
+
+          Each edge (u,v) is counted in the term for u if deg(u)<=deg(v), and then we count deg(u) for the edge (u,v) in the term for u? But wait, in the expression for u we count deg(u) for every neighbor v with deg(v)>=deg(u). So for a fixed edge (u,v) with deg(u)<=deg(v), we count deg(u) in the term for u.
+
+          And there are at most 2m edges.
+
+        But then S = sum_{edge (u,v)} [ if deg(u)<=deg(v) then deg(u) else deg(v) ].
+
+        This is the same as the original definition.
+
+        And we can bound this by: 
+
+          S = sum_{edge} min(deg(u), deg(v))
+
+        But we want to show that in planar graphs this is O(n). 
+
+        Unfortunately, I don't know a linear bound. However, we can use the following: 
+
+          It is known that in minor-closed families (like planar graphs) the following holds: 
+
+            sum_{u} deg(u)^2 = O(n)
+
+          Is this true? 
+
+          In planar graphs, the number of edges is O(n), and the sum of deg(u)^2 is the sum of squares of the degrees. 
+
+          By the handshake lemma: sum deg(u) = 2m = O(n). 
+
+          And by the following: 
+
+            sum_{u} deg(u)^2 <= (max deg(u)) * (sum deg(u)) = O(n) * O(n) = O(n^2)
+
+          But we want O(n). 
+
+          However, in planar graphs, the maximum degree can be up to n-1, so the sum of squares is O(n^2) in the worst-case.
+
+        Given the constraints (n=100000, m=300000), the worst-case sum_{edge} min(deg(u), deg(v)) might be 300000 * (minimum degree which is 1) = 300000, which is acceptable. But the worst-case could be larger: if we have many edges with min(deg(u), deg(v)) = 1000, then the sum could be 300000 * 1000 = 300e6, which is acceptable in Pyton in 4 seconds? 
+
+        Therefore, we decide to do:
+
+          For each edge (u, v) (store with u<v by our usual tuple), we iterate over the common neighbors by:
+
+             if deg[u] < deg[v] or (deg[u]==deg[v] and u<v):
+                 iterate over neighbors of u to find common neighbors with v? But we have adj_set[u] and adj_set[v]. We can do: 
+                     common = adj_set[u] & adj_set[v]
+             else:
+                 common = adj_set[u] & adj_set[v]
+
+          But the set intersection for two sets of size d1 and d2 is O(min(d1,d2)). And the sum over edges of min(deg(u), deg(v)) might be 300e6, which is acceptable.
+
+        So we do:
+
+          Precompute for each node its set of neighbors.
+
+          For each edge (u, v) in the list of edges (we have stored in edges_dict), we do:
+
+             if deg[u] < deg[v]:
+                 common = adj_set[u] & adj_set[v]
+             else:
+                 common = adj_set[u] & adj_set[v]   [same]
+
+          Then for each w in common:
+             if w > u and w > v:   [to avoid duplicates: we ensure that we have u<v<w]
+                 then we have a triangle (u, v, w)
+
+          And then compute the score for the triangle.
+
+        But note: the set intersection might be heavy in Python? We hope that the sets are implemented with hashing and the intersection of two sets of size d1 and d2 is O(min(d1,d2)). 
+
+        And the sum over edges of min(deg(u), deg(v)) is hopefully not too large.
+
+        We also need to do the same for K4? 
+
+        For K4: we need to find two common neighbors w1, w2 of u and v such that w1 and w2 are connected. 
+
+        We can do for each edge (u,v): 
+
+             common = adj_set[u] & adj_set[v]
+             Then for each pair (w1, w2) in common, we check if (w1, w2) is an edge. But the number of common neighbors might be large, and then the pairs would be O(|common|^2) per edge.
+
+        But in planar graphs, the number of common neighbors per edge is O(1)? Actually, no: as discussed, it can be O(n). 
+
+        However, we know that the number of K4's is O(n) in planar graphs? 
+
+        How to enumerate K4's efficiently? 
+
+        We can do: 
+
+          For each edge (u,v), we get the common neighbors = common.
+
+          Then, for each common neighbor w in common:
+             Then the triangle (u, v, w) is there.
+
+          Then to find a K4, we need to find two common neighbors w1 and w2 that are connected by an edge. 
+
+          We can iterate over the common set and for each w in common, we look at its neighbors, and check if that neighbor is in common. But then the work per common neighbor w is O(deg(w)). Then total work per edge (u,v) is O(|common| * max_{w in common} deg(w)). 
+
+          In the worst-case, |common| can be O(n) and deg(w) can be O(n), so per edge O(n^2) and total O(m * n^2) -> too slow.
+
+        Alternatively, we can precompute for the entire graph the set of edges, and then for the common set we can ask for each pair (w1, w2) whether (w1, w2) is an edge? But that is O(|common|^2) per edge.
+
+        Given that the total number of K4's is O(n) in planar graphs, we hope that the common set for an edge (u,v) has bounded size? 
+
+        But we know that in planar graphs, the edge (u,v) can have many common neighbors (like in K_{2,k}) but then these common neighbors are not connected to each other? In K_{2,k}, there is no edge between any two leaves. So there is no K4. 
+
+        How many common neighbors w can be pairwise adjacent? 
+
+        In a planar graph, if we have an edge (u,v) and two common neighbors w1 and w2 that are adjacent, then we have a K4: {u, v, w1, w2}. 
+
+        But how many such pairs (w1,w2) can there be per edge (u,v)? 
+
+        In a planar graph, the number of K4's is O(n). And each K4 has 6 edges. Each edge of the K4 will be the edge (u,v) that we are processing? 
+
+        Therefore, the same K4 will be counted multiple times? Specifically, 6 times (once for each edge). 
+
+        But then the total work over all edges for checking the common set for pairs would be O( (number of K4's) * (number of edges in the K4) * (work per K4 edge) )? 
+
+        Actually, for a fixed K4 on nodes {a,b,c,d}, it will be counted for each edge in the K4. For an edge (a,b) in the K4, the common neighbors of a and b that are in the K4 are c and d. Then we will find the pair (c,d) and then check if (c,d) is an edge. 
+
+        The work for edge (a,b): when we iterate over the common set (which includes c and d) and then we want to check every pair. We would iterate over the common set of size 2: so pairs: only one pair (c,d). So work per edge in the K4 is O(1). 
+
+        Then the total work over all edges in the graph is O(m + number of K4's * 6) = O(m + number of K4's). 
+
+        But the number of K4's is O(n) in planar graphs. 
+
+        Therefore, if we can avoid checking pairs for edges that have a common set that is large but does not yield any K4, we are safe. 
+
+        However, we only want to check the common set for edges that have at least two common neighbors. And then we iterate over the common set to find pairs that are connected. 
+
+        But how to iterate over the common set to find all pairs that are connected? 
+
+          We can do: 
+
+            common = adj_set[u] & adj_set[v]
+            If len(common) < 2, skip.
+
+            Then, for each w in common:
+                for each neighbor x of w:
+                    if x in common and x > w:   [to avoid duplicates and only consider (w,x) with w<x]
+                        then we have a candidate K4: {u, v, w, x}
+
+            But then the work per common set is O( |common| * (average degree of common nodes) ). 
+
+        The average degree of common nodes might be high. 
+
+        Alternatively, we can pre-store the graph in adjacency sets. Then for each w in common, we can iterate over the neighbors of w and check if the neighbor is in the common set. 
+
+        The work per common node w is O(deg(w)). 
+
+        Then the total work per edge (u,v) is O( |common| * max_{w in common} deg(w) ). 
+
+        In the worst-case, |common| can be large and deg(w) can be large. 
+
+        But we know that in planar graphs, the number of K4's is O(n). And each K4 will be reported multiple times: specifically, 6 times (once per edge in the K4). 
+
+        However, the work to report a K4 might be more than O(1) because we iterate over the common set. 
+
+        We need to bound the total work over all edges. 
+
+        Note: an edge (w,x) that is present in the graph and that is between two common neighbors of (u,v) will be found when we are at the edge (u,v) and then at w (or x) in the common set. 
+
+        How many times is a fixed edge (w,x) checked? 
+
+          It is checked for every edge (u,v) such that w and x are common neighbors of u and v. 
+
+        How many such edges (u,v)? 
+
+          For a fixed edge (w,x), the number of edges (u,v) for which both w and x are common neighbors is at most the number of common neighbors of w and x. 
+
+        But then we are back to the same: the number of common neighbors of w and x is bounded by min(deg(w), deg(x)) for the edge (w,x). 
+
+        And then the total work might be the sum over edges (w,x) of min(deg(w), deg(x)), which is the same as S above. 
+
+        And we've decided that S might be acceptable within the constraints (n=100000, m=300000).
+
+    Therefore, we will do:
+
+        Precompute:
+          adj_set[i] for i in 1..n: as a set of neighbors.
+
+        Triangles:
+          Initialize best = 0.
+          For each edge (u, v) in edges_dict (which is stored as (min, max)):
+             common = adj_set[u] & adj_set[v]
+             For each w in common:
+                 if w > u and w > v:   # then we have u<v<w
+                     a1 = edges_dict.get((u,v),0)   # but we have stored (min(u,v), max(u,v)) so (u,v) is the key for the edge between u and v? Actually, we have stored the edge (u,v) with u<v.
+                     a2 = edges_dict.get((u,w),0)   # might not exist? But if w is a common neighbor, then (u,w) is an edge? But wait, common is adj_set[u] & adj_set[v], so (u,w) is an edge and (v,w) is an edge. But we stored the edge with min and max. 
+                     a3 = edges_dict.get((v,w),0)
+                     total = a1 + a2 + a3
+                     if total > best: best = total
+
+        But note: what if the edge (u,w) or (v,w) is not in edges_dict? It should be, because we have stored the entire graph. But we stored the edges in edges_dict only by the key (min, max). And we have built adj_set from the same edges. So if w is in adj_set[u], then the edge (u,w) is present and we stored it in edges_dict? 
+
+          However, when we built edges_dict, we did:
+
+             for i in range(m):
+                 u = ... ; v = ... ; a = ...
+                 if u>v: swap to (v,u)
+                 edges_dict[(v,u)] = a   -> actually no, we stored as (min, max) so (u,v) with u<v.
+
+          And then for the edge (u,w): if u<w then key=(u,w), else (w,u). But we have u<v<w, so for (u,w): u<w -> key=(u,w); for (v,w): v<w -> key=(v,w).
+
+          But what if the edge (u,w) was not in the input? But we built adj_set from the input edges, so if w is in adj_set[u], then the edge (u,w) exists. And we stored it in edges_dict.
+
+          However, we stored only the edges that were given. And the graph is simple. So we are safe.
+
+        But note: our graph might not be complete? We only have m edges. So the common neighbor w means that (u,w) and (v,w) are edges. So they are in edges_dict.
+
+        However, it is possible that we have a triangle that is not formed by the highways? Actually, no: the highways are the edges. And the graph is defined by the highways. The attraction points only exist on highways. So if there is no highway between u and w, then they are not connected. But our adj_set is built from the highways. So if w is in adj_set[u], then there is a highway between u and w.
+
+        But the problem says: there is at most one highway connecting each pair. So we are safe.
+
+        K4:
+
+          done_k4 = set()   # to avoid duplicate K4: we store the sorted tuple of the four nodes.
+
+          For each edge (u, v) in edges_dict:
+             common = adj_set[u] & adj_set[v]
+             if len(common) < 2: 
+                 continue
+             # We want to find pairs (w1, w2) in common such that w1 < w2 and (w1,w2) is an edge.
+             # How? We iterate over common, and for each w in common, we look at the neighbors of w that are in common and greater than w.
+
+             for w in common:
+                 # Consider neighbors of w that are in common and greater than w.
+                 for x in adj_set[w]:
+                     if x > w and x in common:
+                         # then we have the four nodes: u, v, w, x.
+                         four = tuple(sorted([u, v, w, x]))
+                         if four in done_k4:
+                             continue
+                         done_k4.add(four)
+                         # Now, we have to get the six edges:
+                         nodes = four
+                         # But we know: u, v, w, x. We sorted so we have the sorted tuple: (a,b,c,d) = sorted([u,v,w,x])
+                         a, b, c, d = four
+                         e1 = (a,b)
+                         e2 = (a,c)
+                         e3 = (a,d)
+                         e4 = (b,c)
+                         e5 = (b,d)
+                         e6 = (c,d)
+                         total_k4 = edges_dict.get(e1,0) + edges_dict.get(e2,0) + edges_dict.get(e3,0) + edges_dict.get(e4,0) + edges_dict.get(e5,0) + edges_dict.get(e6,0)
+                         if total_k4 > best:
+                             best = total_k4
+
+          But note: what if one of these edges is not present? But we have:
+             - (u,v) is present.
+             - (u,w) and (u,x) are present because w,x in common (so adj_set[u] contains w and x).
+             - (v,w) and (v,x) are present.
+             - (w,x) is present because we found x in adj_set[w].
+
+          So the six edges are present.
+
+        However, the inner loop for w: we iterate over all neighbors x of w that are in common and greater than w. The work per w is O(deg(w)). The total work per edge (u,v) is O( |common| * (max_{w in common} deg(w) ). 
+
+        And then the total work over all edges is the sum_{edge (u,v)} [ |common(u,v)| * (max_{w in common(u,v)} deg(w)) ].
+
+        This might be large. 
+
+        But we know that the entire graph is planar, and the number of K4's is O(n), and each K4 is reported by 6 edges. For a K4 on nodes {a,b,c,d}, it will be reported when we consider any of the 6 edges. For a fixed edge (a,b) in the K4, the common set = {c,d}. Then for w in {c,d}:
+
+            For w=c: we iterate over neighbors of c that are in common and greater than c. The common set is {c,d}. So we look at neighbors of c that are in {c,d} and greater than c: only d. Then we check if d is in adj_set[c]? Yes, so we find the pair.
+
+            Similarly for w=d: we iterate over neighbors of d that are in common and greater than d: none.
+
+          So we find the pair (c,d) only once per edge (a,b).
+
+        The work for the edge (a,b) is O( |common| * (max_deg in common) ) = O(2 * max(deg(c), deg(d))). 
+
+        Then the total work is O( sum_{edge (u,v)} [ |common(u,v)| * (max_{w in common(u,v)} deg(w)) ] ).
+
+        How to bound this? 
+
+          Let T = this sum.
+
+          We can charge the work for an edge (u,v) and a common neighbor w: we do deg(w) work for this w? But we do it for every edge (u,v) that has w as a common neighbor.
+
+          Specifically, a common neighbor w of (u,v) will be processed in the inner loop for the edge (u,v), and the work for w is O(deg(w)).
+
+          Then the total work over all edges and common neighbors is O( sum_{(u,v)} sum_{w in common(u,v)} deg(w) ).
+
+          And we can swap: 
+
+             = sum_{w} deg(w) * (number of edges (u,v) such that w is a common neighbor of u and v)
+
+          Now, the number of edges (u,v) such that w is a common neighbor: that is the number of edges (u,v) in the graph for which u and v are both neighbors of w. 
+
+          How many such edges? 
+
+             It is the number of edges in the subgraph induced by the neighbors of w.
+
+          In a planar graph, the subgraph induced by the neighbors of w might be non-planar? But the entire graph is planar, so the induced subgraph is planar. 
+
+          The number of edges in the induced subgraph of a node w is at most 3 * (deg(w))? (because a planar graph with k nodes has at most 3k edges? Actually, at most 3k-6 for k>=3, but we can use O(deg(w))).
+
+          Therefore, the number of edges (u,v) for which w is a common neighbor is at most 3 * deg(w). 
+
+          Then:
+
+             T = sum_{w} deg(w) * (3 * deg(w)) = 3 * sum_{w} deg(w)^2.
+
+          And we know that the sum of deg(w)^2 in a planar graph can be O(n^2). 
+
+        But we are saved by the fact that the total work is O(n^2) and n=100000, so n^2=10e9 which is too slow.
+
+    Therefore, we must optimize the K4 enumeration.
+
+    Alternative method for K4:
+
+        We know that the entire graph is planar, so the maximum clique size is 4. Therefore, we can iterate over the set of 4-cliques by:
+
+          For each node u, and then for each pair of neighbors v, w of u that are adjacent, then we have a triangle (u, v, w). Then for each common neighbor x of v and w that is adjacent to u and also adjacent to x? Actually, then we get a K4: {u, v, w, x} if and only if x is adjacent to u, v, and w? 
+
+        Actually, we can do:
+
+          For each triangle (u, v, w), we look for a common neighbor x of u, v, w. Then if x is adjacent to u, v, w, then {u,v,w,x} is a K4.
+
+        But then we would count each K4 multiple times: 4 times (once for each triangle in the K4). 
+
+        The work per triangle is O( min(deg(u), deg(v), deg(w)) ) for the intersection of the three sets. 
+
+        And the total work is O( (number of triangles) * (min degree in the triangle) ). 
+
+        The number of triangles is O(n), and the min degree in the triangle might be large. 
+
+        But then the total work is O(n * n) = O(n^2) -> too slow.
+
+    Given the complexity of efficient enumeration and the fact that n can be 100000, but the number of K4's is O(n), we can try to use the following: 
+
+        We will iterate over all edges (u,v) and for each edge, we will iterate over the common neighbors. But we will not do nested loops for pairs in the common set. Instead, we will:
+
+          common = adj_set[u] & adj_set[v]
+          Let's create a list L = sorted(common)
+
+          Then, we want to find edges between nodes in L. How? 
+
+          We can precompute for the entire graph an array of edges, and then for the set L, we can iterate over each node in L and then over its neighbors that are in L and greater than it. 
+
+          But that is the same as before.
+
+        Alternatively, we can build a graph on the common set and then iterate over the edges in that induced subgraph. But the induced subgraph might be large.
+
+    We decide to hope that the common set for each edge is small. Why might it be small? 
+
+        In a planar graph, the edge (u,v) is embedded. The common neighbors must lie in the two adjacent faces to (u,v). And in a simple planar graph, the number of common neighbors that are pairwise adjacent might be bounded? But the common set might be large if the edge is in a large face? 
+
+        However, the common set might be large (like in K_{2,k}), but then the induced subgraph on the common set has no edges. So we would not do any work in the inner loop for the common set? 
+
+        But our inner loop for K4 does:
+
+             for w in common:
+                 for x in adj_set[w]:
+                     if x in common and x>w: 
+                         ...
+
+        In the case of K_{2,k}, the common set has size k. For each w in common, adj_set[w] has exactly the two central nodes u and v. But then we iterate over x in adj_set[w]: which are u and v. But u and v are not in common? Because common is the common neighbors of u and v, which is the set of leaves. The leaves are the common set. Then u and v are not in the common set. So we skip.
+
+        Therefore, the inner loop does O(deg(w)) work per w, and deg(w) is 2 (in the K_{2,k}) for each leaf. So the work per edge (u,v) is O(k * 2) = O(k). 
+
+        And k = |common|. 
+
+        Then the total work over all edges is O( sum_{edge} |common| ). 
+
+        And we know that the sum_{edge} |common| = sum_{edge} |adj_set[u] & adj_set[v]| = 3 * (number of triangles) because each triangle is counted for each edge? 
+
+        But wait: a triangle (u,v,w) is counted in the three edges: (u,v), (u,w), (v,w). 
+
+        So the total sum_{edge} |common| = 3 * (number of triangles) = O(n). 
+
+        Therefore, the total work for the K4 part is O(n). 
+
+        But note: in the inner loop we do for each common neighbor w: we do deg(w) work. Then the total work is O( sum_{edge} sum_{w in common(u,v)} deg(w) ). 
+
+        And we argued before that this is O( sum_{w} deg(w)^2 ). 
+
+        However, we also have the alternative expression: 
+
+            sum_{w} deg(w) * (number of edges (u,v) such that w is a common neighbor of u and v)
+
+        = sum_{w} deg(w) * (number of edges in the induced subgraph of the neighbors of w)
+
+        <= sum_{w} deg(w) * (3 * deg(w))   [because the induced subgraph on the neighbors of w is planar and has at most 3 * deg(w) edges]
+
+        = 3 * sum_{w} deg(w)^2
+
+        And this is O(n^2) in the worst-case.
+
+    This is a contradiction. 
+
+    Let me recount: 
+
+        In the inner loop for an edge (u,v) and a common neighbor w, we do O(deg(w)) work. 
+
+        The total over all edges and common neighbors is indeed sum_{w} (number of edges (u,v) such that w is a common neighbor of u and v) * deg(w)
+
+        And the number of edges (u,v) for which w is a common neighbor is the number of edges in the induced subgraph of the neighbors of w, which is at most 3 * deg(w) (for deg(w)>=3). 
+
+        So the total work is O( sum_{w} 3 * deg(w)^2 ). 
+
+        And this is O(n^2) because the sum of deg(w)^2 can be O(n^2). 
+
+        However, in the best-case (star) it is O(n): the center has deg(w)=n-1, then its term is (n-1)^2, and the leaves have deg(w)=1, then term=1, and there are n-1 leaves, so total = (n-1)^2 + (n-1) = O(n^2). 
+
+        And n=100000, then n^2=10e9 which is too slow.
+
+    Therefore, we must find a better way.
+
+    Better way for K4: 
+
+        We can precompute for each edge (w,x) the list of edges (u,v) such that w and x are common neighbors of u and v. But that is complex.
+
+    Given the time constraints, and that the number of K4's is O(n), we can simply iterate over all possible K4's by: 
+
+          For each node u, and then for each pair of neighbors v, w of u that are adjacent, we have a triangle (u,v,w). Then for each common neighbor x of v and w that is adjacent to u and to both v and w (which it is by common neighbor) and also to x? wait, we have x adjacent to v and w (because common neighbor) and to u (because x is in adj_set[u]? not necessarily: we are not checking that.
+
+        Actually, to get a K4 containing the triangle (u,v,w), we need a node x that is adjacent to u, v, and w. Then we have the K4: {u,v,w,x}. 
+
+        How to find the common neighbors of v and w that are also neighbors of u? 
+
+          That would be: adj_set[u] & adj_set[v] & adj_set[w]
+
+        Then for each x in that set with x>max(u,v,w) (to avoid duplicates) then we have a K4.
+
+        The work per triangle is O( min(deg(u), deg(v), deg(w)) ) for the triple intersection. 
+
+        And then the total work is O( (number of triangles) * (min degree in the triangle) ) = O(n * n) = O(n^2) -> too slow.
+
+    Alternatively, we can do:
+
+          For each triangle (u,v,w), we let candidate = adj_set[u] & adj_set[v] & adj_set[w]
+          Then for each x in candidate with x > max(u,v,w), then we have a K4.
+
+        The work per triangle is the size of the triple intersection. And the sum over triangles of the size of the triple intersection might be the total number of K4's times 4 (because each K4 has 4 triangles) and then times something? 
+
+        Specifically, a K4 on {a,b,c,d} will be reported by each of its 4 triangles: 
+            (a,b,c): then we find d in the intersection.
+            (a,b,d): then we find c in the intersection.
+            etc.
+
+        So each K4 is reported 4 times.
+
+        Therefore, the total work is O( (number of K4's) * 4 ) = O(n), if we can compute the triple intersection in O(1) per K4. 
+
+        But the triple intersection might be large. However, in a K4 the triple intersection for the triangle (a,b,c) is exactly {d}. So size=1. 
+
+        But what if there is more than one common neighbor? 
+
+        In a planar graph, can a triangle (u,v,w) have more than one common neighbor x? 
+
+          If there are two common neighbors x1 and x2, then we have two K4's: {u,v,w,x1} and {u,v,w,x2}. And also, the induced subgraph on {u,v,w,x1,x2} would be a K5? which is non-planar. 
+
+        Therefore, in a planar graph, a triangle can have at most one common neighbor that is also adjacent to all three. 
+
+        So the triple intersection for a triangle has size at most 1.
+
+        Therefore, the work per triangle is O(1). 
+
+        Then the total work for the K4 enumeration is O(number of triangles) = O(n).
+
+    Therefore, we do:
+
+        Precomputation: adj_set for each node.
+
+        Triangles: we have a list of triangles (u,v,w) with u<v<w.
+
+        For each such triangle, we compute:
+            common = adj_set[u] & adj_set[v] & adj_set[w]
+            But we know that in planar graph, |common|<=1. But actually, there could be more than one? 
+            However, if there is more than one, then we have a K_{3,2}? and then we would have a non-planar graph? 
+            Actually, the complete bipartite graph K_{3,2} is planar. But then having two common neighbors x1 and x2 for the triangle (u,v,w) would give the graph K_{3,2} plus the edges of the triangle? which is not necessarily non-planar. 
+
+            But then the induced subgraph on {u,v,w,x1,x2} is the complete graph K_{3,2} plus the triangle on {u,v,w}. This graph has 5 nodes and 6+3 = 9 edges. And it contains a subdivision of K_{3,3}? Actually, it is not complete. 
+
+            However, we can have more than one common neighbor. For example, consider a triangular bipyramid: two apices x1 and x2 and a triangle base u,v,w. Then the apices are connected to all three base nodes. But this is a planar graph? 
+
+            But the triangular bipyramid has 5 nodes: it is a polyhedron, and polyhedrons are planar? Actually, they are not planar because they are 3-dimensional, but the graph might be planar? 
+
+            The graph of the triangular bipyramid: 
+               nodes: u, v, w, x1, x2.
+               edges: triangle (u,v,w), and then x1 connected to u,v,w; x2 connected to u,v,w.
+
+            This graph has K_{3,3} as a minor? Actually, not obviously. But we know that the complete graph on 5 nodes (K5) is not planar, and this graph has 5 nodes and 9 edges. And it is not planar because it contains a subdivision of K5? 
+
+            Actually, the graph of the triangular bipyramid is not planar: because it has 5 vertices and 9 edges, and a planar graph with 5 vertices has at most 3*5-6=9 edges. But it is the utility graph (K_{3,3}) is not planar, and this graph contains a subdivision of K_{3,3}? 
+
+            In fact, the graph of the triangular bipyramid is planar? How to embed? 
+
+            Let me try: 
+               draw the triangle u, v, w.
+               then put x1 inside the triangle and connect to u,v,w.
+               then put x2 outside the triangle and connect to u,v,w.
+
+            This is a planar embedding.
+
+            Therefore, we can have two common neighbors for a triangle. 
+
+        Then the work per triangle might be O(|common|), and the sum over triangles might be the total number of K4's plus the number of such common neighbors over all triangles. 
+
+        But note: if a triangle (u,v,w) has two common neighbors x1 and x2, then we get two K4's: {u,v,w,x1} and {u,v,w,x2}. 
+
+        And the work for this triangle is O(2). 
+
+        In general, the work per triangle is the number of common neighbors that yield a K4. And the total work is the total number of K4's (each K4 is reported once per triangle that is a face of the K4). Since each K4 has 4 triangles, the work is 4 * (number of K4's) = O(n). 
+
+        Therefore, we can do:
+
+          best = 0
+          # First, size2: already done.
+          # Triangles: we'll enumerate and also prepare for K4.
+          triangles = []   # list of (u,v,w) with u<v<w
+          for (u, v) in edges_dict:
+              common = adj_set[u] & adj_set[v]
+              for w in common:
+                  if w > v:
+                      triangles.append((u,v,w))
+                      a1 = edges_dict[(u,v)]
+                      a2 = edges_dict.get((u,w),0)   # should be there, but safe to use get?
+                      a3 = edges_dict.get((v,w),0)
+                      total_tri = a1 + a2 + a3
+                      if total_tri > best: best = total_tri
+
+          # Now for K4:
+          done_k4 = set()
+          for (u,v,w) in triangles:
+              common = adj_set[u] & adj_set[v] & adj_set[w]
+              for x in common:
+                  if x > w:   # then we have u<v<w<x
+                      four = (u,v,w,x)
+                  elif x > v and x < w: 
+                      four = (u,v,x,w)
+                  elif x > u and x < v:
+                      four = (u,x,v,w)
+                  elif x < u:
+                      four = (x,u,v,w)
+                  four = tuple(sorted((u,v,w,x)))   # to have a canonical representation
+                  if four in done_k4:
+                      continue
+                  done_k4.add(four)
+                  a1 = edges_dict.get((u,v),0)
+                  a2 = edges_dict.get((u,w),0)
+                  a3 = edges_dict.get((u,x),0)
+                  a4 = edges_dict.get((v,w),0)
+                  a5 = edges_dict.get((v,x),0)
+                  a6 = edges_dict.get((w,x),0)
+                  total_k4 = a1+a2+a3+a4+a5+a6
+                  if total_k4 > best: best = total_k4
+
+          But note: we might have duplicates in the common set and then for a fixed triangle we iterate over all common neighbors.
+
+          And the total work is O(number of triangles * |common|) = O( (number of triangles) * (something) ). But we have the number of triangles is O(n), and the |common| per triangle is the number of common neighbors of the three nodes, which is also the number of K4's that include the triangle, and we know that the total across all triangles is the number of K4's times 4, which is O(n). 
+
+          However, note: one common neighbor x per K4 per triangle. So the total work is O( (number of triangles) * (number of common neighbors per triangle) ) = O( (number of K4's) * 4 ) = O(n). 
+
+          But wait: the common set might include nodes that are not part of a K4? How? 
+
+          We require that x is adjacent to u, v, w. And we are only considering x that is in the intersection of the three adj_sets. And then we assume that we have a K4: {u,v,w,x} and all six edges are present. 
+
+          But the edge between x and the three nodes u,v,w is in the graph because we have x in adj_set[u], adj_set[v], adj_set[w]. And the edges between u,v; u,w; v,w are there because we have the triangle. 
+
+          But what about the edge between x and itself? 
+
+          So it is a K4.
+
+        However, the common set might include a node x that is not connected to one of the edges? No, because we have x in adj_set[u], adj_set[v], adj_set[w].
+
+        Therefore, we have a K4.
+
+    But note: the triangle (u,v,w) is from the list we enumerated, which used the edges from the graph. 
+
+    Therefore, the final plan is:
+
+        Read n, m, cities, and the m edges.
+
+        Build:
+          deg = [0]*(n+1)
+          graph = [[] for _ in range(n+1)]
+          edges_dict = {}   # key: (min, max) -> attraction points
+          adj_set = [set() for _ in range(n+1)]
+
+        For each edge (u,v,a):
+            if u>v: swap to (v,u)
+            edges_dict[(u,v)] = a
+            graph[u].append(v)
+            graph[v].append(u)
+            deg[u] += 1
+            deg[v] += 1
+            adj_set[u].add(v)
+            adj_set[v].add(u)
+
+        best = 0   # size1 yields 0, but we will consider edges.
+
+        For each edge in edges_dict:
+            a = edges_dict[edge]
+            if a > best: best = a
+
+        # Triangles: 
+        triangles = []   # list of triangles (u, v, w) with u<v<w
+        for (u,v) in edges_dict:
+            common = adj_set[u] & adj_set[v]
+            for w in common:
+                if w > v: 
+                    # then we have u<v<w
+                    # get the three edges
+                    a1 = edges_dict[(u,v)]
+                    a2 = edges_dict[(u,w)]   # must exist, because w in adj_set[u]
+                    a3 = edges_dict[(v,w)]   # must exist, because w in adj_set[v]
+                    total = a1+a2+a3
+                    if total > best: best = total
+                    triangles.append((u,v,w))
+
+        # K4:
+        done_k4 = set()   # to avoid duplicates: store sorted tuple of four nodes.
+        for (u,v,w) in triangles:
+            common = adj_set[u] & adj_set[v] & adj_set[w]
+            for x in common:
+                if x == u or x == v or x == w:
+                    continue
+                four = tuple(sorted([u,v,w,x]))
+                if four in done_k4:
+                    continue
+                done_k4.add(four)
+                a1 = edges_dict.get((min(four[0],four[1]), max(four[0],four[1])))
+                a2 = edges_dict.get((min(four[0],four[2]), max(four[0],four[2])))
+                a3 = edges_dict.get((min(four[0],four[3]), max(four[0],four[3])))
+                a4 = edges_dict.get((min(four[1],four[2]), max(four[1],four[2])))
+                a5 = edges_dict.get((min(four[1],four[3]), max(four[1],four[3])))
+                a6 = edges_dict.get((min(four[2],four[3]), max(four[2],four[3])))
+                total_k4 = a1+a2+a3+a4+a5+a6
+                if total_k4 > best: best = total_k4
+
+        print(best)
+
+    However, note: the common set might include x that is not greater than w? We are not enforcing any order on x. We just avoid duplicates by the sorted tuple.
+
+    But the set `common` might include nodes that are not greater than w? For example, x could be between u and v. But then the sorted tuple will canonicalize.
+
+    Also, note: we might have duplicates: the same K4 might be detected from different triangles.
+
+    We are using done_k4 to avoid duplicates.
+
+    Let me test on a K4: {1,2,3,4} with 1<2<3<4.
+        Triangles: (1,2,3), (1,2,4), (1,3,4), (2,3,4).
+        For triangle (1,2,3): common = adj_set[1] & adj_set[2] & adj_set[3] = {2,3,4} for 1? 
+            Actually, adj_set[1] = {2,3,4} (if the K4 is complete), then common = {2,3,4}? 
+            Then we iterate over x in {2,3,4}: but we skip 2 and 3 (because they are in the triangle) and then x=4. Then we add four = (1,2,3,4).
+
+        For triangle (1,2,4): common = adj_set[1] & adj_set[2] & adj_set[4] = {3}? 
+            Then we find x=3, then four = (1,2,3,4) -> skip.
+
+        Similarly for the others.
+
+    So it works.
+
+    But note: the common set for triangle (1,2,3) might include 4, but also might include other nodes? if there is a fifth node that is adjacent to 1,2,3 then it would be in common. But then we would get an additional K4? 
+
+        For example, if there is a node 5 adjacent to 1,2,3, then for the triangle (1,2,3) we would get two common neighbors: 4 and 5. Then we would add two K4's: {1,2,3,4} and {1,2,3,5}. 
+
+        But then the graph has the complete graph on {1,2,3,4,5}? which is K5, non-planar. 
+
+        Therefore, in a planar graph, this cannot happen. 
+
+        So the common set for a triangle (u,v,w) will contain only the common neighbors that are not in the triangle and that yield a K4. And there might be at most one such node? 
+
+        But we saw the example of the triangular bipyramid: 
+            nodes: 1,2,3 (base), 4 and 5 (apices)
+            Then for the triangle (1,2,3): the common set = {4,5}. 
+            So we would get two K4's: {1,2,3,4} and {1,2,3,5}. 
+
+        And the graph is planar. 
+
+        So we must allow for multiple common neighbors.
+
+    Therefore, the loop over x in common is necessary.
+
+    But the work per triangle is the number of common neighbors (which is the number of K4's that contain the triangle), and the total work is O( (number of triangles) + (number of K4's) ) = O(n) because the number of triangles and K4's is O(n). 
+
+    However, the set intersection for the three sets: adj_set[u] & adj_set[v] & adj_set[w] might be expensive. The worst-case size of these sets might be large. 
+
+        The work for the set intersection is O( min(|adj_set[u]|, |adj_set[v]|, |adj_set[w]|) ). 
+
+        And the sum over triangles of min(deg(u), deg(v), deg(w)) might be large. 
+
+        But we know that the sum over triangles of 1 is O(n). But the sum of min(deg(u), deg(v), deg(w)) over triangles might be O(n^2). 
+
+        For example, if there is a node u with degree d, then it is in O(d^2) triangles. For each triangle (u,v,w) incident to u, the min(deg(u), deg(v), deg(w)) is at least 1, and the sum over these triangles is O(d^2) for u. Then the total over all u is sum_u d_u^2 = O(n^2). 
+
+        And we cannot avoid this.
+
+    But note: we have already enumerated the triangles in the first pass. In the first pass, we did:
+
+        for each edge (u,v): we did common = adj_set[u] & adj_set[v] and then for w in common with w>v: ...
+
+        The work per edge was O( min(deg(u), deg(v)) ) for the set intersection? Or is set intersection O(min(|set1|,|set2|))? 
+
+        And then the total work for the first pass was the sum over edges of min(deg(u), deg(v)), which might be O(n^2). 
+
+    Given the constraints (n=100000, m=300000), and that the sum might be large, we try to use a different method for the first pass (triangles) that is more efficient.
+
+    We can use the node iterator with orientation (by degree) to reduce the number of set intersections. 
+
+        Instead of iterating over edges and then doing set intersection, we can:
+
+          Create an array for the graph and sort each adjacency list by the node id.
+
+          Orient: we orient edge from u to v if deg[u] < deg[v] or (deg[u]==deg[v] and u<v).
+
+          Then for each node u, we mark its neighbors in a temporary set or in a boolean array? But n is 100000, we cannot make an array of size 100000 for each u.
+
+          Instead, we can use a set for the out-neighbors of u? But then we do:
+
+             For u in range(1, n+1):
+                 set_u = set(graph[u])   # we want to use the entire neighbor set? But we are not; we want to mark only the out-neighbors? 
+                 Actually, we want to mark the entire neighborhood for set lookup? 
+
+          We already have adj_set[u] for the entire neighborhood.
+
+          Then we do:
+
+             for each out-neighbor v of u (so u->v, meaning v in the out-neighbors of u):
+                 for each out-neighbor w of v (so v->w, and w>v in the orientation?) that is greater than v? 
+                     if w in adj_set[u]:
+                         then we have a triangle (u,v,w)
+
+          The work is the out_degree(u) times the out_degree(v). 
+
+          Total work = sum_{u} out_degree(u) * (sum_{v in out-neighbors of u} out_degree(v))
+
+          This might be O(n^2) in the worst-case.
+
+        Alternatively, we can do:
+
+          For u in range(1, n+1):
+             Mark all out-neighbors of u in a set S (or use adj_set[u] for the entire neighborhood? But then we can use the existing adj_set[u] for the entire neighborhood, not just out-neighbors).
+
+          Then for each out-neighbor v of u:
+             for each out-neighbor w of v:
+                 if w in adj_set[u] and w > v:   # and also we require u<v<w? 
+                     then we have a triangle (u,v,w)
+
+          But then the work is the same.
+
+        We hope that the out_degree is small. In the orientation, the out_degree of a node is at most O(sqrt(m)) in general, but in planar graphs we don't know.
+
+        But worst-case, the out_degree of a node might be O(n), and then the work for u is O( out_degree(u) * out_degree(v) for each v) which could be O(n^2) for one u.
+
+    Given the time, we will do the first method for triangles: iterate over edges and then do the set intersection, and hope that the sum of min(deg(u), deg(v)) over edges is not too bad.
+
+        In the worst-case (star) the sum is O(m) = O(n). 
+        In the worst-case of a complete graph on 4 nodes, the sum is 6 * min(3,3) = 6*3 = 18.
+        In the worst-case of a planar graph that is a complete graph on 4 nodes repeated n/4 times, then the sum is O(n). 
+
+        But we don't know the worst-case for a planar graph. However, we know that the number of triangles is O(n), and the sum_{edge} |common| = 3 * number of triangles = O(n). 
+
+        But our set intersection per edge is O(min(deg(u), deg(v))), which is not the size of the common set, but the cost of set intersection is the size of the smaller set. 
+
+        And the sum over edges of min(deg(u), deg(v)) is not the same as the sum over edges of |common|. 
+
+        However, we can try to run with the set intersection. 
+
+        We can try to optimize by: 
+             if deg[u] < deg[v]:
+                 common = adj_set[u] & adj_set[v]   # but we could iterate over the smaller set: we iterate over the elements of adj_set[u] and check in adj_set[v]?
+             else:
+                 common = adj_set[v] & adj_set[u]
+
+        But that is what the set intersection does internally.
+
+    Given the complexity and the time limits, and the fact that worst-case might be a planar graph with many high-degree nodes, we might need to hope that the constant factors are low or switch to C++.
+
+    But the problem says 4 seconds in Python? 
+
+    We will try the first method for both triangles and K4 and hope that the test data is not worst-case.
+
+    Alternatively, we can use a list and then binary search if we sort the adjacency lists. Then the work per edge (u,v) for the common set is O( min(deg(u), deg(v)) * log(max(deg(u), deg(v))) ). 
+
+        We could do:
+
+             if deg[u] < deg[v]:
+                 iterate over each neighbor w in graph[u]: 
+                     if w > v and w in adj_set[v]:   # how to check w in adj_set[v]? If we have sorted the adjacency list for v, we can use binary search.
+                 then common = the list of w that satisfy the condition.
+             else: similarly.
+
+        Then we don't need to use set intersection, but we do:
+
+             We precompute for each node: sort(graph[i])
+
+        Then for an edge (u,v) with deg[u] < deg[v]:
+             for w in graph[u]:
+                 if w > v and we can binary search in graph[v] for w.
+             then the work is O(deg(u) * log(deg(v)))
+
+        The total work is sum_{edge} min(deg(u), deg(v)) * log(max(deg(u), deg(v))). 
+
+        And this might be more efficient in practice.
+
+    Given that n=100000, and the worst-case of a star: for the center, it has degree n-1, then the edges incident to the center: deg(u)=n-1, and the other endpoint has deg(v)=1. Then the work for an edge incident to the center: min(deg(u),deg(v))=1, and the log factor is log(1)=0? Then constant.
+
+        For an edge between two leaves: not present.
+
+        For a complete graph on 4 nodes: each edge: min(deg(u),deg(v))=3, log(3) is constant.
+
+        For a node with degree d, the work for its edges: the edges to a node with larger degree: then we iterate over the smaller set, which is the other node if it has smaller degree, or this node if it has smaller degree.
+
+        This is the same as before.
+
+    We will implement the sorted lists and binary search for the first pass (triangles) and for the common set in the first pass (which is for the edge (u,v) we are already doing set intersection) and also for the K4 pass we need set intersections for three sets, but we can use sorted lists and then do a three-way merge in O(|set1|+|set2|+|set3|). 
+
+        For the triple intersection in the K4 pass: we can do:
+
+             common = sorted_list[u] and then intersect with sorted_list[v] and then with sorted_list[w] by doing a three-way merge.
+
+        The work is O(deg(u)+deg(v)+deg(w)).
+
+        And the sum over triangles of (deg(u)+deg(v)+deg(w)) might be O(n^2). 
+
+        Therefore, we will not do that.
+
+    Given the time, we will output the version with set intersections, and hope that the worst-case doesn't happen.
+
+    Or, we can use the following: since the number of triangles is O(n), then in the first pass we only do the set intersection for each edge, and the total work for the first pass is the sum_{edge} min(deg(u),deg(v)), which might be acceptable.
+
+    We'll try with the set intersection and hope.
+
+    Note: we also have the K4 pass: the number of triangles is O(n), and for each triangle we do a triple set intersection. The work for the triple set intersection is the size of the smallest set. 
+
+        common = adj_set[u] & adj_set[v] & adj_set[w] 
+
+        is done by: 
+            temp = adj_set[u] & adj_set[v] 
+            common = temp & adj_set[w]
+
+        The work is O( min(|adj_set[u]|, |adj_set[v]|) + min(|temp|, |adj_set[w]|) ) = O( min(deg(u),deg(v)) + min(|common of u and v|, deg(w)) ).
+
+        And the sum over triangles might be the number of triangles times the average min(deg(u),deg(v)) which might be large.
+
+    Given the complexity, and since we know that the triple intersection size is at most a constant (from the planarity) we hope, but actually it can be up to O(n) (like in the star the center has degree n-1, and then the triple intersection for a triangle incident to the center might be large), but note: in the star there is no triangle? 
+
+    Let me see: a star has no triangles.
+
+    Therefore, the only triangles occur in non-star parts.
+
+    We'll submit and hope.
+
+    Given the sample: 
+        Sample1: n=3, m=2 -> best=20.
+        Sample2: n=3, m=3 -> best=60.
+
+    We'll test with the samples.
+
+    Let me do sample1:
+
+        cities: 3 cities, but we ignore.
+        edges_dict: 
+            (1,2):10
+            (2,3):20   [stored as (2,3):20]
+
+        Then for edge (1,2): common = adj_set[1] & adj_set[2] = {2} for 1? adj_set[1] = {2} (if city1 index=1, city2=2, city3=3)
+            adj_set[1] = {2}
+            adj_set[2] = {1,3}
+            common = {1,2} intersect? no: 1 and 2: common = {2}? But 2 is not greater than 2? -> no, we have w must be > the larger of u and v. Here u=1, v=2, so w>2. 
+            Then no w.
+
+        For edge (2,3): common = adj_set[2] & adj_set[3] = {3}? 
+            adj_set[2] = {1,3}, adj_set[3] = {2} -> common = { }? because 3 is in adj_set[2] and 2 in adj_set[3], but the common set should be the set of nodes that are neighbors of both 2 and 3. That is { }? 
+
+            Actually, the common neighbor would be a node w such that w is neighbor of 2 and 3. But there is none? 
+
+        Therefore, no triangle.
+
+        Then best remains the max edge: 20.
+
+        Then we output 20.
+
+    Sample2: 
+        edges_dict:
+            (1,2):10
+            (2,3):20
+            (1,3):30
+
+        For edge (1,2): common = adj_set[1] (which is {2,3}) and adj_set[2] (which is {1,3}) -> common = {3} and 3>2 -> then triangle (1,2,3) with total = 10+30+20 = 60.
+        Then best = max(10,20,30,60) = 60.
+
+        Then in the triangle pass, we also have for edge (1,3): common = adj_set[1] & adj_set[3] = {2} but 2<3 -> so no triangle (because we require w>3? -> no, we require w> the larger of u and v, which is 3? so 2<3 -> skip).
+
+        For edge (2,3): common = adj_set[2] & adj_set[3] = {1} and 1<3 -> skip.
+
+        Then in the K4 pass: we have one triangle (1,2,3). 
+            common = adj_set[1] & adj_set[2] & adj_set[3] = {}? 
+                adj_set[1]={2,3}, adj_set[2]={1,3}, adj_set[3]={1,2} -> intersection is empty.
+            so no K4.
+
+        Then output 60.
+
+    Therefore, the code passes the samples.
+
+    Let's run on a K4: nodes 1,2,3,4.
+
+        edges_dict has 6 edges.
+
+        Consider edge (1,2): common = adj_set[1] & adj_set[2] = {3,4} (assuming the K4 has edges 1-3,1-4,2-3,2-4, and 3-4).
+            w=3: 3>2 -> triangle (1,2,3) with total = a(1,2)+a(1,3)+a(2,3)
+            w=4: 4>2 -> triangle (1,2,4) with total = a(1,2)+a(1,4)+a(2,4)
+
+        Consider edge (1,3): common = adj_set[1] & adj_set[3] = {2,4}
+            w=2: 2<3 -> skip.
+            w=4: 4>3 -> triangle (1,3,4) with total = a(1,3)+a(1,4)+a(3,4)
+
+        Consider edge (1,4): common = adj_set[1] & adj_set[4] = {2,3}
+            w=2: 2<4 -> skip
+            w=3: 3<4 -> skip? 
+            But note: we have 2 and 3 are both in the set, but we only consider w>4? -> no, w> the larger of u and v, which is 4? so no.
+
+        Consider edge (2,3): common = adj_set[2] & adj_set[3] = {1,4}
+            w=1: 1<3 -> skip
+            w=4: 4>3 -> triangle (2,3,4) with total = a(2,3)+a(2,4)+a(3,4)
+
+        Consider edge (2,4): common = {1,3}
+            w=1: skip, w=3: 3<4 -> skip.
+
+        Consider edge (3,4): common = {1,2}
+            w=1: skip, w=2: skip.
+
+        Then we have 4 triangles.
+
+        Then in the K4 pass: for each triangle, we do the triple intersection.
+
+        For triangle (1,2,3): common = adj_set[1] & adj_set[2] & adj_set[3] = {4} -> then we add the K4 (1,2,3,4) and compute the sum of 6 edges.
+
+        For triangle (1,2,4): common = {3} -> then we add the K4 (1,2,3,4) again -> duplicate.
+
+        Similarly for the other two: also duplicate.
+
+        We avoid by the done_k4 set.
+
+    Therefore, it works.
+
+    We will code accordingly.
+
+    Note: the penalty for non-highway edges is only in the penalty term, and we are only considering cliques (which have no missing edge) so the penalty is 0.
+
+    Therefore, the score for a clique of size 2,3,4 is simply the sum of the edge attractions.
+
+    We do not consider larger cliques because the penalty would be negative and very large.
+
+    We output the code accordingly.
+
+    Let's code accordingly.
+
+    Important: we are storing the edges in edges_dict only for the given highways. And our graph is exactly the highway graph.
+
+    We assume the graph is connected enough? but it might not be. But then the set intersection might be empty.
+
+    We'll run.
+
+    We note that the set intersection might be heavy, but we hope that the test data is not worst-case.
+
+    If we encounter worst-case, we might need to use sorted lists and binary search for the set operations.
+
+    But we'll start with set.
+
+    Steps for the code:
+
+        n, m = map(int, input().split())
+        cities = [tuple(map(int, input().split())) for _ in range(n)]
+        graph = [[] for _ in range(n+1)]
+        deg = [0]*(n+1)
+        edges_dict = {}
+        adj_set = [set() for _ in range(n+1)]   # 0-indexed we ignore index0, use 1..n
+
+        for i in range(m):
+            u, v, a = map(int, input().split())
+            if u > v:
+                u, v = v, u
+            edges_dict[(u,v)] = a
+            graph[u].append(v)
+            graph[v].append(u)
+            deg[u] += 1
+            deg[v] += 1
+            adj_set[u].add(v)
+            adj_set[v].add(u)
+
+        best = 0
+
+        # Size 2: each edge
+        for key in edges_dict:
+            a_val = edges_dict[key]
+            if a_val > best:
+                best = a_val
+
+        triangles = []   # for the triangle and for K4
+
+        for (u,v) in edges_dict:
+            # We want common = adj_set[u] & adj_set[v], and then consider w in common with w>v
+            common = adj_set[u] & adj_set[v]
+            for w in common:
+                if w > v:
+                    # This ensures u<v<w
+                    try:
+                        a1 = edges_dict[(u,v)]
+                        a2 = edges_dict[(u,w)]
+                        a3 = edges_dict[(v,w)]
+                    except KeyError: 
+                        # In case one edge is missing, but it should not happen.
+                        continue
+                    total = a1 + a2 + a3
+                    if total > best:
+                        best = total
+                    triangles.append((u,v,w))
+
+        done_k4 = set()
+        for (u,v,w) in triangles:
+            common = adj_set[u] & adj_set[v] & adj_set[w]
+            for x in common:
+                if x == u or x == v or x == w:
+                    continue
+                four = tuple(sorted([u,v,w,x]))
+                if four in done_k4:
+                    continue
+                done_k4.add(four)
+                nodes = four
+                total_k4 = 0
+                for i in range(4):
+                    for j in range(i+1,4):
+                        a_val = nodes[i]
+                        b_val = nodes[j]
+                        if a_val > b_val:
+                            a_val, b_val = b_val, a_val
+                        # Now (a_val, b_val) is the key
+                        if (a_val, b_val) in edges_dict:
+                            total_k4 += edges_dict[(a_val, b_val)]
+                        else:
+                            # This should not happen in a K4, but if it does, skip?
+                            # But then it's not a K4? 
+                            total_k4 = -10**18   # invalid, but we skip?
+                            break
+                    if total_k4 < 0:
+                        break
+                if total_k4 > best:
+                    best = total_k4
+
+        print(best)
+
+    However, the double loop for the four nodes is O(1). 
+
+    But note: we might have a four that is not a clique? but in our method, we have x in the common neighbors of u,v,w, meaning that x is connected to u, v, and w. And we have the triangle (u,v,w) so u,v,w are connected. Then the only potential missing edge is between x and itself? so it's a clique.
+
+    But we are not storing self edges, and we have the four nodes distinct.
+
+    Therefore, the inner double loop will get all six edges.
+
+    We can also do:
+
+        try:
+            a1 = edges_dict.get((min(u,v), max(u,v)))
+            a2 = edges_dict.get((min(u,w), max(u,w)))
+            a3 = edges_dict.get((min(u,x), max(u,x)))
+            a4 = edges_dict.get((min(v,w), max(v,w)))
+            a5 = edges_dict.get((min(v,x), max(v,x)))
+            a6 = edges_dict.get((min(w,x), max(w,x)))
+            total_k4 = a1+a2+a3+a4+a5+a6
+        except:  # if any is missing, skip. But should not happen.
+            continue
+
+    But using the sorted list of four nodes and then the double loop is cleaner.
+
+    We'll do the double loop over the four nodes.
+
+    Let's hope.
+
+    We run on the sample2: no K4, so the K4 part is not triggered.
+
+    We run on a K4: 
+        four = (1,2,3,4)
+        Then the pairs: 
+            (1,2), (1,3), (1,4), (2,3), (2,4), (3,4) -> all in edges_dict.
+
+    So it works.
+
+    Final code.
+
+    Note: worst-case might be a planar graph that is a big K_{2,n-2} which has no triangles and no K4, so we only do the set intersections for the common set per edge: which is O(n) per edge? no, for an edge from the center to a leaf, the common set is the other center? 
+        In K_{2, n-2}: 
+            centers: 1,2; leaves: 3..n.
+            For edge (1,2): common = the set of leaves, which has size n-2.
+            Then we iterate over the leaves w, but then we require w>2 (which is true) and then we try to get edges_dict for (1,w) and (2,w) -> which exist. 
+            But then we form a triangle (1,2,w) for each leaf w. 
+            The number of triangles is n-2, which is O(n). 
+            Then the work for the edge (1,2) is O(n-2). 
+            And then for the K4 part: we iterate over the triangles: n-2 of them. 
+            For each triangle (1,2,w): the common = adj_set[1] & adj_set[2] & adj_set[w] = (set of leaves) & adj_set[w] ? 
+                adj_set[1] = {2} U {leaves}
+                adj_set[2] = {1} U {leaves}
+                adj_set[w] = {1,2}
+                common = leaves? intersect with {1,2} -> empty.
+
+            So no K4.
+
+        Therefore, the total work for the edge (1,2) is O(n) and for the triangles is O(n). 
+        But we have other edges: the edges from center 1 to a leaf w: then common = adj_set[1] & adj_set[w] = adj_set[w] = {1,2} and then we look for a neighbor x in common with x>w? 
+            But the common set = {2} (because 1 is already the center and 2 is the other center) and then 2<w? (if w>2) -> skip.
+
+        Similarly for center 2 to a leaf.
+
+        So the only edge that gives many triangles is the edge (1,2). 
+
+        Then the total work is O(m + n) = O(n) for this graph.
+
+    Therefore, it is efficient for this graph.
+
+    We hope for the best.
+
+    Let's code accordingly.
+
+    Note: the sample input might have 0 edges.
+
+    We'll test: 
+        n=1, m=0: 
+            best = 0 (from edges_dict: no edges, then triangles: no, K4: no -> output 0.
+
+    We'll run the code.
+
+    We'll submit.

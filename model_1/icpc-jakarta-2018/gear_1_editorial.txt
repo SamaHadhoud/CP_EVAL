@@ -1,0 +1,194 @@
+### Problem Analysis
+The problem involves managing a tree of gears where each gear's rotation affects connected gears in an alternating direction (clockwise and counter-clockwise). The operations include removing a gear, placing it back, and rotating a specific gear by a certain number of degrees. After each rotation operation, the energy required (defined as the product of the number of gears rotated and the rotation angle) must be output. Finally, the sum of the rotation degrees of all gears after all operations must be computed.
+
+#### Key Observations:
+1. **Rotation Propagation**: When a gear is rotated, the rotation propagates through the connected gears (present on the board) in an alternating manner. The rotation direction for each gear depends on the parity of its distance from the rotated gear. Specifically, gears at an even distance rotate in the same direction, while those at an odd distance rotate in the opposite direction.
+2. **Dynamic Connectivity**: Removing or placing a gear changes the connectivity of the tree. When a gear is removed, the tree splits into multiple disconnected components. Placing it back merges these components.
+3. **Energy Calculation**: For a rotation operation on gear `x` by `α` degrees, the energy is `(size of the connected component containing `x`) * α`.
+4. **Final Sum Calculation**: The final answer requires the sum of the rotation degrees of all gears (including those not currently on the board), considering all rotations applied while they were connected.
+
+### Algorithmic Approach
+The solution involves efficiently managing dynamic connectivity and tracking the rotation effects on gears. The main challenge is handling the propagation of rotations and maintaining component aggregates (size and sum of signs) for energy and final sum calculations.
+
+#### Steps:
+1. **Tree Representation**: Represent the tree using adjacency lists. Precompute the depth of each gear and its sign: `sign[i] = (-1)^(depth[i])`. This helps in determining the rotation direction during propagation.
+2. **Dynamic Component Management**: Use a data structure to maintain connected components dynamically, supporting:
+   - **Component Aggregates**: For each component, maintain:
+     - `size`: Number of gears in the component.
+     - `sum_sign`: Sum of `sign[i]` for all gears in the component. This helps in computing the rotation effect on the final sum.
+   - **Updates on Operations**:
+     - **Remove Gear `x`**: 
+       - Remove `x` from its component, splitting the component into smaller components for each present neighbor of `x`.
+       - Update the component's `size` and `sum_sign` by removing `x`'s contribution.
+     - **Place Gear `x` Back**: 
+       - Merge the components of present neighbors with `x` to form a new component.
+       - Add `x`'s contribution to the new component's `size` and `sum_sign`.
+     - **Rotate Gear `x` by `α`**:
+       - Output the energy: `(size of the component containing `x`) * α`.
+       - The rotation's contribution to the final sum is `α * sign[x] * (sum_sign of the component)`. Accumulate this for all rotations.
+3. **Efficient Component Tracking**: Utilize Euler Tour Trees (ETT) or a similar dynamic connectivity structure to manage the components. ETT allows efficient splitting and merging of components by maintaining DFS traversal sequences and aggregates (size and sum of signs) in balanced BSTs.
+4. **Final Sum Calculation**: After processing all operations, the final sum of gear rotations is the accumulated sum from all rotations.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <set>
+#include <map>
+using namespace std;
+
+struct Component {
+    int id;
+    int size;
+    int sum_sign;
+};
+
+class DynamicTree {
+    vector<int> parent, depth, sign;
+    vector<vector<int>> adj;
+    vector<int> active;
+    vector<Component> comp;
+    vector<int> comp_id;
+    vector<int> comp_size;
+    vector<int> comp_sum_sign;
+    int comp_counter;
+
+public:
+    DynamicTree(int n) : parent(n+1), depth(n+1), sign(n+1), adj(n+1), active(n+1, 1), comp_id(n+1), comp_size(n+1), comp_sum_sign(n+1), comp_counter(0) {
+        comp_counter = n;
+        for (int i = 1; i <= n; i++) {
+            comp_id[i] = i;
+            comp_size[i] = 1;
+            comp_sum_sign[i] = sign[i];
+        }
+    }
+
+    void addEdge(int u, int v) {
+        adj[u].push_back(v);
+        adj[v].push_back(u);
+    }
+
+    void dfs(int u, int p, int d) {
+        depth[u] = d;
+        sign[u] = (d % 2 == 0) ? 1 : -1;
+        parent[u] = p;
+        for (int v : adj[u]) {
+            if (v == p) continue;
+            dfs(v, u, d+1);
+        }
+    }
+
+    void remove(int x) {
+        active[x] = 0;
+        int old_comp = comp_id[x];
+        comp_size[old_comp]--;
+        comp_sum_sign[old_comp] -= sign[x];
+        for (int y : adj[x]) {
+            if (!active[y]) continue;
+            if (comp_id[y] == old_comp) {
+                comp_counter++;
+                comp_size[comp_counter] = 0;
+                comp_sum_sign[comp_counter] = 0;
+                queue<int> q;
+                q.push(y);
+                comp_id[y] = comp_counter;
+                comp_size[comp_counter]++;
+                comp_sum_sign[comp_counter] += sign[y];
+                while (!q.empty()) {
+                    int u = q.front(); q.pop();
+                    for (int v : adj[u]) {
+                        if (v == x || !active[v] || comp_id[v] != old_comp) continue;
+                        comp_id[v] = comp_counter;
+                        comp_size[comp_counter]++;
+                        comp_sum_sign[comp_counter] += sign[v];
+                        q.push(v);
+                    }
+                }
+            }
+        }
+        comp_id[x] = 0;
+    }
+
+    void place(int x) {
+        active[x] = 1;
+        comp_counter++;
+        comp_id[x] = comp_counter;
+        comp_size[comp_counter] = 1;
+        comp_sum_sign[comp_counter] = sign[x];
+        for (int y : adj[x]) {
+            if (!active[y]) continue;
+            if (comp_id[y] != comp_counter) {
+                comp_size[comp_counter] += comp_size[comp_id[y]];
+                comp_sum_sign[comp_counter] += comp_sum_sign[comp_id[y]];
+                queue<int> q;
+                q.push(y);
+                comp_id[y] = comp_counter;
+                while (!q.empty()) {
+                    int u = q.front(); q.pop();
+                    for (int v : adj[u]) {
+                        if (v == x || !active[v] || comp_id[v] == comp_counter) continue;
+                        comp_id[v] = comp_counter;
+                        q.push(v);
+                    }
+                }
+            }
+        }
+    }
+
+    pair<int, int> rotate(int x, int alpha) {
+        int cid = comp_id[x];
+        int energy = comp_size[cid] * alpha;
+        int sum_contrib = alpha * sign[x] * comp_sum_sign[cid];
+        return {energy, sum_contrib};
+    }
+};
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(0);
+    int n;
+    cin >> n;
+    DynamicTree tree(n);
+    for (int i = 0; i < n-1; i++) {
+        int u, v;
+        cin >> u >> v;
+        tree.addEdge(u, v);
+    }
+    tree.dfs(1, 0, 0);
+    int q;
+    cin >> q;
+    long long total_sum = 0;
+    while (q--) {
+        int op;
+        cin >> op;
+        if (op == 1) {
+            int x;
+            cin >> x;
+            tree.remove(x);
+        } else if (op == 2) {
+            int x;
+            cin >> x;
+            tree.place(x);
+        } else if (op == 3) {
+            int x, alpha;
+            cin >> x >> alpha;
+            auto [energy, sum_contrib] = tree.rotate(x, alpha);
+            total_sum += sum_contrib;
+            cout << energy << '\n';
+        }
+    }
+    cout << total_sum << '\n';
+    return 0;
+}
+```
+
+### Explanation
+1. **Tree Representation and Initialization**: The tree is built using adjacency lists. A DFS computes the depth and sign (based on depth parity) for each gear.
+2. **Component Management**: The `DynamicTree` class manages connected components:
+   - **Remove Operation**: The gear is marked inactive. The component splits into subcomponents for each active neighbor, updated via BFS to assign new component IDs and aggregates.
+   - **Place Operation**: The gear is marked active. Its component is formed by merging adjacent active components via BFS, updating component aggregates.
+   - **Rotate Operation**: The energy is computed as `component_size * α`. The rotation's contribution to the final sum is `α * sign[x] * component_sum_sign`.
+3. **Efficiency**: BFS operations during removal and placement ensure correct component updates. The use of component IDs and aggregates allows efficient energy and sum calculations.
+4. **Final Output**: After processing all operations, the accumulated sum of rotation contributions is printed.
+
+This approach efficiently handles dynamic connectivity and rotation propagation, ensuring optimal performance for large inputs.

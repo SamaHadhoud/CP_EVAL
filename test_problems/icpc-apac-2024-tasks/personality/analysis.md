@@ -1,0 +1,7 @@
+The problem can be reformulated as follows:
+
+> Suppose there exists a graph with $n$ vertices, numbered from $1$ to $n$. Initially, each pair of vertices is connected by an undirected edge with weight zero. We increment an integer $b$ from $1$ to $n$. In each step, for every $1 \leq i < b$ and $1 \leq j \leq m$ such that $S_{ij} = S_{bj} \ne \texttt{'.'}$, we increment the weight between vertices $i$ and $b$ by one. If we encounter an edge with a weight of $k$ or more, we must report that edge and terminate the program.
+
+A straightforward implementation of this procedure requires $\Theta(n^2 m)$ time. An important observation is that the sum of weights across all edges is bounded by $(k - 1)\binom{n}{2}$, unless the step is at the termination of the program. This implies that the increase in edge weights occurs at most $O(kn^2)$ times. With some precomputation, for each $j$ such that $S_{bj} \ne \texttt{'.'}$ in the steps of the above procedure, we can enumerate all indices $i$ satisfying $S_{ij} = S_{bj}$ in $O(\#\{i < b \mid S_{ij} = S_{bj}\})$ time, instead of $\Theta(b)$ time.
+
+With this enumeration method, the runtime becomes $O(nm + m\Sigma + kn^2)$, where $\Sigma$ is the number of Latin characters (in this problem, $\Sigma = 26$).

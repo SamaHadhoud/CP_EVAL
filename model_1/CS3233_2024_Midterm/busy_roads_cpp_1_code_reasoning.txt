@@ -1,0 +1,853 @@
+ We are going to implement the same approach as described in the editorial.
+ Steps:
+ 1. Read input: n, m, C_day, and then m lines of roads.
+ 2. Build an undirected graph: for each road (a, b, T, L, R), we add two directed edges: from a to b and from b to a with the same (T, L, R).
+ 3. Use Dijkstra's algorithm: 
+    - We maintain an array `dist` for the earliest arrival time at each city (indexed 1..n). Initialize with a very large number (inf) except dist[1]=0.
+    - Use a min-heap (priority_queue) that will store pairs (current_time, city).
+ 4. For each edge (u -> v) with parameters (T, L, R):
+    - Let `t` be the current time at city u.
+    - We compute the current time modulo C_day: `rem = t % C_day`.
+    - There are two cases:
+        Case 1: `rem <= R`: 
+            - If `rem` is already at least L, then we can start immediately -> start_time = t.
+            - Otherwise, we have to wait until L: start_time = t + (L - rem).
+        Case 2: `rem > R`:
+            - We have to wait until the next day: start_time = t + (C_day - rem) + L.
+    - Then the arrival time at v would be `start_time + T`.
+    - If this arrival time is less than the current known time for v, update it and push it into the heap.
+
+ Note: The above formula for Case 2: 
+        We are at time `t` (which is in the next day's cycle? Actually, modulo C_day we are after R). 
+        We wait for the rest of the day: (C_day - rem) seconds to finish the current day, then we wait until L seconds of the next day? 
+        Actually, we can also think: we need to wait until the next opening window which starts at L in the next day? 
+        But note: the problem says the road is available every day between [L, R]. So if we are at time t (with rem = t mod C_day > R), 
+        then the next window is the next day: so we wait until the same window in the next day. The waiting time from t is: 
+            (C_day - rem)   -> to get to the end of the current day, then plus L (to get to the L-th second of the next day).
+
+    Alternatively, we can write:
+        start_time = t + ( (L - rem) % C_day + C_day ) % C_day;   -> but modulo arithmetic might be tricky with negatives.
+
+    However, note: 
+        If we are in case 1: we can use max(0, L - rem) -> which is the waiting time until the window opens the same day.
+        In case 2: we do (C_day - rem) + L.
+
+    Actually, we can write a unified formula? 
+        waiting_time = 
+          if rem <= R: max(0, L - rem)
+          else: (C_day - rem) + L
+
+    Then start_time = t + waiting_time.
+
+ 5. We output dist[n].
+
+ Important: Constraints are large (n up to 100000, m up to 200000, C_day up to 10^9, T up to 10^9) -> so use long long for time.
+
+ Implementation in C++:
+
+  - We use `vector<vector<tuple<int, long long, long long, long long>>>` for graph? 
+    Each element: (neighbor, T, L, R)
+
+  But note: the input says L and R are in [0, C_day-1] and T is at least 1, so we can use long long for T, L, R.
+
+  However, note: the problem states that C_day is at least 1, and T_i at least 1, but also up to 10^9 -> so we use `long long` for time.
+
+ Steps:
+
+  - Read n, m, C_day.
+  - Build graph: for each road, we read a, b, T, L, R and add two edges.
+
+  - Initialize:
+        vector<long long> dist(n+1, LLONG_MAX);
+        dist[1] = 0;
+        priority_queue: min-heap of pairs: (time, node). We use greater for min-heap? or negative? Instead, we use:
+        priority_queue<pair<long long, int>, vector<pair<long long, int>>, greater<pair<long long, int>>> heap;
+
+  - Then push (0, 1).
+
+  - While heap not empty:
+        pop the smallest time node: (t, u)
+        if t is not equal to dist[u] -> skip (because we might have updated and this is an old value)
+        for each edge from u to v with (T, L, R):
+            rem = t % C_day
+            if rem <= R:
+                start_time = t + max(0LL, L - rem);
+            else:
+                start_time = t + (C_day - rem) + L;
+            arrival = start_time + T;
+            if arrival < dist[v]:
+                dist[v] = arrival;
+                push (arrival, v) into the heap.
+
+  - Print dist[n]
+
+ But note: what if L - rem is negative? Then we take 0 -> so we use max(0, ...)
+
+ However, what if the window is [L, R] and we are at time t where rem is in [0, R] but maybe rem < L? Then we have to wait until L: that's the max(0, L-rem).
+
+ Let's test with the sample: 
+    Sample Input #1: 
+        3 3 10
+        1 2 3 0 5
+        1 3 1 7 8
+        3 2 4 3 3
+
+    We start at city1 at time0.
+
+    Edge1: 1->2: T=3, L=0, R=5 -> rem=0: 
+        rem<=R -> start_time = 0 + max(0,0-0)=0 -> arrival=3 at city2 -> but we know the answer is 7, so we don't get the answer from this edge at first.
+
+    Edge2: 1->3: T=1, L=7, R=8 -> rem=0<=8 -> so we have to wait until 7: start_time=0+7=7 -> arrival=8 at city3.
+
+    Then from city3, we have edge: 3->2: T=4, L=3, R=3 -> rem=8 mod10=8 -> which is >3 -> so we do: 
+        start_time = 8 + (10-8) + 3 = 8+2+3 = 13 -> arrival=13+4=17 at city2.
+
+    But we also have an edge from city3 to city1? and also from city2 to city1? but we are done with city1.
+
+    However, note: we have a better way to city2: 3 seconds? but that is not the answer because we have to use the constraints.
+
+    But wait, the sample output is 7. How?
+
+    There is another edge: 3->2: but the window is [3,3]. How can we use that? We are at city3 at time8. We have to wait until the next window: which is at 3 of the next day? -> 8 mod10=8 -> we have to wait 10-8=2 seconds to finish the day, then 3 seconds into the next day -> so 8+2+3 = 13 seconds to start, then 4 seconds travel -> 17.
+
+    How do we get 7? 
+
+    Actually, note: we have a road from city1 to city2: 0 seconds? but we start at time0 and the window is [0,5] so we can take that road at time0 and arrive at time3 at city2? then why isn't the answer 3?
+
+    But the problem says: the road from city1 to city2: 
+        "1 2 3 0 5" -> meaning we can enter the road between 0 and 5 seconds. We start at time0 -> so we can enter at time0? then travel for 3 seconds -> so we arrive at time3 at city2? Then the time to city2 is 3, and to cityN (which is city3? but the problem says Robert lives in city1 and wants to get to cityN, which is 3? in the sample input? Actually, the sample input: 
+            "3 3 10" -> so N=3.
+
+        Then why output is 7? 
+
+    Actually, the sample input: 
+        "3 3 10
+         1 2 3 0 5
+         1 3 1 7 8
+         3 2 4 3 3"
+
+    The sample output: 7.
+
+    How? 
+        The answer 7 is achieved by:
+          Start at city1 at time0, then wait 7 seconds? then take the road from city1 to city3? which takes 1 second -> arrives at city3 at time8? but then we are at city3 at time8 and we need to go to city2? but we are going to cityN which is city3? -> no, the problem says Robert wants to get to cityN (which is city3) and we have arrived at time8? but 8 is not 7.
+
+    Let me read the sample again: 
+        The problem says: Robert lives in city1, and wants to get to cityN (which is city3? because N=3). 
+        But the sample output is 7.
+
+    Alternatively, the problem might have intended that the destination is city3? and the road from city1 to city3 is available at time7? so we wait until time7 and then take 1 second -> arrival at city3 at time8? -> 8 seconds? but the output is 7.
+
+    Actually, the sample input: 
+        "1 3 1 7 8": from city1 to city3, travel time 1, window [7,8]. So we can start at time7 and arrive at time8? 
+        Then how is the answer 7? 
+
+    There is another possibility: the sample output says 7 meaning that we start at time0 and then we do something that takes 7 seconds? but then we are at city3? 
+
+    Actually, the problem says: 
+        "Output a single integer, the minimum amount of time in seconds he needs to get from city 1 to city N."
+
+    So the answer 7 must be the total time from start until arrival at city3? 
+
+    How about the road from city1 to city3: we start at time0, then wait 7 seconds -> that's 7 seconds, then travel for 1 second -> total 8 seconds? 
+
+    But wait: the problem says we start at time0 on some day. We are allowed to wait in cities. So at city1 we wait 7 seconds -> then we use the road at time7 and arrive at city3 at time8? total time 8 seconds? 
+
+    Then why output is 7? 
+
+    Let me check the sample input again: 
+        The third road: "3 2 4 3 3" -> meaning from city3 to city2? but the problem says Robert is going to cityN (city3). So why use that road?
+
+    Alternatively, the problem might have intended that the destination is city2? but the problem states: 
+        "Robert lives in city1, and wants to get to cityN"
+
+    And the input: first line "3 3 10", so N=3.
+
+    But the sample output is 7? 
+
+    After re-examining the problem statement: the sample input says:
+        "3 3 10" -> meaning 3 cities, 3 roads, and day has 10 seconds.
+
+    And the roads:
+        1 2 3 0 5 -> road from 1 to 2: travel time 3, available from 0 to 5 seconds.
+        1 3 1 7 8 -> road from 1 to 3: travel time 1, available from 7 to 8 seconds.
+        3 2 4 3 3 -> road from 3 to 2: travel time 4, available only at 3 seconds (each day).
+
+    How can we get to city3 in 7 seconds? 
+        There is no direct way that takes 7 seconds? 
+
+    Let me consider: 
+        We start at city1 at time0. We take the road from city1 to city2: we start at time0 (within [0,5]) and arrive at city2 at time3. 
+        Then from city2, we can take the road back to city1? but that doesn't help. 
+        Or from city2 to city3? There is a road from city3 to city2: which is bidirectional? so we can use it from city2 to city3? 
+        The road: 3 2 4 3 3 -> meaning it connects city3 and city2, travel time 4, and available only at time3 each day.
+
+        So at city2 at time3: 
+            current time mod10 = 3 -> which is in the window [3,3] -> so we can start at time3? 
+            Then we travel for 4 seconds -> arrive at city3 at time7? 
+
+        That gives total time 3 (from 1 to 2) + 4 (from 2 to 3) = 7? 
+
+        But note: the road from city2 to city3: we are at city2 at time3. The road is available at time3? so we can start at time3? 
+        Then travel for 4 seconds -> arrive at city3 at time7? 
+
+        So the answer is 7.
+
+    Therefore, we must update the graph accordingly.
+
+    How does our algorithm handle that?
+        We start at city1: time0.
+        We consider edges from city1: 
+            to city2: 
+                rem = 0 % 10 = 0 -> <=5 -> so start_time = 0 + max(0,0-0)=0 -> arrival at city2: 0+3=3 -> dist[2]=3 -> push (3,2)
+            to city3:
+                rem=0 -> <=8 -> so we wait until 7: start_time=0+7=7 -> arrival=7+1=8 -> dist[3]=8 -> push (8,3)
+
+        Then we pop city2 at time3:
+            For edges from city2: 
+                to city1: we don't care? but we might update city1? but we don't need to because we start from city1? and we have time0 which is better? 
+                to city3: via the road that is stored as (3,4,3,3) [from the bidirectional storage]? 
+                    So edge: (v=3, T=4, L=3, R=3)
+                    At city2: time=3 -> rem = 3 %10=3 -> which is <=3 -> so we can start? 
+                    start_time = 3 + max(0, 3-3)=3 -> then arrival=3+4=7.
+                    Now we compare: dist[3] is currently 8 -> 7<8 -> so we update dist[3]=7 and push (7,3).
+
+        Then we pop city3 at time7 -> and we are done? then we output dist[3]=7.
+
+    So the algorithm should work.
+
+    Now, we have to be cautious about integer types: use long long for time.
+
+    Also note: the modulus calculation. Since C_day can be up to 10^9, and time can be huge, we do:
+        rem = t % C_day
+
+    But note: when t is negative? We start at 0 and then we only add positive numbers -> so t is nonnegative.
+
+ Implementation:
+
+  Steps:
+    #include <iostream>
+    #include <vector>
+    #include <queue>
+    #include <climits>
+    #include <cctype>
+    #include <algorithm>
+    #include <tuple>
+    #include <cstdio>
+
+    We are going to use:
+        using namespace std;
+        typedef long long ll;
+
+        int main() {
+            int n, m;
+            ll C_day;
+            scanf("%d %d %lld", &n, &m, &C_day);
+
+            vector<vector<tuple<int, ll, ll, ll>>> graph(n+1);
+
+            for (int i = 0; i < m; i++) {
+                int a, b;
+                ll T, L, R;
+                scanf("%d %d %lld %lld %lld", &a, &b, &T, &L, &R);
+                graph[a].push_back(make_tuple(b, T, L, R));
+                graph[b].push_back(make_tuple(a, T, L, R));
+            }
+
+            vector<ll> dist(n+1, LLONG_MAX);
+            dist[1] = 0;
+
+            // Min-heap: (time, node)
+            priority_queue<pair<ll, int>, vector<pair<ll, int>>, greater<pair<ll, int>>> pq;
+            pq.push(make_pair(0, 1));
+
+            while (!pq.empty()) {
+                auto [t, u] = pq.top();
+                pq.pop();
+
+                if (t != dist[u]) 
+                    continue;
+
+                for (auto &edge : graph[u]) {
+                    int v = get<0>(edge);
+                    ll T = get<1>(edge);
+                    ll L = get<2>(edge);
+                    ll R = get<3>(edge);
+
+                    ll rem = t % C_day;
+                    ll start_time;
+                    if (rem <= R) {
+                        if (rem < L) 
+                            start_time = t + (L - rem);
+                        else 
+                            start_time = t;   // no wait
+                    } else {
+                        // rem > R: we have to wait until next day
+                        start_time = t + (C_day - rem) + L;
+                    }
+
+                    ll arrival = start_time + T;
+                    if (arrival < dist[v]) {
+                        dist[v] = arrival;
+                        pq.push(make_pair(arrival, v));
+                    }
+                }
+            }
+
+            printf("%lld\n", dist[n]);
+            return 0;
+        }
+
+  But note: in the if-else we can write more compactly as:
+        if (rem <= R) {
+            start_time = t + max(0LL, L - rem);
+        } else {
+            start_time = t + (C_day - rem) + L;
+        }
+
+  However, note: if L-rem is negative, then max(0LL, ...) will be 0 -> which is correct.
+
+  But what if L-rem is negative? That means we are already after L? then we can start immediately? so yes.
+
+  We'll use:
+        if (rem <= R) {
+            start_time = t + (L > rem ? L - rem : 0);
+        } else {
+            start_time = t + (C_day - rem) + L;
+        }
+
+  Actually, we can write: 
+        if (rem <= R) 
+            start_time = t + max(0LL, L - rem);
+        else
+            start_time = t + (C_day - rem + L);
+
+  Let me test with the sample edge from city2 to city3 at time3: 
+        rem = 3 % 10 = 3.
+        L=3, R=3 -> rem<=R (3<=3) -> then we do max(0, 3-3)=0 -> start_time=3 -> then arrival=7 -> correct.
+
+  Also, from city1 to city3 at time0: 
+        rem=0, L=7 -> so max(0,7-0)=7 -> start_time=7 -> arrival=8 -> correct.
+
+  Another test: from city1 to city2 at time0: 
+        rem=0, L=0 -> max(0,0)=0 -> start_time=0 -> arrival=3 -> correct.
+
+  And the reverse: from city2 to city1: 
+        at time3: 
+            edge: (1,3,0,5) -> rem=3 -> L=0, R=5 -> 3<=5 -> so we do max(0,0-3)=0 -> start_time=3 -> arrival=3+3=6 -> so dist[1] becomes 6? but we started at 0 so we don't update.
+
+  So the algorithm should be correct.
+
+  But note: the modulus operation: 
+        rem = t % C_day -> this is standard for nonnegative t.
+
+  However, what if C_day is 1? Then modulus is always 0? 
+        Then if R is 0 (since R < C_day, then R must be 0) -> then we are in the first branch: rem (0) <= R (0) -> so we use max(0, L-0) -> but L must be 0? because L in [0, R] and R=0 -> so L=0 -> then max(0,0)=0.
+
+        So it's safe.
+
+  Let me test with Sample Input #2:
+
+        Input: 
+            5 5 10
+            1 2 1 6 8
+            1 3 4 3 5
+            2 4 4 1 5
+            3 4 2 2 6
+            4 5 6 3 7
+
+        Output: 20
+
+  How do we get 20?
+
+        We'll simulate:
+
+        Start at city1: time0.
+
+        Edges from city1:
+          to city2: T=1, L=6,R=8 -> rem=0 -> <=8 -> wait until 6: start_time=6 -> arrival=7 at city2 -> dist[2]=7.
+          to city3: T=4, L=3,R=5 -> rem=0 -> wait until 3: start_time=3 -> arrival=7 at city3 -> dist[3]=7.
+
+        Then we pop city2 (time7) and city3 (time7) -> let's pop city2 first? then city3? doesn't matter because both are 7.
+
+        From city2 (time7):
+          edges:
+            to city1: (T=1, L=6,8) -> rem=7%10=7 -> which is in [6,8] -> so we can start immediately? start_time=7 -> arrival=8 at city1 -> update? not necessary because 8>0.
+            to city4: (T=4, L=1,5) -> rem=7 -> which is >5 -> so we have to wait: (10-7)=3 seconds to end the day, then plus L=1 -> 3+1=4 seconds wait? so start_time=7+4=11 -> arrival=15 at city4 -> so dist[4]=15.
+
+        From city3 (time7):
+          edges:
+            to city1: similar -> not useful.
+            to city4: (T=2, L=2,6) -> rem=7%10=7 -> which is >6? -> so we have to wait: (10-7)=3 seconds to end the day, then plus L=2 -> total wait=5? so start_time=7+5=12 -> arrival=14 at city4 -> which is better than 15? so update dist[4]=14.
+
+        Then we pop city4 at time14? 
+          edges:
+            to city2: (T=4, L=1,5) -> rem=14%10=4 -> which is in [1,5] -> so we can start immediately? -> arrival=14+4=18 at city2 -> but city2 was 7 -> so we don't update.
+            to city3: (T=2, L=2,6) -> rem=4 -> in [2,6] -> immediate start -> arrival=16 at city3 -> but city3 was 7 -> don't update.
+            to city5: (T=6, L=3,7) -> rem=4 -> in [3,7] -> so immediate start: start_time=14 -> arrival=20 at city5 -> so dist[5]=20.
+
+        Then we output 20.
+
+        However, note: there might be a better path? 
+          What if from city1 to city3 (arrives at time7) then to city4 (arrives at time14) then to city5 (arrives at time20) -> that's 20.
+
+        But what about from city1 to city2 (arrives at time7) then to city4 (arrives at time15) then to city5: 
+            at city4 at time15: 
+                rem = 15%10=5 -> for the road to city5: L=3, R=7 -> 5 is in [3,7]? -> so start immediately: arrival=15+6=21.
+
+        So the best is 20.
+
+        Therefore, our simulation matches.
+
+  However, note: when we update city4 to 14 from city3->city4, then we push (14,4). Then we process that and update city5 to 20.
+
+  But in the above simulation we processed city2 and then city3, then we processed city4 from city3, then we processed city4 to update city5.
+
+  So the algorithm is correct.
+
+  Code:
+
+    We use scanf and printf for speed.
+
+    Important: use %lld for long long.
+
+    But note: the constraints: T, L, R, C_day are up to 10^9 -> so we use long long.
+
+  Let me write the code accordingly.
+
+  One more note: the modulus operation for nonnegative numbers is safe.
+
+  However, note: if t is 0, then modulus is 0. If t is positive, then modulus is nonnegative.
+
+  We'll code accordingly.
+
+  But note: the condition in the edge: 
+        if (rem <= R) { ... } else { ... }
+
+  This is correct.
+
+  Let me run the sample input #1 in the code? 
+        dist[1]=0 -> push (0,1)
+        pop (0,1): 
+            for edge (2, 3,0,5): 
+                rem=0 -> 0<=5 -> start_time = 0 + max(0,0-0)=0 -> arrival=0+3=3 -> update city2 to 3 -> push (3,2)
+            for edge (3,1,7,8): 
+                rem=0 -> 0<=8 -> start_time=0+max(0,7-0)=7 -> arrival=7+1=8 -> update city3 to 8 -> push (8,3)
+
+        Then pop (3,2):
+            edges: 
+                (1,3,0,5): already popped? we skip because we check t==dist[u]? and we set dist[1]=0, so if we get (1,3) from city2: 
+                    at city2 at time3: 
+                    rem=3 -> <=5 -> so start_time=3+max(0,0-3)=3 -> arrival=6 -> but dist[1] is 0, so skip.
+                (3,4,3,3): 
+                    v=3, T=4, L=3, R=3 -> rem=3 -> 3<=3 -> so start_time=3+max(0,3-3)=3 -> arrival=7 -> which is less than dist[3]=8 -> update dist[3]=7, push (7,3)
+
+        Then pop (7,3): 
+            Then we don't update anything else? 
+            Then we output dist[3]=7? which is correct.
+
+  So the code should be correct.
+
+  We'll write accordingly.
+
+  One more issue: the graph building: we store for each node u, a list of tuples: (v, T, L, R). 
+
+  We'll use make_tuple and get<0>, get<1> etc.
+
+  Alternatively, we can use a struct? but for simplicity we use tuple.
+
+  But in C++ we can also use structured binding? but we are iterating with for (auto edge: graph[u]) and then we break down the tuple? 
+
+  Alternatively, we can store a struct Edge? but the problem says m up to 200000 -> tuple is efficient.
+
+  Code:
+
+      #include <iostream>
+      #include <vector>
+      #include <queue>
+      #include <cstdio>
+      #include <climits>
+      #include <tuple>
+      #include <algorithm>
+      using namespace std;
+
+      using ll = long long;
+
+      int main() {
+          int n, m;
+          ll C;
+          scanf("%d %d %lld", &n, &m, &C);
+          vector<vector<tuple<int, ll, ll, ll>>> graph(n+1);
+
+          for (int i = 0; i < m; i++) {
+              int a, b;
+              ll T, L, R;
+              scanf("%d %d %lld %lld %lld", &a, &b, &T, &L, &R);
+              graph[a].emplace_back(b, T, L, R);
+              graph[b].emplace_back(a, T, L, R);
+          }
+
+          vector<ll> dist(n+1, LLONG_MAX);
+          dist[1] = 0;
+          priority_queue<pair<ll, int>, vector<pair<ll, int>>, greater<>> pq;
+          pq.emplace(0, 1);
+
+          while (!pq.empty()) {
+              auto [t, u] = pq.top();
+              pq.pop();
+              if (t != dist[u]) continue;
+
+              for (auto [v, T, L, R] : graph[u]) {
+                  ll rem = t % C;
+                  ll start_time;
+                  if (rem <= R) {
+                      start_time = t + max(0LL, L - rem);
+                  } else {
+                      start_time = t + (C - rem) + L;
+                  }
+                  ll arrival = start_time + T;
+                  if (arrival < dist[v]) {
+                      dist[v] = arrival;
+                      pq.emplace(arrival, v);
+                  }
+              }
+          }
+
+          printf("%lld\n", dist[n]);
+          return 0;
+      }
+
+  But note: structured binding in C++17? 
+
+  We assume the judge uses C++17? 
+
+  If not, we can do:
+
+        for (auto &edge : graph[u]) {
+            int v = get<0>(edge);
+            ll T = get<1>(edge);
+            ll L = get<2>(edge);
+            ll R = get<3>(edge);
+            ...
+
+  Let me write in a way that works for C++11? 
+
+  Alternatively, we can use:
+
+        for (const auto& edge : graph[u]) {
+            int v = get<0>(edge);
+            ll T_edge = get<1>(edge);
+            ll L_edge = get<2>(edge);
+            ll R_edge = get<3>(edge);
+
+  Then we use these.
+
+  We'll do that to be safe.
+
+  Also, note: the edge list for each node might be long? and we are copying the tuple? we should use const reference.
+
+  We'll change:
+
+        for (const auto &edge : graph[u]) {
+
+  Then inside:
+
+        int v = get<0>(edge);
+        ll T_edge = get<1>(edge);
+        ll L_edge = get<2>(edge);
+        ll R_edge = get<3>(edge);
+
+  Then use these.
+
+  Also, note: the variable names: we have `C` and `T` -> but we are using `T` as a variable in the edge? and then we have `T_edge`? 
+
+  Alternatively, we can use:
+
+        ll travel_time = get<1>(edge);
+
+  But to avoid confusion, we use:
+
+        ll T_val = get<1>(edge);
+
+  But the code is clear.
+
+  Let me write accordingly.
+
+  We'll test with the samples.
+
+  But note: the constraints: n up to 100000, m up to 200000 -> so the algorithm is O(m log n) -> acceptable.
+
+  We'll submit.
+
+  However, note: the condition for the road: the window [L, R] is inclusive -> and the problem says: "can only be entered between the L_i-th and R_i-th second (both inclusive)" -> so our condition is correct.
+
+  Code:
+
+      #include <iostream>
+      #include <vector>
+      #include <queue>
+      #include <cstdio>
+      #include <climits>
+      #include <tuple>
+      #include <algorithm>
+      using namespace std;
+
+      typedef long long ll;
+
+      int main() {
+          int n, m;
+          ll C;
+          scanf("%d %d %lld", &n, &m, &C);
+          vector<vector<tuple<int, ll, ll, ll>>> graph(n+1);
+
+          for (int i = 0; i < m; i++) {
+              int a, b;
+              ll T_val, L_val, R_val;
+              scanf("%d %d %lld %lld %lld", &a, &b, &T_val, &L_val, &R_val);
+              graph[a].emplace_back(b, T_val, L_val, R_val);
+              graph[b].emplace_back(a, T_val, L_val, R_val);
+          }
+
+          vector<ll> dist(n+1, LLONG_MAX);
+          dist[1] = 0;
+          // Use a min-heap: (time, node)
+          priority_queue<pair<ll, int>, vector<pair<ll, int>>, greater<pair<ll, int>>> pq;
+          pq.push(make_pair(0, 1));
+
+          while (!pq.empty()) {
+              ll t = pq.top().first;
+              int u = pq.top().second;
+              pq.pop();
+
+              if (t != dist[u]) 
+                  continue;
+
+              for (const auto& edge : graph[u]) {
+                  int v = get<0>(edge);
+                  ll T_val = get<1>(edge);
+                  ll L_val = get<2>(edge);
+                  ll R_val = get<3>(edge);
+
+                  ll rem = t % C;
+                  ll start_time;
+                  if (rem <= R_val) {
+                      start_time = t + max(0LL, L_val - rem);
+                  } else {
+                      start_time = t + (C - rem) + L_val;
+                  }
+                  ll arrival = start_time + T_val;
+
+                  if (arrival < dist[v]) {
+                      dist[v] = arrival;
+                      pq.push(make_pair(arrival, v));
+                  }
+              }
+          }
+
+          printf("%lld\n", dist[n]);
+          return 0;
+      }
+
+  We'll test with the provided examples.
+
+  However, note: the condition for the else branch: if rem > R_val, then we do: (C - rem) + L_val -> that is the additional waiting time.
+
+  This is correct.
+
+  But note: what if the waiting time causes the start_time to be very large? but our algorithm uses long long so it's safe.
+
+  We'll run the sample input #1 and #2 to see if we get 7 and 20.
+
+  For sample #1: we get 7 -> correct.
+
+  For sample #2: we get 20 -> correct.
+
+  We'll submit.
+
+  However, note: the problem constraints: 
+        N up to 100000, M up to 200000 -> the graph has up to 400000 edges? because each road is stored twice.
+
+  And we are using a priority queue: each edge might be pushed multiple times? but we use the check `if (t != dist[u]) continue;` which is the standard Dijkstra lazy removal.
+
+  The total operations: each edge might be considered at most once per node? but we update only when we get a better time. 
+
+  The worst-case: each edge might be relaxed at most once? because once we set dist[u] to a value, then we only update if we get a better time? so each edge is processed at most once per node? but each node can be updated multiple times? 
+
+  However, note: the time is increasing? but because of the periodic condition, we might have multiple updates? 
+
+  But observe: the waiting time and travel time are nonnegative? so the total time is non-decreasing? and we are using Dijkstra: each node is popped once? 
+
+  Actually, no: because when we update a node, we push a new time. Then we might have multiple entries for the same node in the heap. But we skip the old ones by the check `if (t != dist[u]) continue;`
+
+  So each node is popped at most once with the minimal time? 
+
+  Therefore, the total number of heap operations is at most O(m) (each edge might be processed at most once for the minimal time per node) but note: each node is processed once? and each edge from that node is processed once? so total O(m) heap operations? 
+
+  But the heap operations: each push and pop is O(log n). So total O(m log n) -> acceptable for n=100000, m=200000? 
+
+        m=200000 -> then 200000*log2(100000) ≈ 200000 * 17 = 3.4e6 -> acceptable.
+
+  So we are good.
+
+  Let me run the sample #1: 
+        Nodes: 3, edges: 3 -> but stored as 6? (each bidirectional stored as two). But we only process the edges from a node once per node.
+
+  Actually, the graph building: we have for each road two edges. So the total edges in the graph is 2*m = 400000? worst-case.
+
+  So the algorithm is O(2*m log n) = O(m log n) -> acceptable.
+
+  We'll run the code on the sample inputs.
+
+  Sample Input #1:
+
+        Input: "3 3 10" then the three roads.
+
+  We'll run step-by-step:
+
+        dist[1]=0, then we push (0,1). 
+        Pop (0,1): 
+            For edge (2,3,0,5): 
+                v=2, T=3, L=0, R=5 -> rem=0 -> condition: 0<=5 -> start_time=0+max(0,0)=0 -> arrival=3 -> update dist[2]=3 -> push (3,2)
+            For edge (3,1,7,8): 
+                v=3, T=1, L=7, R=8 -> rem=0 -> condition: 0<=8 -> start_time=0+7=7 -> arrival=8 -> update dist[3]=8 -> push (8,3)
+
+        Then pop (3,2): 
+            For edges from 2: 
+                edge (1,3,0,5): 
+                    v=1: we have dist[1]=0 -> arrival=3+max(0,0- (3%10=3))? -> 3+0=3 -> but 3>=0 -> skip.
+                edge (3,4,3,3): 
+                    v=3: T=4, L=3, R=3 -> rem=3 -> 3<=3 -> start_time=3+max(0,3-3)=3 -> arrival=7 -> which is <8 -> so update dist[3]=7 -> push (7,3)
+
+        Then pop (7,3): 
+            For edges from 3: 
+                edge (1,1,7,8): 
+                    v=1: rem=7%10=7 -> condition: 7<=8 -> so start_time=7+max(0,7-7)=7 -> arrival=8 -> but dist[1]=0 -> skip.
+                edge (2,4,3,3): 
+                    v=2: rem=7%10=7 -> condition: 7>3? -> so start_time=7+(10-7)+3=7+3+3=13? -> arrival=13+4=17 -> which is not better than dist[2]=3 -> skip.
+
+        Then we pop (8,3) but then we see that dist[3] is now 7, so skip.
+
+        Then we output dist[3]=7.
+
+  So it works.
+
+  Now, we run sample #2? 
+
+        Input: 
+            5 5 10
+            1 2 1 6 8
+            1 3 4 3 5
+            2 4 4 1 5
+            3 4 2 2 6
+            4 5 6 3 7
+
+        We'll simulate the steps:
+
+        Start: dist[1]=0 -> push (0,1)
+
+        Pop (0,1):
+            edge1: (2,1,6,8) -> rem=0 -> <=8 -> wait 6 seconds -> start_time=6 -> arrival=6+1=7 -> update dist[2]=7 -> push (7,2)
+            edge2: (3,4,3,5) -> rem=0 -> <=5 -> wait 3 seconds -> start_time=3 -> arrival=3+4=7 -> update dist[3]=7 -> push (7,3)
+
+        Now we have two in the heap: (7,2) and (7,3). Let's pop one arbitrarily (say (7,2)):
+
+        Pop (7,2):
+            edges from 2: 
+                to1: (1,1,6,8) -> rem=7 -> 7 in [6,8]? -> so start_time=7 -> arrival=8 -> skip (dist[1]=0)
+                to4: (4,4,1,5) -> rem=7%10=7 -> 7>5? -> so wait: (10-7)=3 seconds, then L=1 -> total wait 4 -> start_time=7+4=11 -> arrival=11+4=15 -> update dist[4]=15 -> push (15,4)
+
+        Then pop (7,3):
+            edges from 3:
+                to1: (1,4,3,5) -> rem=7%10=7 -> 7>5? -> so wait: (10-7)=3 + 3 (L=3) -> 6 seconds? -> start_time=7+6=13 -> arrival=13+4=17 -> skip (dist[1]=0)
+                to4: (4,2,2,6) -> rem=7 -> 7>6? -> wait: (10-7)=3 + 2 (L=2) -> 5 seconds -> start_time=7+5=12 -> arrival=12+2=14 -> which is less than 15 -> update dist[4]=14 -> push (14,4)
+
+        Then pop (15,4) -> but then we see dist[4] is 14 -> skip.
+
+        Then pop (14,4):
+            edges from 4:
+                to2: (2,4,1,5) -> rem=14%10=4 -> 4 in [1,5] -> no wait -> arrival=14+4=18 -> skip (dist[2]=7)
+                to3: (3,2,2,6) -> rem=4 -> in [2,6] -> no wait -> arrival=14+2=16 -> skip (dist[3]=7)
+                to5: (5,6,3,7) -> rem=4 -> in [3,7] -> no wait -> arrival=14+6=20 -> update dist[5]=20 -> push (20,5)
+
+        Then pop (20,5) -> then we break? and output 20.
+
+  So it works.
+
+  Therefore, we output the code.
+
+  Note: We use `emplace_back` and `make_pair` for efficiency? but in C++11, `emplace_back` is efficient.
+
+  We'll write accordingly.
+
+  One more note: the condition for the road: we assume that the road can be entered at any time during [L, R]? and then the travel time T is added? and the exit time is not constrained? -> that matches the problem.
+
+  Code:
+
+      #include <iostream>
+      #include <vector>
+      #include <queue>
+      #include <cstdio>
+      #include <climits>
+      #include <tuple>
+      #include <algorithm>
+      using namespace std;
+
+      typedef long long ll;
+
+      int main() {
+          int n, m;
+          ll C;
+          scanf("%d %d %lld", &n, &m, &C);
+          vector<vector<tuple<int, ll, ll, ll>>> graph(n+1);
+
+          for (int i = 0; i < m; i++) {
+              int a, b;
+              ll T_val, L_val, R_val;
+              scanf("%d %d %lld %lld %lld", &a, &b, &T_val, &L_val, &R_val);
+              graph[a].emplace_back(b, T_val, L_val, R_val);
+              graph[b].emplace_back(a, T_val, L_val, R_val);
+          }
+
+          vector<ll> dist(n+1, LLONG_MAX);
+          dist[1] = 0;
+          priority_queue<pair<ll, int>, vector<pair<ll, int>>, greater<pair<ll, int>>> pq;
+          pq.push(make_pair(0, 1));
+
+          while (!pq.empty()) {
+              ll t = pq.top().first;
+              int u = pq.top().second;
+              pq.pop();
+
+              if (t != dist[u]) continue;
+
+              for (const auto& edge : graph[u]) {
+                  int v = get<0>(edge);
+                  ll T_val = get<1>(edge);
+                  ll L_val = get<2>(edge);
+                  ll R_val = get<3>(edge);
+
+                  ll rem = t % C;
+                  ll start_time;
+                  if (rem <= R_val) {
+                      start_time = t + max(0LL, L_val - rem);
+                  } else {
+                      start_time = t + (C - rem) + L_val;
+                  }
+                  ll arrival = start_time + T_val;
+
+                  if (arrival < dist[v]) {
+                      dist[v] = arrival;
+                      pq.push(make_pair(arrival, v));
+                  }
+              }
+          }
+
+          printf("%lld\n", dist[n]);
+          return 0;
+      }
+
+  Let me test with the sample input #1 by running the program? 
+
+  But we trust the logic.
+
+  We'll submit.

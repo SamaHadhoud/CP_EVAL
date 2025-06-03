@@ -1,0 +1,147 @@
+To solve this problem, we need to find two distinct routes for a round trip from city 1 to city n and back, such that the sets of distinct roads used in each direction are different. The goal is to minimize the total traversal time, which includes the sum of travel times for all roads traversed (counting multiple traversals of the same road).
+
+### Approach
+1. **Connectivity Check**: First, we check if there is a path from city 1 to city n using Dijkstra's algorithm. If no such path exists, the answer is immediately -1.
+2. **Shortest Path Calculation**: Compute the shortest path from city 1 to all other cities (d1) and from city n to all other cities (dn) using Dijkstra's algorithm.
+3. **Base Path Reconstruction**: Reconstruct the shortest path (base path) from city 1 to city n to identify the nodes and edges on this path.
+4. **Second Shortest Path**: Use a modified Dijkstra's algorithm to compute the second shortest path from city 1 to city n, which allows non-simple paths (i.e., paths that may revisit nodes or edges).
+5. **Edge Processing**:
+   - **Candidate B1**: For edges connecting two nodes on the base path but not part of it, compute the potential total traversal time by replacing the segment between these nodes in one journey with this edge.
+   - **Candidate B4**: For edges connecting a node on the base path to a node not on it, compute the potential total traversal time by extending one journey to include this edge and the shortest path from the new node to the destination.
+6. **Result Calculation**: The solution is the minimum total traversal time among the valid candidates (the sum of the shortest and second shortest paths, Candidate B1, and Candidate B4). If no valid candidate exists, output -1.
+
+### Solution Code
+```python
+import heapq
+import sys
+
+def main():
+    data = sys.stdin.read().split()
+    if not data:
+        return
+    n = int(data[0])
+    m = int(data[1])
+    graph = [[] for _ in range(n+1)]
+    edges = []
+    index = 2
+    for i in range(m):
+        u = int(data[index])
+        v = int(data[index+1])
+        t = int(data[index+2])
+        index += 3
+        edges.append((u, v, t))
+        graph[u].append((v, t))
+        graph[v].append((u, t))
+    
+    INF = 10**18
+    d1 = [INF] * (n+1)
+    parent_arr = [0] * (n+1)
+    heap = []
+    d1[1] = 0
+    heapq.heappush(heap, (0, 1))
+    
+    while heap:
+        dist, u = heapq.heappop(heap)
+        if dist != d1[u]:
+            continue
+        for (v, w) in graph[u]:
+            nd = dist + w
+            if nd < d1[v]:
+                d1[v] = nd
+                parent_arr[v] = u
+                heapq.heappush(heap, (nd, v))
+    
+    T = d1[n]
+    if T == INF:
+        print(-1)
+        return
+
+    dn = [INF] * (n+1)
+    heap = []
+    dn[n] = 0
+    heapq.heappush(heap, (0, n))
+    while heap:
+        dist, u = heapq.heappop(heap)
+        if dist != dn[u]:
+            continue
+        for (v, w) in graph[u]:
+            nd = dist + w
+            if nd < dn[v]:
+                dn[v] = nd
+                heapq.heappush(heap, (nd, v))
+    
+    dist0 = [INF] * (n+1)
+    dist1 = [INF] * (n+1)
+    heap = []
+    dist0[1] = 0
+    heapq.heappush(heap, (0, 1))
+    
+    while heap:
+        d, u = heapq.heappop(heap)
+        if d > dist1[u]:
+            continue
+        for (v, w) in graph[u]:
+            nd = d + w
+            if nd < dist0[v]:
+                dist1[v] = dist0[v]
+                dist0[v] = nd
+                heapq.heappush(heap, (nd, v))
+            elif nd != dist0[v] and nd < dist1[v]:
+                dist1[v] = nd
+                heapq.heappush(heap, (nd, v))
+    
+    base_nodes = set()
+    base_edges = set()
+    cur = n
+    base_nodes.add(n)
+    while cur != 1:
+        prev = parent_arr[cur]
+        base_nodes.add(prev)
+        u = min(cur, prev)
+        v = max(cur, prev)
+        base_edges.add((u, v))
+        cur = prev
+    
+    candidate_A = INF
+    if dist1[n] < INF:
+        candidate_A = dist0[n] + dist1[n]
+    
+    candidate_B1 = INF
+    candidate_B4 = INF
+    
+    for (u, v, t) in edges:
+        a, b = min(u, v), max(u, v)
+        if (a, b) in base_edges:
+            continue
+        
+        if u in base_nodes and v in base_nodes:
+            seg = abs(d1[u] - d1[v])
+            cand = 2 * T - seg + t
+            if cand < candidate_B1:
+                candidate_B1 = cand
+        else:
+            cand1 = T + d1[u] + t + dn[v]
+            cand2 = T + d1[v] + t + dn[u]
+            cand = min(cand1, cand2)
+            if cand < candidate_B4:
+                candidate_B4 = cand
+                
+    ans = min(candidate_A, candidate_B1, candidate_B4)
+    if ans >= INF:
+        print(-1)
+    else:
+        print(ans)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Input Reading and Initialization**: The input is read and parsed into the number of cities (n), roads (m), and the list of roads with their travel times. The graph is constructed as an adjacency list.
+2. **Dijkstra's Algorithm for Shortest Paths**: The shortest path from city 1 to all other cities (d1) and from city n to all other cities (dn) is computed using Dijkstra's algorithm. If city n is unreachable from city 1, -1 is printed.
+3. **Base Path Reconstruction**: The shortest path from city 1 to city n is reconstructed to identify nodes and edges on this path (base_nodes and base_edges).
+4. **Second Shortest Path Calculation**: A modified Dijkstra's algorithm is used to compute the second shortest path from city 1 to city n, storing two distances per node (shortest and second shortest).
+5. **Edge Processing**:
+   - For edges not on the base path, if both endpoints are on the base path, the potential total time (Candidate B1) is calculated by replacing the segment between these nodes with the edge.
+   - For edges with at least one endpoint not on the base path, the potential total time (Candidate B4) is calculated by extending one journey via this edge and the shortest path from the new node to the destination.
+6. **Result Calculation**: The minimum total traversal time among the valid candidates (Candidate A: sum of shortest and second shortest paths, Candidate B1, and Candidate B4) is determined. If no valid candidate exists, -1 is printed; otherwise, the minimum total time is printed.

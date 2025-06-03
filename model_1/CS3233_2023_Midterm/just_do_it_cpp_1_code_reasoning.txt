@@ -1,0 +1,2137 @@
+ Okay, we are to compute:
+   Sum_{i=1}^{n} Sum_{j=i}^{n} [ min(a_i...a_j) * max(a_i...a_j) ]
+
+ Note: n up to 300,000, so we need an efficient solution.
+
+ Idea:
+ We note that the product min*max over a contiguous subarray can be decomposed by considering the contribution of each subarray.
+ Alternatively, we can break the array by the positions of the min and max.
+
+ However, note that the product is multiplicative. We can use the technique of "all subarrays" and use D&C or stack-based methods.
+
+ Alternatively, we can use the idea of expanding the array by considering the contribution of each element as the minimum and maximum, but here we have both min and max at the same time.
+
+ Another idea: 
+   Consider the expression: 
+        min * max = (min * max) 
+   and we want to sum over all contiguous subarrays.
+
+ We can split the array by the maximum element? Or use a Cartesian tree?
+
+ However, note that the product of min and max is not separable. 
+
+ Insight: 
+   We can use a divide and conquer approach. 
+
+ Steps for D&C:
+   - Split the array at the midpoint.
+   - Compute the answer for the left and right halves.
+   - Then compute the answer for subarrays crossing the midpoint.
+
+ How to compute the crossing part?
+
+   Let mid = (l+r)//2.
+   For a subarray [i, j] with i<=mid and j>=mid+1, we can break it as [i, mid] and [mid+1, j].
+
+   Then the min for [i,j] = min( min_left(i,mid), min_right(mid+1,j) )
+   and similarly for max.
+
+   So we can precompute:
+        left_min[i] = min(a[i] ... a[mid])
+        left_max[i] = max(a[i] ... a[mid])   for i from mid down to l
+        right_min[j] = min(a[mid+1] ... a[j])
+        right_max[j] = max(a[mid+1] ... a[j]) for j from mid+1 to r
+
+   Then the crossing subarrays are all pairs (i, j) with i in [l, mid] and j in [mid+1, r].
+
+   The sum for crossing is:
+        sum_{i=l}^{mid} sum_{j=mid+1}^{r} 
+             [ min(left_min[i], right_min[j]) * max(left_max[i], right_max[j]) ]
+
+   How to compute this quickly? 
+
+   We note that the arrays left_min, left_max, right_min, right_max are monotonic:
+
+        left_min: as i decreases from mid to l, left_min[i] is non-increasing (or at least we can compute and it will be non-increasing? Actually, if we start at mid and extend to the left, the min can only decrease or stay the same? Actually, it is non-increasing as we move left? 
+          Example: [3,1,2] -> from mid (index1:1) to left: 
+             i=1: min=1
+             i=0: min=min(3,1)=1 -> then actually if we go left we are including more elements to the left? Actually, we are starting at the midpoint and extending leftwards. So:
+                 left_min[i] = min(a[i], left_min[i+1]) for i from mid-1 down to l? 
+                 Actually, we can compute from mid to left: 
+                     left_min[i] = min(a[i], left_min[i+1]) -> so it is non-increasing? Actually, as we move left we are including more to the left so the min might become smaller? So the sequence left_min[l..mid] is non-increasing? Similarly, left_max is non-decreasing? Actually, as we move left we might get a larger max? Actually, it is non-decreasing? 
+
+          Let me see: [1,3,2] at mid=1 (0-indexed: a[0]=1, a[1]=3, a[2]=2). 
+          For left_min: 
+            i=1: min(3) = 3
+            i=0: min(1,3) = 1 -> so non-increasing? Actually, as we move left we are going from index1 to index0: the min goes from 3 to 1 -> decreases.
+
+          Similarly, left_max:
+            i=1: max=3
+            i=0: max(1,3)=3 -> same? Then if we have [4,3,2] at mid=1: 
+            left_max[1]=3, left_max[0]=max(4,3)=4 -> increases? 
+
+          Actually, left_max: when we move from mid to the left, we are adding a new element to the left. So:
+            left_min[i] = min(a[i], left_min[i+1]) -> so it is non-increasing as i decreases? 
+            left_max[i] = max(a[i], left_max[i+1]) -> so it is non-decreasing as i decreases? 
+
+          Actually, we are building the array from mid to the left: 
+            i: mid, mid-1, ... l
+            left_min[i] = min(a[i], left_min[i+1]) -> so if we start at mid: left_min[mid] = a[mid].
+            Then at i=mid-1: left_min[mid-1] = min(a[mid-1], a[mid]) -> which is <= a[mid]. So the sequence left_min[l..mid] is non-increasing? Actually, as we move from l to mid (increasing index) the values are non-decreasing? 
+
+          Let me define the array from left to right: 
+            We are building from the midpoint going leftwards. So the array from l to mid (in increasing index) is: 
+                ... at index l, then l+1, ... mid.
+            left_min[l] = min(a[l..mid])
+            left_min[l+1] = min(a[l+1..mid]) -> which is >= left_min[l]? 
+          Actually, no: because [l..mid] includes a[l] and [l+1..mid] does not. So left_min[l] <= left_min[l+1]? 
+          Example: [1,3,2] with l=0, mid=1: 
+            left_min[0] = min(1,3)=1
+            left_min[1] = min(3)=3 -> so from index0 to index1: 1 -> 3: increasing.
+
+          But in our iteration we are going backwards: we start at mid and go to l. So we can store an array that for i in [l, mid] has:
+            Lmin[i] = min(a[i..mid])
+            Lmax[i] = max(a[i..mid])
+
+          And similarly for the right part: 
+            Rmin[j] = min(a[mid+1..j])   for j in [mid+1, r]
+            Rmax[j] = max(a[mid+1..j])
+
+          How do these arrays behave?
+            Lmin: as i increases (from l to mid), Lmin[i] is non-decreasing? 
+                Why? Because when we move i to the right, we remove a[i] from the left, so the min of [i..mid] is the min of [i+1..mid] unless a[i] was the minimum? Actually, if a[i] is the minimum of [i..mid], then removing it the min increases. Otherwise, it stays. So Lmin[i] is non-decreasing as i increases? 
+
+          Actually, we can see:
+            [1,2,3]: 
+                i=0: min(1,2,3)=1
+                i=1: min(2,3)=2 -> so increases.
+            [3,2,1]:
+                i=0: min=1? Actually, wait: we defined Lmin[i] for the segment [i..mid]. For [3,2,1] with mid=2 (last element) and i=0: [0..2] -> min=1? Actually, no: the array is [3,2,1] -> min=1 at i=0? Then i=1: [1..2] = [2,1] -> min=1? 
+                Actually, wait: the min of [3,2,1] is 1, and the min of [2,1] is 1. So it's the same? 
+
+          Actually, the property: 
+            Lmin[i] = min( a[i], Lmin[i+1] )   for i from mid-1 down to l.
+            So when building backwards, we start at mid: Lmin[mid]=a[mid]. Then:
+                Lmin[mid-1] = min(a[mid-1], a[mid]) -> which is <= a[mid]? 
+                Then Lmin[mid-2] = min(a[mid-2], Lmin[mid-1]) -> <= Lmin[mid-1]? 
+
+          Therefore, as we move from mid to l (i decreasing from mid to l), the values Lmin[i] are non-increasing? 
+
+          Similarly, Lmax[i] = max(a[i], Lmax[i+1]) -> non-decreasing? Actually, no: as we move from mid to l, we are adding more elements to the left? 
+
+          Actually, note: our array Lmin for indices from l to mid: 
+            i: l, l+1, ... mid -> the value Lmin[i] is the min from i to mid. 
+            Then as i increases (moving from left to right) we are taking a smaller segment? So the min can only increase? 
+            Therefore, Lmin[i] is non-decreasing as i increases? 
+
+          But in our crossing computation we are going to iterate i from l to mid and j from mid+1 to r. We have two arrays on the left: 
+            Lmin[i] and Lmax[i] for i in [l,mid] -> and note: as i increases (from l to mid), Lmin[i] is non-decreasing and Lmax[i] is non-increasing? 
+
+          Actually, for Lmax: 
+            Lmax[i] = max(a[i], Lmax[i+1]) -> so if we start at mid: Lmax[mid]=a[mid]. Then for i=mid-1: 
+                Lmax[mid-1] = max(a[mid-1], Lmax[mid]) -> so if a[mid-1] > a[mid] then it increases? Actually, the maximum can only increase as we extend to the left? 
+
+          Actually, when we extend to the left we are adding a new element that might be bigger. So Lmax[i] is non-decreasing as we move left? But we are storing for i from l to mid: 
+            The value Lmax[i] for a fixed i is the max of the segment [i, mid]. 
+            Then if we move from l to mid (i increasing), the segments are [l,mid], [l+1,mid], ... [mid,mid]. 
+            The max of [l,mid] is at least as large as the max of [l+1,mid]? Actually, no: because we are removing the element at l. So if a[l] is the maximum, then [l+1,mid] has a smaller max. 
+
+          Therefore, as i increases (from l to mid), Lmax[i] is non-increasing? 
+
+          Actually, let me test with [3,2,1] (mid=2, so we start at i=2: Lmax[2]=1; then i=1: Lmax[1]=max(2,1)=2; i=0: Lmax[0]=max(3,2)=3 -> so as i increases (0->1->2) the values are 3,2,1 -> decreasing? 
+
+          Similarly, for [1,2,3]: 
+            i=0: max(1,2,3)=3
+            i=1: max(2,3)=3
+            i=2: max(3)=3 -> so non-increasing? Actually, it is non-increasing? 
+
+          Actually, the property: 
+            Lmax[i] = max(a[i], Lmax[i+1])
+            Then for i < i', we have Lmax[i] = max(a[i], Lmax[i+1]) >= Lmax[i+1] (by definition) and then Lmax[i+1] = max(a[i+1], Lmax[i+2]) >= Lmax[i+2]. So Lmax[i] >= Lmax[i+1] for consecutive indices? 
+
+          Therefore, the array Lmax for i from l to mid (in increasing index) is non-increasing? 
+
+          Similarly, for the right side: 
+            Rmin[j] = min(a[mid+1..j]) -> as j increases (from mid+1 to r), we are extending to the right. So Rmin[j] is non-increasing? Actually, no: 
+                Rmin[j] = min(Rmin[j-1], a[j]) -> so it is non-increasing as j increases? 
+            Actually, as j increases we are adding more elements to the right so the min can only decrease? 
+
+          Therefore, the array Rmin for j from mid+1 to r is non-increasing? 
+          Similarly, Rmax[j] = max(Rmax[j-1], a[j]) -> non-decreasing? 
+
+          Actually, the arrays:
+
+            Left: 
+              i from l to mid: 
+                Lmin[i]: non-decreasing (as i increases) 
+                Lmax[i]: non-increasing (as i increases)
+
+            Right:
+              j from mid+1 to r:
+                Rmin[j]: non-increasing (as j increases) [because j increases -> we add more to the right, so min can only decrease] 
+                Rmax[j]: non-decreasing (as j increases) [because we add more to the right, so max can only increase]
+
+          But wait: 
+            For the right side we build:
+               Rmin[mid+1] = a[mid+1]
+               Rmin[mid+2] = min(a[mid+1], a[mid+2]) -> which is <= a[mid+1] -> so if we look at j from mid+1 to r, the sequence Rmin[j] is non-increasing? Actually, no: if we have [1,2,3] then:
+                  j=mid+1: min=1
+                  j=mid+2: min=min(1,2)=1 -> same? 
+                  j=mid+3: min=min(1,2,3)=1 -> same? 
+
+          Actually, it is non-increasing? Because when we extend to the right, the min of the extended segment is min( current_min, a[j] ) which is <= current_min. So the sequence Rmin[j] for j from mid+1 to r is non-increasing? 
+
+          Similarly, Rmax[j] is non-decreasing? 
+
+          Now the crossing sum is:
+
+            S = sum_{i=l}^{mid} sum_{j=mid+1}^{r} [ min(Lmin[i], Rmin[j]) * max(Lmax[i], Rmax[j]) ]
+
+          We have two pointers: i and j. But note the monotonicity:
+
+          How to compute S quickly? 
+
+          We can try to fix i and then use two pointers for j? But then we have O(n) for each i -> O(n^2) worst-case.
+
+          Alternatively, we can use two pointers and break the j range into segments? 
+
+          Note: Because of the monotonicity of the arrays, we can break the product into cases:
+
+          Consider the four cases:
+
+          Case 1: Lmin[i] <= Rmin[j] and Lmax[i] >= Rmax[j]
+            Then min = Lmin[i], max = Lmax[i]
+            => term = Lmin[i] * Lmax[i]
+
+          Case 2: Lmin[i] <= Rmin[j] and Lmax[i] < Rmax[j]
+            Then min = Lmin[i], max = Rmax[j]
+            => term = Lmin[i] * Rmax[j]
+
+          Case 3: Lmin[i] > Rmin[j] and Lmax[i] >= Rmax[j]
+            Then min = Rmin[j], max = Lmax[i]
+            => term = Rmin[j] * Lmax[i]
+
+          Case 4: Lmin[i] > Rmin[j] and Lmax[i] < Rmax[j]
+            Then min = Rmin[j], max = Rmax[j]
+            => term = Rmin[j] * Rmax[j]
+
+          So we can write:
+
+            S = sum_{i} {
+                [for j in some range] (Case1: Lmin[i] * Lmax[i]) 
+                + [for j in another range] (Case2: Lmin[i] * Rmax[j])
+                + [for j in another range] (Case3: Rmin[j] * Lmax[i])
+                + [for j in another range] (Case4: Rmin[j] * Rmax[j])
+            }
+
+          Now, note the monotonicity:
+
+            As j increases (from mid+1 to r):
+               Rmin[j] is non-increasing? Actually, we said non-increasing? But wait: we defined j from mid+1 to r: 
+                 Rmin: mid+1, mid+2, ... r -> the values are non-increasing? 
+                 Actually, when we extend the segment to the right, the min can only decrease. So Rmin[j] is non-increasing as j increases? 
+
+            Similarly, Rmax[j] is non-decreasing? 
+
+          And for fixed i, as j increases:
+
+            Condition for Case1: 
+                Lmin[i] <= Rmin[j] and Lmax[i] >= Rmax[j]
+
+            Since Rmin[j] is decreasing and Rmax[j] is increasing, the condition Lmin[i] <= Rmin[j] will hold for j from mid+1 up to some j1 (because Rmin decreases so eventually Rmin[j] becomes less than Lmin[i] and then fails). Similarly, Lmax[i] >= Rmax[j] will hold for j from mid+1 up to some j2 (because Rmax increases so eventually Rmax[j] becomes greater than Lmax[i] and then fails). 
+
+          Actually, the conditions:
+
+            Condition for Case1: 
+                Rmin[j] >= Lmin[i] and Rmax[j] <= Lmax[i]
+
+            Condition for Case2: 
+                Rmin[j] >= Lmin[i] and Rmax[j] > Lmax[i]
+
+            Condition for Case3:
+                Rmin[j] < Lmin[i] and Rmax[j] <= Lmax[i]
+
+            Condition for Case4:
+                Rmin[j] < Lmin[i] and Rmax[j] > Lmax[i]
+
+          And note: as j increases (from mid+1 to r):
+
+            Rmin[j] is decreasing -> so the condition Rmin[j] >= Lmin[i] holds for j from mid+1 to j1 (where j1 is the last j such that Rmin[j] >= Lmin[i]).
+            Similarly, Rmax[j] is increasing -> so the condition Rmax[j] <= Lmax[i] holds for j from mid+1 to j2 (where j2 is the last j such that Rmax[j] <= Lmax[i]).
+
+          Then we can partition the j indices by two thresholds: 
+
+            Let j1 = the largest index j (or the last index) such that Rmin[j] >= Lmin[i] (if any) -> then j from mid+1 to j1: Rmin[j]>=Lmin[i]; and j from j1+1 to r: Rmin[j] < Lmin[i].
+            Let j2 = the largest index j such that Rmax[j] <= Lmax[i] -> then j from mid+1 to j2: Rmax[j]<=Lmax[i]; j from j2+1 to r: Rmax[j] > Lmax[i].
+
+          Then the j-axis is partitioned into three intervals? Actually, two thresholds: j1 and j2.
+
+          Then we have four regions:
+
+            Region A: j in [mid+1, min(j1, j2)]: 
+                Condition: Rmin[j] >= Lmin[i] and Rmax[j] <= Lmax[i] -> Case1.
+
+            Region B: j in [min(j1,j2)+1, max(j1,j2)]: 
+                This splits into two parts?
+                Actually, we have two thresholds: j1 and j2. The intervals:
+
+                Let A = [mid+1, min(j1,j2)] -> Case1.
+                Let B = [min(j1,j2)+1, max(j1,j2)]: 
+                    Here, either Rmin[j] < Lmin[i] OR Rmax[j] > Lmax[i] (but not both conditions simultaneously? Actually, one condition fails and the other holds?).
+
+                Actually, we have to break:
+
+                    If j1 <= j2:
+                       Then for j in [j1+1, j2]:
+                         Rmin[j] < Lmin[i] and Rmax[j] <= Lmax[i] -> Case3.
+                       For j in [j2+1, r]: 
+                         Rmin[j] < Lmin[i] and Rmax[j] > Lmax[i] -> Case4.
+
+                    But wait, we also have:
+                       For j in [mid+1, j1]: Rmin[j]>=Lmin[i] -> and for j in [j1+1, r]: Rmin[j] < Lmin[i].
+                       For j in [mid+1, j2]: Rmax[j]<=Lmax[i] -> and for j in [j2+1, r]: Rmax[j] > Lmax[i].
+
+                    Then:
+
+                    Case1: j in [mid+1, min(j1,j2)] -> both conditions hold.
+
+                    Then the rest:
+
+                    If j1 < j2: 
+                       [j1+1, j2]: Rmin[j] < Lmin[i] and Rmax[j] <= Lmax[i] -> Case3.
+                       [j2+1, r]: Rmin[j] < Lmin[i] and Rmax[j] > Lmax[i] -> Case4.
+
+                    If j1 >= j2:
+                       [j2+1, j1]: Rmin[j] >= Lmin[i] and Rmax[j] > Lmax[i] -> Case2.
+                       [j1+1, r]: Rmin[j] < Lmin[i] and Rmax[j] > Lmax[i] -> Case4.
+
+          Therefore, we can do:
+
+            Let j_low = min(j1, j2)
+            Let j_high = max(j1, j2)
+
+            Then:
+
+            Region1: j in [mid+1, j_low] -> Case1: term = Lmin[i] * Lmax[i]
+            Region2: j in [j_low+1, j_high] -> 
+                if j1 <= j2: then this is Case3: term = Rmin[j] * Lmax[i]
+                if j1 > j2: then this is Case2: term = Lmin[i] * Rmax[j]
+            Region3: j in [j_high+1, r] -> Case4: term = Rmin[j] * Rmax[j]
+
+          How to compute this quickly for a fixed i?
+
+            We note that the arrays Rmin and Rmax are fixed for the entire crossing part. 
+
+            Precomputation for the right side:
+
+              Precompute prefix sums for the right part:
+
+                Let:
+                  P1: the array of Rmin[j] for j from mid+1 to r.
+                  P2: the array of Rmax[j] for j from mid+1 to r.
+                  P3: the array of Rmin[j]*Rmax[j] for j from mid+1 to r.
+
+                Then we need prefix sums (or suffix sums) for:
+
+                  S1: the number of j in a segment? Actually, we need:
+
+                  For Case1: we just need the count of j in [mid+1, j_low] -> then we multiply by Lmin[i]*Lmax[i].
+
+                  For Case2: if j1>j2 then we need the sum for j in [j2+1, j1] of Rmax[j] -> then multiply by Lmin[i].
+                  For Case3: if j1<=j2 then we need the sum for j in [j1+1, j2] of Rmin[j] -> then multiply by Lmax[i].
+                  For Case4: we need the sum for j in [j_high+1, r] of Rmin[j]*Rmax[j].
+
+            So we precompute:
+
+                  Pref1: prefix sums of Rmin[j] from j=mid+1 to j=r.
+                  Pref2: prefix sums of Rmax[j] from j=mid+1 to j=r.
+                  Pref3: prefix sums of Rmin[j]*Rmax[j] from j=mid+1 to j=r.
+
+            Actually, we need prefix sums from the start (mid+1) to any j. 
+
+            Also, we need to quickly find the thresholds j1 and j2 for each i.
+
+            How to find j1? 
+                j1 = last index j (in [mid+1, r]) such that Rmin[j] >= Lmin[i]
+
+            Since Rmin is non-increasing? Actually, as j increases (from mid+1 to r), Rmin[j] is non-increasing? 
+                Then we can binary search for the last j with Rmin[j] >= Lmin[i]. But note: non-increasing means that the condition holds for j from mid+1 to j1, and then fails. 
+
+            Similarly, for j2: 
+                j2 = last index j such that Rmax[j] <= Lmax[i] -> and Rmax is non-decreasing? Actually, non-decreasing: so the condition holds for j from mid+1 to j2, then fails.
+
+            However, note: our arrays Rmin and Rmax are built for j in increasing order (from mid+1 to r). And Rmin is non-increasing? Actually, if we build:
+
+                Rmin[mid+1] = a[mid+1]
+                Rmin[mid+2] = min(a[mid+1], a[mid+2]) -> <= a[mid+1]
+                Rmin[mid+3] = min( Rmin[mid+2], a[mid+3] ) -> <= Rmin[mid+2]
+
+            So Rmin is non-increasing in j (as j increases, the value decreases or stays the same). 
+
+            Similarly, Rmax is non-decreasing: 
+                Rmax[mid+1]=a[mid+1]
+                Rmax[mid+2]=max(a[mid+1],a[mid+2]) -> >= a[mid+1]
+                ...
+
+            Therefore, we can do:
+
+                We precompute the arrays for the right part: Rmin, Rmax, and then also the prefix arrays for the sums.
+
+                Then for each i, we do:
+
+                    j1 = the last j in [mid+1, r] such that Rmin[j] >= Lmin[i] -> since Rmin is non-increasing, we can use binary search? But note: the array Rmin is non-increasing? Actually, we can traverse with two pointers? 
+
+            Since we are iterating i from l to mid (in increasing order of i) and we know:
+
+                As i increases, Lmin[i] is non-decreasing? 
+                And Lmax[i] is non-increasing? 
+
+            Then j1: as i increases, Lmin[i] increases -> the condition Rmin[j] >= Lmin[i] becomes harder to satisfy -> j1 decreases? 
+
+            Similarly, j2: as i increases, Lmax[i] decreases -> the condition Rmax[j] <= Lmax[i] becomes harder to satisfy -> j2 decreases? 
+
+            Therefore, we can use two pointers that move from mid+1 to r and then backwards? Actually, we can iterate i from l to mid and use two pointers that start at r and then move leftwards as i increases? 
+
+            Alternatively, we can precompute the entire arrays and then use binary search for each i? Since n can be 300,000, and we do two binary searches per i, the total cost would be O(n log n) per level -> overall O(n log^2 n) which is acceptable for n=300000? 
+
+            Actually, the constraints: n=300000 -> total operations in the crossing part: O(n log n) per level, and the recursion depth is O(log n) -> total O(n (log n)^2) which might be borderline for 300000? 
+
+            Alternatively, we can use two pointers that move monotonically? 
+
+            We note:
+
+                j1(i): non-increasing as i increases? Actually, as i increases, Lmin[i] increases, so j1(i) (the last j such that Rmin[j]>=Lmin[i]) will be non-increasing? 
+                Similarly, j2(i): non-increasing as i increases? 
+
+            So we can iterate i from l to mid (in increasing order) and move two pointers j1_ptr and j2_ptr from r down to mid+1? 
+
+            Steps:
+
+                j1_ptr = r
+                j2_ptr = r
+                for i from l to mid:
+                    while j1_ptr >= mid+1 and Rmin[j1_ptr] < Lmin[i]:
+                         j1_ptr--
+                    # then j1_ptr is the last j such that Rmin[j] >= Lmin[i]? Actually, we are moving from high j to low j? 
+                    Actually, we want j1(i) to be the last j such that Rmin[j]>=Lmin[i]. But if we start j1_ptr at r, then we move backwards until we find the condition fails? Then j1(i) = j1_ptr? 
+
+                    Actually, we can do:
+
+                      j1_ptr = r   (at the beginning for i=l)
+                      then for i=l: 
+                         while j1_ptr >= mid+1 and Rmin[j1_ptr] < Lmin[l]: j1_ptr--
+                      then j1 = j1_ptr
+
+                      Then for i=l+1: 
+                         Lmin[l+1] >= Lmin[l] -> so the condition Rmin[j]>=Lmin[l+1] is harder. 
+                         So we start from j1_ptr (which is the last j that satisfied for Lmin[l]) and then we move j1_ptr backwards until we satisfy Rmin[j]>=Lmin[l+1]? 
+
+                    Actually, we can start from the previous j1_ptr and then move backwards? 
+
+                    Similarly for j2: 
+                         while j2_ptr >= mid+1 and Rmax[j2_ptr] > Lmax[i]:
+                             j2_ptr--
+
+            But note: condition for j2: we want the last j such that Rmax[j] <= Lmax[i]. So we move j2_ptr backwards until we find a j such that Rmax[j] <= Lmax[i]? 
+
+            However, we cannot assume that j1_ptr and j2_ptr will move monotonically? Actually, they will only move leftwards as i increases? 
+
+            Algorithm for the crossing part:
+
+              j1_ptr = r
+              j2_ptr = r
+              for i from l to mid (in increasing order of index):
+
+                  // For j1: condition Rmin[j] >= Lmin[i]
+                  while (j1_ptr >= mid+1 && Rmin[j1_ptr] < Lmin[i])
+                      j1_ptr--;   // we move left until we find one that satisfies? 
+                  // Now j1_ptr is the last j that satisfies? Actually, if we start at r and move left until we find one that satisfies? 
+                  // But we want the last j that satisfies? Actually, we are moving from right to left until we find the first j (from the right) that satisfies? 
+
+                  Actually, we want the largest j (in the range [mid+1, r]) such that Rmin[j] >= Lmin[i]. 
+                  We start j1_ptr at the current position (which is the last j that satisfied for the previous i) and then if it doesn't satisfy for the current i, we move left until we find one that does? 
+
+                  However, note: as i increases, Lmin[i] increases, so the condition becomes harder. The last j that satisfies for the current i must be <= the last j that satisfied for the previous i? 
+
+                  Actually, if for i, the condition held for j1_ptr, then for i+1, if Lmin[i+1] is larger, then Rmin[j1_ptr] might be < Lmin[i+1] -> so we have to move j1_ptr left until we find a j that satisfies? 
+
+                  But note: Rmin is non-increasing: so the condition holds for all j from mid+1 to j1(i). So the last j that satisfies is the rightmost j that satisfies? 
+
+                  We start j1_ptr at r for i=l, then we move left until we find the condition fails? Actually, we want the last j that satisfies? We can do:
+
+                     while (j1_ptr >= mid+1 && Rmin[j1_ptr] >= Lmin[i]) 
+                         j1_ptr is valid? Actually, we want to know the last j that satisfies? 
+
+                  Alternatively, we can do:
+
+                     j1 = j1_ptr;   // but we haven't initialized? 
+
+                  Actually, we can precompute for the entire array the thresholds for each i? 
+
+            Alternatively, we do two binary searches per i? Since the total crossing part would be O(n log n) per level, and the depth is O(log n), the total complexity is O(n (log n)^2). 
+
+            Given that n=300000, the worst-case depth is about 18, and each level does O(n log n) -> 300000 * 18 * log2(300000) ~ 300000 * 18 * 19 = 300000 * 342 = 102.6e6, which is acceptable in 1 second? (C++ with optimization).
+
+          Steps for the crossing part:
+
+            Precomputation for the right side:
+
+              Precompute arrays: 
+                 Rmin: for j from mid+1 to r: 
+                    Rmin[mid+1] = a[mid+1]
+                    for j from mid+2 to r: Rmin[j] = min(Rmin[j-1], a[j])
+
+                 Rmax: for j from mid+1 to r:
+                    Rmax[mid+1] = a[mid+1]
+                    for j from mid+2 to r: Rmax[j] = max(Rmax[j-1], a[j])
+
+                 Then precompute prefix sums:
+
+                    Pref_Rmin: Pref_Rmin[j] = sum_{k=mid+1}^{j} Rmin[k]
+                    Pref_Rmax: Pref_Rmax[j] = sum_{k=mid+1}^{j} Rmax[k]
+                    Pref_RminRmax: Pref_RminRmax[j] = sum_{k=mid+1}^{j} (Rmin[k]*Rmax[k])
+
+                    And Pref_cnt: actually we don't need the count separately? 
+
+            Then for each i from l to mid:
+
+                // Find j1: last j in [mid+1, r] such that Rmin[j] >= Lmin[i]
+                low1 = mid+1, high1 = r;
+                j1 = mid; // meaning none? 
+                while (low1 <= high1) {
+                    mid1 = (low1+high1)/2;
+                    if (Rmin[mid1] >= Lmin[i]) {
+                        j1 = mid1;
+                        low1 = mid1+1;
+                    } else {
+                        high1 = mid1-1;
+                    }
+                }
+                // Then j1 is the last index that satisfies.
+
+                // Find j2: last j in [mid+1, r] such that Rmax[j] <= Lmax[i]
+                low2 = mid+1, high2 = r;
+                j2 = mid; 
+                while (low2 <= high2) {
+                    mid2 = (low2+high2)/2;
+                    if (Rmax[mid2] <= Lmax[i]) {
+                        j2 = mid2;
+                        low2 = mid2+1;
+                    } else {
+                        high2 = mid2-1;
+                    }
+                }
+
+                Now, let j_low = min(j1, j2);
+                let j_high = max(j1, j2);
+
+                Then:
+
+                part1: if j_low >= mid+1, then we have j from mid+1 to j_low: 
+                    count1 = j_low - (mid+1) + 1;
+                    S1 = (long long)count1 * Lmin[i] % mod * Lmax[i] % mod;
+
+                part2: for j from j_low+1 to j_high:
+                    if j1 <= j2: 
+                         // then j_low = j1, j_high = j2 -> so j in [j1+1, j2] -> Case3: term = Rmin[j] * Lmax[i]
+                         S2 = (Pref_Rmin[j2] - Pref_Rmin[j1]) * Lmax[i]   // note: Pref_Rmin[j2] is the sum from mid+1 to j2, so we need the sum from j1+1 to j2 = Pref_Rmin[j2] - Pref_Rmin[j1]
+                    else: 
+                         // j1>j2: then j_low = j2, j_high = j1 -> j in [j2+1, j1] -> Case2: term = Lmin[i] * Rmax[j]
+                         S2 = (Pref_Rmax[j1] - Pref_Rmax[j2]) * Lmin[i]
+
+                part3: for j from j_high+1 to r: 
+                    S3 = Pref_RminRmax[r] - Pref_RminRmax[j_high];   // because Pref_RminRmax[j] is the sum from mid+1 to j.
+
+                Then add: S1 + S2 + S3
+
+                And then mod the total.
+
+            However, note: our prefix arrays are defined as:
+
+                Pref_Rmin[j] = Rmin[mid+1] + Rmin[mid+2] + ... + Rmin[j]
+
+                So the sum from j1+1 to j2 is: Pref_Rmin[j2] - Pref_Rmin[j1]
+
+            But note: j1 and j2 are indices, and j_low and j_high are indices.
+
+            Important: our prefix arrays are computed for indices starting at mid+1. So we define:
+
+                Pref_Rmin[j] for j from mid+1 to r.
+
+                Then to get the sum from mid+1 to j: we have Pref_Rmin[j] (if we built it as inclusive of j).
+
+            Actually, we built:
+
+                Pref_Rmin[mid+1] = Rmin[mid+1]
+                Pref_Rmin[j] = Pref_Rmin[j-1] + Rmin[j] for j>mid+1.
+
+            Then the sum for [a, b] (inclusive) is Pref_Rmin[b] - Pref_Rmin[a-1]. 
+
+            But note: we don't have an index for mid? We have to define:
+
+                Let Pref_Rmin[0] for the right part? Actually, we can use an array starting at index=mid+1.
+
+            Alternatively, we can build an array for indices from 0 to len, where len = r-mid.
+
+            Actually, we can store:
+
+                Let right_start = mid+1, right_end = r.
+
+                Then we can create an array for the right part of length len = (r-mid).
+
+                But we don't need to shift? We can store:
+
+                Pref[0] = 0; // for j=mid
+                Pref[1] = Rmin[mid+1]
+                Pref[2] = Rmin[mid+1] + Rmin[mid+2]
+                ...
+
+                Then the sum from j = a to b (inclusive) is Pref[b - mid] - Pref[a - mid - 1]? 
+
+            Actually, we can do:
+
+                Pref_Rmin[0] = 0;
+                for (int j = mid+1; j<=r; j++) {
+                    Pref_Rmin[j - mid] = Pref_Rmin[j - mid - 1] + Rmin[j];
+                }
+
+                Similarly for Pref_Rmax and Pref_RminRmax.
+
+            Then for indices a and b:
+
+                Sum from a to b (inclusive) = Pref_Rmin[b - mid] - Pref_Rmin[a - mid - 1]
+
+            But note: a and b are in [mid+1, r]. 
+
+            Alternatively, we can store the prefix arrays with base index mid+1.
+
+            Actually, we can do without shifting: we use an array of length (r-mid+1) and index from 0 to (r-mid).
+
+            However, for clarity, we can store:
+
+                Pref_Rmin[i] for i from 0 to len, where len = r-mid, and Pref_Rmin[0]=0, and Pref_Rmin[i] = Rmin[mid+1] + ... + Rmin[mid+i]
+
+            Then for j from mid+1 to r: 
+                the prefix for j is Pref_Rmin[j - (mid+1) + 1] = Pref_Rmin[j - mid]
+
+            Actually, we can define:
+
+                int len = r - mid;
+                vector<long long> PrefRmin(len+1, 0);
+                for (int i=1; i<=len; i++) {
+                    PrefRmin[i] = PrefRmin[i-1] + Rmin[i+mid];
+                }
+
+            But then our Rmin array is stored for indices: Rmin[i] for i from mid+1 to r -> we have an array of length len.
+
+            Actually, we can store the entire right arrays in a local array of length len.
+
+          Steps:
+
+            Precomputation for the right part:
+
+               lenR = r - mid;
+               vector<long long> Rmin_arr(lenR);
+               vector<long long> Rmax_arr(lenR);
+               vector<long long> Rprod_arr(lenR);   // Rmin * Rmax
+               // and prefix sums: 
+               vector<long long> PrefRmin(lenR+1, 0);
+               vector<long long> PrefRmax(lenR+1, 0);
+               vector<long long> PrefRprod(lenR+1, 0);
+
+               // Build Rmin_arr, Rmax_arr, Rprod_arr for j from mid+1 to r: 
+               Rmin_arr[0] = a[mid+1];
+               Rmax_arr[0] = a[mid+1];
+               Rprod_arr[0] = (long long)a[mid+1] * a[mid+1] % mod;
+               PrefRmin[1] = Rmin_arr[0];
+               PrefRmax[1] = Rmax_arr[0];
+               PrefRprod[1] = Rprod_arr[0];
+
+               for (int j=mid+2; j<=r; j++) {
+                   int idx = j - (mid+1);   // 1-indexed? 
+                   Rmin_arr[idx] = min(Rmin_arr[idx-1], a[j]);   // actually, we can compute without storing the entire array? 
+                   Rmax_arr[idx] = max(Rmax_arr[idx-1], a[j]);
+                   Rprod_arr[idx] = (long long)Rmin_arr[idx] * Rmax_arr[idx] % mod;
+
+                   PrefRmin[idx+1] = PrefRmin[idx] + Rmin_arr[idx];
+                   PrefRmax[idx+1] = PrefRmax[idx] + Rmax_arr[idx];
+                   PrefRprod[idx+1] = PrefRprod[idx] + Rprod_arr[idx];
+               }
+
+            But note: we need to do binary search by the actual index? 
+
+            Alternatively, we can store the arrays Rmin_arr and Rmax_arr for the entire range of j? 
+
+            Actually, we can avoid storing the entire arrays? We need the values at each j for the binary search? 
+
+            So we do need to store the arrays: Rmin_arr and Rmax_arr for j from mid+1 to r? 
+
+            However, note: we are building the arrays from mid+1 to r, and we are storing in an array of length lenR.
+
+          But wait: the classical way to build Rmin and Rmax is:
+
+            Rmin[0] = a[mid+1];
+            for (int j=1; j<lenR; j++) {
+                Rmin[j] = min(Rmin[j-1], a[mid+1+j]);
+            }
+
+          Similarly for Rmax.
+
+          Then we have the arrays: Rmin[0..lenR-1] and Rmax[0..lenR-1] for the right part.
+
+          Now, when we do binary search for j1 (for a given i) in the range [0, lenR-1]? 
+
+          Actually, we are storing the arrays for the right part as:
+
+            index 0 corresponds to j = mid+1
+            index 1 corresponds to j = mid+2
+            ...
+            index k corresponds to j = mid+1+k
+
+          So the last j is r: index = r - (mid+1) = lenR-1.
+
+          Then for a given i, we want:
+
+            j1: the largest index k in [0, lenR-1] such that Rmin[k] >= Lmin[i]
+
+          Similarly, j2: the largest index k in [0, lenR-1] such that Rmax[k] <= Lmax[i]
+
+          Then we can do:
+
+            low1 = 0, high1 = lenR-1;
+            j1_idx = -1;   // meaning none
+            while (low1 <= high1) {
+                mid1 = (low1+high1)/2;
+                if (Rmin[mid1] >= Lmin[i]) {
+                    j1_idx = mid1;
+                    low1 = mid1+1;
+                } else {
+                    high1 = mid1-1;
+                }
+            }
+
+            Similarly for j2.
+
+          Then:
+
+            j_low = min(j1_idx, j2_idx);
+            j_high = max(j1_idx, j2_idx);
+
+          But note: if j1_idx is -1, then we have no j in the entire right part satisfying? Then j_low = -1? Then we have to be careful.
+
+          Actually, we can set j1_idx = -1 if none, then:
+
+            Region1: if j_low>=0, then j from 0 to j_low (inclusive) -> count = j_low+1.
+            Region2: from j_low+1 to j_high (if j_high>=j_low+1) -> but if j_low is -1, then j_low+1=0, and then we go from 0 to j_high? 
+
+          Actually, if j1_idx is -1, then j_low = -1, then:
+
+            Region1: [0, -1] -> nothing.
+            Region2: [0, j_high] -> which is from 0 to j_high.
+
+          But note: we must also consider j2_idx: if j2_idx is not -1, then j_high is at least 0? 
+
+          Actually, we have two thresholds: if one is -1, then the min will be -1? 
+
+          Alternatively, we can set j1_idx = -1 if none, and j2_idx = -1 if none.
+
+          Then:
+
+            j_low = min(j1_idx, j2_idx);   // if one is -1, then j_low=-1? 
+            j_high = max(j1_idx, j2_idx);   // which is the other one, or -1? 
+
+          Then:
+
+            Region1: j from 0 to j_low (if j_low>=0) -> count = j_low+1.
+
+            Region2: j from j_low+1 to j_high (if j_high>=j_low+1) -> but if j_low=-1, then j_low+1=0, so from 0 to j_high.
+
+            Region3: j from j_high+1 to lenR-1.
+
+          This matches.
+
+          Then:
+
+            S1 = (j_low+1) * (Lmin[i] * Lmax[i] % mod) % mod;   // but if j_low=-1, then j_low+1=0 -> so safe.
+
+            For Region2:
+
+                if (j1_idx <= j2_idx) {   // then j_low = j1_idx, j_high = j2_idx -> so the region is [j1_idx+1, j2_idx] -> Case3: Rmin[j] * Lmax[i]
+                    // sum of Rmin[j] for j from j1_idx+1 to j2_idx
+                    long long sumRmin_seg = PrefRmin[j2_idx+1] - PrefRmin[j1_idx+1];   // because PrefRmin[k] = sum_{j=0}^{k-1} Rmin_arr[j]? 
+
+                    Actually, we defined PrefRmin for indices 0..lenR: 
+                         PrefRmin[0]=0
+                         PrefRmin[1]=Rmin_arr[0]
+                         PrefRmin[2]=Rmin_arr[0]+Rmin_arr[1]
+                         ...
+
+                    So the sum for j from a to b (inclusive) is PrefRmin[b+1] - PrefRmin[a]
+
+                    Therefore, for [j1_idx+1, j2_idx] (inclusive): 
+                         a = j1_idx+1, b = j2_idx
+                         sum = PrefRmin[j2_idx+1] - PrefRmin[j1_idx+1]
+
+                    But note: j1_idx+1 might be beyond j2_idx? Actually, if j1_idx<=j2_idx, then j1_idx+1 <= j2_idx+1.
+
+                } else { // j1_idx>j2_idx -> then region is [j2_idx+1, j1_idx] -> Case2: Lmin[i] * Rmax[j]
+                    long long sumRmax_seg = PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1];   // wait: we want [j2_idx+1, j1_idx] -> PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1]? 
+                    Actually, the prefix array: 
+                         PrefRmax[j1_idx+1] = sum_{j=0}^{j1_idx} Rmax_arr[j]
+                         PrefRmax[j2_idx+1] = sum_{j=0}^{j2_idx} Rmax_arr[j]
+                    So the difference gives j from j2_idx+1 to j1_idx? 
+                    But note: the segment [j2_idx+1, j1_idx] has indices from j2_idx+1 to j1_idx -> the sum is PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1]? 
+                    Actually, no: we have defined PrefRmax for the entire array: 
+                         PrefRmax[0]=0
+                         PrefRmax[1]=Rmax_arr[0]   -> j=0
+                         PrefRmax[2]=Rmax_arr[0]+Rmax_arr[1]   -> j=0,1
+                         ...
+
+                    So the sum from j=a to j=b (inclusive) is PrefRmax[b+1] - PrefRmax[a]
+
+                    Therefore, for j from j2_idx+1 to j1_idx: 
+                         a = j2_idx+1, b = j1_idx
+                         sum = PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1]   -> because PrefRmax[j1_idx+1] = sum_{j=0}^{j1_idx} = j0 to j1_idx, and we want j2_idx+1 to j1_idx = PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1]? 
+
+                    Actually, we want the sum for j from j2_idx+1 to j1_idx -> that is PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1] is not correct.
+
+                    Actually, if we let a = j2_idx+1, then we need to start at a. The prefix for a is PrefRmax[a]? 
+
+                    The prefix array PrefRmax has:
+                         PrefRmax[0]=0
+                         PrefRmax[1] = Rmax[0]   -> index0 in the right array, which is j=mid+1
+                         PrefRmax[2] = Rmax[0]+Rmax[1]   -> j=mid+1 and mid+2
+
+                    So the sum for indices from a to b (in the right array) is:
+
+                         = PrefRmax[b+1] - PrefRmax[a]
+
+                    Because:
+                         PrefRmax[a] = Rmax[0] + ... + Rmax[a-1]
+                         PrefRmax[b+1] = Rmax[0] + ... + Rmax[b]
+
+                    Then the difference = Rmax[a] + ... + Rmax[b]
+
+                    So yes: for j from a to b (inclusive) in the right array (where a and b are indices in the right array, 0-indexed) the sum is PrefRmax[b+1] - PrefRmax[a]
+
+                    Therefore, for the segment [j2_idx+1, j1_idx] (in the right array indices) we have:
+
+                         a = j2_idx+1, b = j1_idx
+                         sum = PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1]
+
+            }
+
+            Then S2 = 
+                 if (j1_idx <= j2_idx) 
+                     (PrefRmin[j2_idx+1] - PrefRmin[j1_idx+1]) * Lmax[i]   [mod] 
+                 else 
+                     (PrefRmax[j1_idx+1] - PrefRmax[j2_idx+1]) * Lmin[i]   [mod]
+
+            Then Region3: j from j_high+1 to lenR-1 (inclusive) -> Case4: Rmin[j]*Rmax[j]
+
+                long long sumRprod = PrefRprod[lenR] - PrefRprod[j_high+1]   // because PrefRprod[j_high+1] = sum_{j=0}^{j_high} Rprod_arr[j] -> then we want from j_high+1 to lenR-1: that is PrefRprod[lenR] - PrefRprod[j_high+1]
+
+          However, note: our prefix arrays are defined with:
+
+                PrefRmin[0] = 0
+                PrefRmin[1] = Rmin_arr[0]   // which is for j=mid+1
+                ...
+                PrefRmin[lenR] = sum_{j=0}^{lenR-1} Rmin_arr[j]
+
+          So the entire array? Then the sum from j_high+1 to lenR-1 is:
+
+                PrefRprod[lenR] - PrefRprod[j_high+1]
+
+          But note: j_high+1 is an index in the prefix array? 
+
+          Actually, j_high is the index in the right array (0-indexed) -> then the segment j_high+1 to lenR-1: 
+                starts at j_high+1 (in the right array) and ends at lenR-1.
+
+          So the number of terms: lenR-1 - (j_high+1) + 1 = lenR - j_high - 1.
+
+          The sum: = PrefRprod[lenR] - PrefRprod[j_high+1]
+
+          Then total for i:
+
+                total_i = S1 + S2 + S3
+
+          Then we add total_i to the crossing sum.
+
+          Note: We have to do modulo: mod = 1000003233.
+
+          Important: We are doing long long arithmetic? Because the numbers can be big.
+
+          Steps for the entire D&C:
+
+            long long solve(int l, int r) {
+                if (l == r) {
+                    return (long long) a[l] * a[l] % mod;
+                }
+                int mid = (l+r)/2;
+                long long left_ans = solve(l, mid);
+                long long right_ans = solve(mid+1, r);
+                long long cross_ans = compute_cross(l, r, mid);   // the crossing part
+
+                return (left_ans + right_ans + cross_ans) % mod;
+            }
+
+          We have to be cautious: the arrays a are global? 
+
+          Precomputation for the left part:
+
+            For the left part, we need:
+
+                Lmin[i] for i from l to mid: 
+                    We can compute:
+
+                    Lmin[mid] = a[mid];
+                    for (int i=mid-1; i>=l; i--) {
+                         Lmin[i] = min(a[i], Lmin[i+1]);
+                    }
+
+                Lmax[i] for i from l to mid:
+                    Lmax[mid] = a[mid];
+                    for (int i=mid-1; i>=l; i--) {
+                         Lmax[i] = max(a[i], Lmax[i+1]);
+                    }
+
+          Then we compute the right part as described.
+
+          Finally, we compute the crossing_ans.
+
+          But note: the entire array a is stored in a global array.
+
+          However, the constraints: n=300000 -> the depth of recursion is about 19, and the total memory is O(n) per level? Actually, we are doing a D&C and each level we do O(n) work. The memory for the left and right arrays is O(n) per level, but we can free after the function? Actually, we do not need to store the entire arrays for the entire recursion: we do one level at a time.
+
+          But worst-case the recursion depth is O(log n), so we have O(log n) active calls? The arrays we create in compute_cross are local and we free them when we return.
+
+          However, we are creating vectors for the right part: that is O(n) per level -> total memory O(n log n) which is about 300000 * 19 = 5.7e6, which is acceptable? 
+
+          But the problem memory limit: 1024 MB -> 1e9 bytes? So 5.7e6 integers (each 8 bytes?) -> 45.6e6 bytes? which is 45.6 MB -> acceptable.
+
+          However, we are storing long long: each long long is 8 bytes. The vectors for the right part: we have 3 arrays (Rmin, Rmax, Rprod) and 3 prefix arrays -> 6 vectors of length lenR (which is about n at the top level). And each level the total size is O(n). 
+
+          Total memory: O(n log n) -> worst-case 300000 * 19 * 6 * 8 bytes? 
+                300000 * 19 = 5.7e6, then 5.7e6 * 6 = 34.2e6, then 34.2e6 * 8 = 273.6e6 bytes -> 273.6 MB -> acceptable.
+
+          But note: we do not do the entire recursion at once? Actually, we do one branch at a time? 
+
+          Alternatively, we can avoid storing the entire arrays for the left part? We can compute the left part in a simple array of length (mid-l+1) -> which is acceptable.
+
+          Steps for compute_cross:
+
+            vector<long long> Lmin_arr(mid-l+1);
+            vector<long long> Lmax_arr(mid-l+1);
+            // Build from mid down to l.
+
+            Then the right part: we compute as described.
+
+          Let me code accordingly.
+
+          However, note: the left arrays: we are using for each i in [l, mid]. 
+
+          But note: the problem: the entire array a is stored in a global array. We pass l, r, mid to compute_cross.
+
+          Implementation:
+
+            long long compute_cross(int l, int r, int mid) {
+                int lenL = mid - l + 1;
+                vector<long long> Lmin_arr(lenL);
+                vector<long long> Lmax_arr(lenL);
+
+                // Build from the last element (mid) backwards.
+                Lmin_arr[lenL-1] = a[mid];
+                Lmax_arr[lenL-1] = a[mid];
+                for (int i = lenL-2; i>=0; i--) {
+                    int idx = l + i;   // the actual index in the global array a
+                    Lmin_arr[i] = min(a[idx], Lmin_arr[i+1]);
+                    Lmax_arr[i] = max(a[idx], Lmax_arr[i+1]);
+                }
+                // Now, the index i in [0, lenL-1] corresponds to the global index l+i.
+
+                // Precompute the right part: 
+                int lenR = r - mid;   // because from mid+1 to r: r - (mid) = r-mid, but the number of elements is r-mid? Actually, r - (mid+1) + 1 = r - mid.
+                if (lenR == 0) return 0;   // but note: r>=mid+1, so lenR>=1? Actually, if r==mid, then we wouldn't call cross? Actually, we call with l to mid and mid+1 to r, so if r==mid then the right part has no element? 
+
+                Actually, we are calling the cross part for the segment [l, r] that is split at mid, so the right part is [mid+1, r]. Then if the right part is empty, we return 0.
+
+                We can check: if (r < mid+1) then return 0.
+
+                Since we are called with l, r, and mid = (l+r)/2, then r>=mid+1? 
+
+                Actually, if l==r, we don't call cross. And in the recursion we call with [l, mid] and [mid+1, r]. So when we call compute_cross(l, r, mid), we have r>=mid+1.
+
+                So lenR = r - mid;   // number of elements: r - (mid+1) + 1 = r - mid.
+
+                vector<long long> Rmin_arr(lenR);
+                vector<long long> Rmax_arr(lenR);
+                vector<long long> Rprod_arr(lenR);
+                vector<long long> PrefRmin(lenR+1, 0);
+                vector<long long> PrefRmax(lenR+1, 0);
+                vector<long long> PrefRprod(lenR+1, 0);
+
+                // Build Rmin_arr, Rmax_arr, Rprod_arr for j=0 to lenR-1: 
+                Rmin_arr[0] = a[mid+1];
+                Rmax_arr[0] = a[mid+1];
+                Rprod_arr[0] = (long long)Rmin_arr[0] * Rmax_arr[0] % mod;
+
+                PrefRmin[1] = Rmin_arr[0];
+                PrefRmax[1] = Rmax_arr[0];
+                PrefRprod[1] = Rprod_arr[0];
+
+                for (int j=1; j<lenR; j++) {
+                    int global_j = mid+1+j;
+                    Rmin_arr[j] = min(Rmin_arr[j-1], a[global_j]);
+                    Rmax_arr[j] = max(Rmax_arr[j-1], a[global_j]);
+                    Rprod_arr[j] = (long long)Rmin_arr[j] * Rmax_arr[j] % mod;
+
+                    PrefRmin[j+1] = PrefRmin[j] + Rmin_arr[j];
+                    PrefRmax[j+1] = PrefRmax[j] + Rmax_arr[j];
+                    PrefRprod[j+1] = PrefRprod[j] + Rprod_arr[j];
+                }
+
+                // Now, iterate over i in the left part: i from 0 to lenL-1
+                long long cross_ans = 0;
+                for (int i=0; i<lenL; i++) {
+                    long long curLmin = Lmin_arr[i];
+                    long long curLmax = Lmax_arr[i];
+
+                    // Binary search for j1: the last index j in [0, lenR-1] such that Rmin_arr[j] >= curLmin
+                    int low1 = 0, high1 = lenR-1;
+                    int j1 = -1;
+                    while (low1 <= high1) {
+                        int mid1 = (low1+high1)/2;
+                        if (Rmin_arr[mid1] >= curLmin) {
+                            j1 = mid1;
+                            low1 = mid1+1;
+                        } else {
+                            high1 = mid1-1;
+                        }
+                    }
+
+                    // Binary search for j2: the last index j in [0, lenR-1] such that Rmax_arr[j] <= curLmax
+                    int low2 = 0, high2 = lenR-1;
+                    int j2 = -1;
+                    while (low2 <= high2) {
+                        int mid2 = (low2+high2)/2;
+                        if (Rmax_arr[mid2] <= curLmax) {
+                            j2 = mid2;
+                            low2 = mid2+1;
+                        } else {
+                            high2 = mid2-1;
+                        }
+                    }
+
+                    int j_low = -1, j_high = -1;
+                    if (j1 == -1 && j2 == -1) {
+                        // Region1: none, Region2: none, then Region3: entire right part?
+                        j_low = -2; // to avoid Region1? 
+                        j_high = -2;
+                        // Then we only have Region3: the entire right part? 
+                        // Actually, j1 and j2 are both -1 -> then j_low = -1, j_high=-1, then Region1: 0, Region2: 0, Region3: j from 0 to lenR-1? 
+                        // So we set j_low = -1, j_high = -1 -> then j_high+1 = 0, so Region3: from 0 to lenR-1 -> which is correct.
+                        j_low = -1;
+                        j_high = -1;
+                    } else if (j1 == -1) {
+                        j_low = -1;
+                        j_high = j2;
+                    } else if (j2 == -1) {
+                        j_low = -1;
+                        j_high = j1;
+                    } else {
+                        j_low = min(j1, j2);
+                        j_high = max(j1, j2);
+                    }
+
+                    // Region1: j in [0, j_low] -> Case1: term = curLmin * curLmax
+                    long long S1 = 0;
+                    if (j_low >= 0) {
+                        S1 = (j_low+1) % mod;
+                        S1 = S1 * (curLmin % mod) % mod;
+                        S1 = S1 * (curLmax % mod) % mod;
+                    } else {
+                        S1 = 0;
+                    }
+
+                    // Region2: j in [j_low+1, j_high] 
+                    long long S2 = 0;
+                    if (j_high >= j_low+1) {
+                        if (j1 <= j2) {
+                            // Case3: term = Rmin_arr[j] * curLmax
+                            long long sumRmin = PrefRmin[j_high+1] - PrefRmin[j_low+1];
+                            S2 = sumRmin % mod * (curLmax % mod) % mod;
+                        } else {
+                            // Case2: term = curLmin * Rmax_arr[j]
+                            long long sumRmax = PrefRmax[j_high+1] - PrefRmax[j_low+1];
+                            S2 = (curLmin % mod) * (sumRmax % mod) % mod;
+                        }
+                    }
+
+                    // Region3: j in [j_high+1, lenR-1] -> Case4: term = Rmin_arr[j] * Rmax_arr[j]
+                    long long S3 = 0;
+                    if (j_high+1 <= lenR-1) {
+                        S3 = PrefRprod[lenR] - PrefRprod[j_high+1];
+                        S3 %= mod;
+                    }
+
+                    long long total_i = (S1 + S2 + S3) % mod;
+                    cross_ans = (cross_ans + total_i) % mod;
+                }
+
+                return cross_ans % mod;
+            }
+
+          However, note: the prefix arrays PrefRmin, PrefRmax, PrefRprod are storing the entire prefix sums for the entire right part. 
+
+          And the indices: 
+                PrefRmin[j_high+1] = sum_{k=0}^{j_high} Rmin_arr[k]   -> because we defined PrefRmin[i] = sum_{k=0}^{i-1} Rmin_arr[k]? 
+                Actually, we built:
+
+                  PrefRmin[0]=0
+                  PrefRmin[1]=Rmin_arr[0]
+                  PrefRmin[2]=Rmin_arr[0]+Rmin_arr[1]
+
+                So PrefRmin[i] = sum_{k=0}^{i-1} Rmin_arr[k]
+
+                Then the sum from j = a to j = b (inclusive) is:
+
+                  = PrefRmin[b+1] - PrefRmin[a]   // because PrefRmin[b+1] = sum_{k=0}^{b} Rmin_arr[k], and PrefRmin[a] = sum_{k=0}^{a-1} Rmin_arr[k] -> then the difference is from a to b.
+
+          But in our Region2: we want j from j_low+1 to j_high (inclusive). 
+
+          So a = j_low+1, b = j_high.
+
+          Then sum = PrefRmin[j_high+1] - PrefRmin[j_low+1]   -> because PrefRmin[j_high+1] = sum_{k=0}^{j_high} Rmin_arr[k], and PrefRmin[j_low+1] = sum_{k=0}^{j_low} Rmin_arr[k] -> then the difference is sum_{k=j_low+1}^{j_high} Rmin_arr[k] -> which is exactly what we want.
+
+          Similarly for Rmax and Rprod.
+
+          For Region3: we want j from j_high+1 to lenR-1 (inclusive). 
+
+          Then a = j_high+1, b = lenR-1.
+
+          Then sum = PrefRmin[lenR] - PrefRmin[j_high+1]? 
+
+          Actually, for the product: 
+                PrefRprod[lenR] = sum_{k=0}^{lenR-1} Rprod_arr[k]   -> the entire array.
+                Then the sum from j_high+1 to lenR-1 is PrefRprod[lenR] - PrefRprod[j_high+1]   -> because PrefRprod[j_high+1] = sum_{k=0}^{j_high} Rprod_arr[k] -> then the difference is from k=j_high+1 to lenR-1.
+
+          So that is correct.
+
+          However, note: we are using long long for the prefix arrays? And the numbers can be very big? But modulo is 1000003233, so we do modulo at the end? Actually, we should do modulo at each step? 
+
+          But the problem: the modulus is 1000003233, which is about 1e9. The maximum value: 
+
+            The product: min*max: min and max are at most 1e9, so the product is at most 1e18, and the prefix sums: the entire right part has at most 300000 elements, so the total prefix sum can be 300000 * 1e18 = 3e23 -> which is too big for long long? 
+
+          We have to do modulo for the entire expression? But the problem says modulo 1000003233.
+
+          However, note: the modulus is only at the end? Actually, we have to do modulo at each addition? 
+
+          But the problem: we are doing binary search and then using the prefix arrays. We built the prefix arrays without mod? 
+
+          Actually, the modulus is only at the end? The problem: output mod 1000003233.
+
+          But we are adding up many big numbers. We have to do modulo for the entire cross_ans? 
+
+          However, the intermediate sums (in the prefix arrays) are very big -> we must do modulo? 
+
+          But note: we are storing the prefix arrays as long long. The modulus is 1000003233, which is about 1e9, so the maximum prefix array value: 300000 * 1e18 -> that's 3e23 -> long long can hold up to about 9e18 -> so we might overflow.
+
+          Therefore, we must avoid storing the entire prefix arrays without modulo? 
+
+          But the problem: we are doing multiplications and then modulus at the end? 
+
+          Alternatively, we can store the prefix arrays modulo mod? 
+
+          However, note: the expression for S2: we are multiplying by Lmin or Lmax, which are also modulo mod. So we can do:
+
+            PrefRmin, PrefRmax, PrefRprod: we can store modulo mod? 
+
+          But wait: the expression for S2: 
+                if j1<=j2: S2 = (sum of Rmin_arr from a to b) * Lmax[i] 
+                and we are taking mod at the end.
+
+          We can do: 
+                PrefRmin[j] = (PrefRmin[j-1] + Rmin_arr[j-1]) % mod;
+
+          However, note: Rmin_arr and Rmax_arr are the min and max values, which are integers. But the product Rmin*Rmax might be huge? 
+
+          Actually, we are storing the prefix arrays as long long to avoid overflow? But the modulus is 1000003233, and the numbers are big, but we can do modulo at each step? 
+
+          But caution: we are doing subtraction: 
+                sum = PrefRmin[j_high+1] - PrefRmin[j_low+1] 
+          and then mod. But if we stored modulo mod, then we have to do:
+
+                sum = (PrefRmin[j_high+1] - PrefRmin[j_low+1] + mod) % mod;
+
+          Similarly for the others.
+
+          Alternatively, we can store the prefix arrays in long long and do mod at the end for the entire cross_ans? But the cross_ans might be huge? 
+
+          Actually, we are adding for each i: the total_i, which is the sum of terms for the entire right part for one i -> the total_i might be huge? 
+
+          But the modulus is only at the end? 
+
+          However, the problem: the prefix arrays themselves: the sums might be huge -> we are storing them in long long? The maximum value for Rmin_arr: each element at most 1e9, and the prefix for the entire right part: 300000 * 1e9 = 3e14 -> which is less than 1e18 -> so long long can hold.
+
+          Similarly for Rmax_arr: same.
+
+          For Rprod_arr: each element at most 1e18, and the prefix: 300000 * 1e18 = 3e23 -> which is too big.
+
+          Therefore, we must store PrefRprod modulo mod? 
+
+          Actually, we have to: because the product terms are huge and the sum of 300000 terms of 1e18 is 3e23, which exceeds long long (max about 9e18).
+
+          So we do:
+
+                PrefRprod[0]=0;
+                for (int j=0; j<lenR; j++) {
+                    // Rprod_arr[j] is already modulo mod? 
+                    // Actually, we computed: Rprod_arr[j] = (long long)Rmin_arr[j] * Rmax_arr[j] % mod;
+                    PrefRprod[j+1] = (PrefRprod[j] + Rprod_arr[j]) % mod;
+                }
+
+          Then for Region3: 
+                S3 = (PrefRprod[lenR] - PrefRprod[j_high+1] + mod) % mod;
+
+          Similarly, for PrefRmin and PrefRmax: they are sums of integers that are at most 1e9, and the total is at most 3e14 -> which is less than 2^50? so we can store as long long and then mod when we use? 
+
+          Actually, in S2 we do:
+
+                if (j1<=j2) {
+                    long long sumRmin = PrefRmin[j_high+1] - PrefRmin[j_low+1];   // this is an integer in the range [0, 3e14] -> then we do mod mod? 
+                    S2 = (sumRmin % mod) * (curLmax % mod) % mod;
+                } else {
+                    long long sumRmax = PrefRmax[j_high+1] - PrefRmax[j_low+1];
+                    S2 = (curLmin % mod) * (sumRmax % mod) % mod;
+                }
+
+          But note: curLmin and curLmax are integers, and we do mod mod for them? 
+
+          Alternatively, we can do:
+
+                S2 = ( (sumRmin % mod) * (curLmax % mod) ) % mod;
+
+          But note: the multiplication: (sumRmin % mod) is in [0, mod-1] and curLmax % mod is in [0, mod-1] -> then the product is at most (mod-1)^2 < 1e18, which fits in long long? Then we mod.
+
+          So we can do modulo at the multiplication step.
+
+          Similarly, for S1: we do mod at each step.
+
+          Let me adjust:
+
+            S1 = ( (long long)(j_low+1) * ( (curLmin % mod) * (curLmax % mod) % mod ) ) % mod;
+
+          But note: j_low+1 is at most 300000, so we can do:
+
+            S1 = (long long)(j_low+1) % mod * (curLmin % mod) % mod;
+            S1 = S1 * (curLmax % mod) % mod;
+
+          But better:
+
+            long long temp = (curLmin % mod) * (curLmax % mod) % mod;
+            S1 = ( (long long)(j_low+1) % mod * temp ) % mod;
+
+          Similarly for S2 and S3.
+
+          Also, note: the entire cross_ans might be negative? We do mod at the end? 
+
+          Actually, we do:
+
+                cross_ans = (cross_ans + total_i) % mod;
+
+          But total_i = (S1 + S2 + S3) % mod -> but S1, S2, S3 are computed mod mod? Actually, we computed each mod mod? 
+
+          However, we did:
+
+                S1: mod mod
+                S2: mod mod
+                S3: mod mod
+
+          Then total_i = (S1+S2+S3) % mod, and then add to cross_ans.
+
+          But we must be cautious: S1, S2, S3 might be negative? 
+
+          Actually, S1 and S2 and S3 are nonnegative? 
+
+          However, in S3: we did: 
+                S3 = (PrefRprod[lenR] - PrefRprod[j_high+1] + mod) % mod;
+
+          But wait: we stored PrefRprod modulo mod? Then:
+
+                PrefRprod[lenR] - PrefRprod[j_high+1] might be negative? 
+
+          We did: 
+                S3 = (PrefRprod[lenR] - PrefRprod[j_high+1] + mod) % mod;
+
+          But note: PrefRprod is stored mod mod, so the difference might be negative? 
+
+          Actually, we did:
+
+                PrefRprod[j] = (PrefRprod[j-1] + Rprod_arr[j-1]) % mod;
+
+          Then we subtract: PrefRprod[j_high+1] from PrefRprod[lenR]. But if PrefRprod[lenR] < PrefRprod[j_high+1], then we get negative? 
+
+          So we do:
+
+                S3 = (PrefRprod[lenR] - PrefRprod[j_high+1] + mod) % mod;
+
+          Now, we are ready.
+
+          However, note: the left part arrays: we did not use modulo for Lmin_arr and Lmax_arr? But we are taking mod when we use them: 
+
+                curLmin % mod, etc.
+
+          Let me test with sample: n=3, [1,2,3]
+
+            l=0, r=2, mid=1.
+
+            Left part: [0,1] -> a0=1, a1=2.
+                Lmin_arr: 
+                    i=1 (last element): Lmin_arr[1] = a1=2
+                    i=0: Lmin_arr[0] = min(a0, Lmin_arr[1]) = min(1,2)=1
+                Lmax_arr:
+                    i=1: 2
+                    i=0: max(1,2)=2
+
+            Right part: [2] -> a2=3.
+                lenR=1
+                Rmin_arr[0]=3
+                Rmax_arr[0]=3
+                Rprod_arr[0]=9
+                PrefRmin = {0, 3}
+                PrefRmax = {0, 3}
+                PrefRprod = {0, 9}
+
+            Then we iterate i from 0 to 1 (for the left part).
+
+            i=0: 
+                curLmin = 1, curLmax=2.
+
+                j1: last j in [0,0] such that Rmin_arr[j]>=1 -> j=0 -> j1=0.
+                j2: last j in [0,0] such that Rmax_arr[j]<=2 -> 3<=2? false -> j2=-1.
+
+                Then j_low = min(0,-1) = -1, j_high = max(0,-1)=0.
+
+                Region1: j in [0, j_low] -> j_low=-1 -> skip.
+                Region2: j in [0,0] (because j_low+1 = 0, j_high=0) -> then j_high>=j_low+1 -> true.
+
+                Then j1 (0) > j2 (-1) -> so we are in else: Case2? 
+                    Actually, j1=0, j2=-1 -> j1>j2 -> so we do Case2: 
+                    sumRmax = PrefRmax[j_high+1] - PrefRmax[j_low+1] 
+                    j_high=0 -> j_high+1=1 -> PrefRmax[1]=3
+                    j_low=-1 -> j_low+1=0 -> PrefRmax[0]=0
+                    sumRmax = 3 - 0 = 3
+                    S2 = curLmin * sumRmax = 1 * 3 = 3
+
+                Region3: j in [1,0] -> skip.
+
+                total_i = 0 + 3 + 0 = 3.
+
+            i=1:
+                curLmin=2, curLmax=2.
+
+                j1: Rmin_arr[0]=3>=2 -> j1=0.
+                j2: Rmax_arr[0]=3<=2 -> false -> j2=-1.
+
+                Then j_low=-1, j_high=0.
+
+                Region1: skip.
+                Region2: j in [0,0] -> then Case2: 
+                    sumRmax = PrefRmax[1]-PrefRmax[0]=3
+                    S2 = curLmin * sumRmax = 2*3=6.
+
+                total_i=6.
+
+            Then cross_ans = 3+6 = 9.
+
+            Then total = left_ans + right_ans + cross_ans.
+
+            left_ans: solve(l,mid)=solve(0,1): 
+                base: if l==r? no -> then mid=(0+1)/2=0 -> then left_ans = solve(0,0) -> returns a0*a0 = 1.
+                right_ans = solve(1,1) -> returns 2*2=4.
+                Then cross_ans for [0,1]? 
+                    Actually, the recursion: 
+                      solve(0,1) = solve(0,0) + solve(1,1) + compute_cross(0,1,0) 
+                      = 1 + 4 + compute_cross(0,1,0) 
+
+                But we are currently in [0,2] -> so the left part is [0,1] and the right part is [2,2]. 
+
+                Actually, we did:
+
+                  left_ans = solve(0,1) 
+                  right_ans = solve(2,2) = 9? -> no: solve(2,2)=a2*a2=9.
+
+                So left_ans = solve(0,1) = 1+4+? 
+
+                How did we compute solve(0,1)? 
+                  We split [0,1] at mid=0: 
+                    left_ans = solve(0,0)=1
+                    right_ans = solve(1,1)=4
+                    cross_ans = compute_cross(0,1,0) -> which is the crossing part for [0,0] and [1,1]? 
+                    Then the entire array [0,1] has two contiguous subarrays: [0,0] and [0,1] and [1,1]. 
+                    We already have [0,0] and [1,1] in the left and right. 
+                    The crossing part: the subarray [0,1]? 
+                    Then min = min(1,2)=1, max=2 -> term=2.
+
+                    So cross_ans for [0,1] should be 2.
+
+                Therefore, solve(0,1)=1+4+2=7.
+
+                Then solve(0,2)= left_ans (solve(0,1)=7) + right_ans (solve(2,2)=9) + cross_ans (from [0,1] and [2,2]) = 9? 
+
+                Then total = 7+9+9 = 25? 
+
+                But we computed cross_ans for [0,1] and [2,2] as 3+6=9 -> then total=7+9+9=25 -> matches sample.
+
+            However, the entire expression: 
+                [0,0]: 1*1=1
+                [1,1]: 2*2=4
+                [2,2]: 3*3=9
+                [0,1]: min=1, max=2 -> 2
+                [1,2]: min=2, max=3 -> 6
+                [0,2]: min=1, max=3 -> 3
+                total = 1+4+9+2+6+3 = 25.
+
+            But our cross_ans for [0,2] (the entire crossing part) should be the subarrays that cross the midpoint (mid=1) -> that is [0,1] and [0,2] and [1,2]? 
+
+            Actually, the crossing part: subarrays that start at index<=1 and end at index>=2? 
+                [0,2]: start0, end2
+                [1,2]: start1, end2
+                [0,1] is not crossing? Actually, we split at mid=1: 
+                    left: [0,1] -> so the crossing part is subarrays that start in [0,1] and end in [2,2]. 
+                So the crossing part: 
+                    [0,2] and [1,2] -> two subarrays.
+
+            Our computation for the crossing part:
+
+                We broke the array: left part [0,1] and right part [2,2]. Then the crossing part is:
+
+                  [0,2]: min = min( Lmin[0]=min(a0..a1)=1, Rmin[0]=min(a2)=3 ) = 1; max = max( Lmax[0]=2, Rmax[0]=3 )=3 -> term=1*3=3.
+                  [1,2]: min = min( Lmin[1]=2, Rmin[0]=3 ) = 2; max = max( Lmax[1]=2, Rmax[0]=3)=3 -> term=2*3=6.
+
+                total = 3+6=9.
+
+            So that matches.
+
+          Therefore, the sample works.
+
+          But note: the left part we built for [0,1] -> we stored Lmin[0] and Lmin[1] for the entire left segment? 
+
+          However, for the crossing part we are considering each starting index i in the left part and the entire right part? 
+
+          Actually, we are iterating i in the left part: i=0 and i=1.
+
+          For each i, we consider the entire right part? 
+
+          But note: the contiguous subarray starting at i and ending at j (for j in the right part) is [i, j] -> which is the entire segment from i to j.
+
+          And we are including the entire left segment [i, mid] and the entire right segment [mid+1, j]? 
+
+          So for i=0: the subarray is [0, j] for j in the right part (only j=2) -> [0,2]
+          for i=1: the subarray is [1, j] for j in the right part -> [1,2]
+
+          So we are not including [0,1]? 
+
+          Actually, [0,1] is entirely in the left part, so it is computed in the left_ans? 
+
+          How? 
+
+            The left part: [0,1] -> in the recursion for [0,1], we have:
+
+                left_ans: [0,0] and [1,1] and the crossing part [0,1] (which is 2).
+
+          So [0,1] is computed in the crossing part of [0,1]? 
+
+          Therefore, the entire algorithm:
+
+            We have a function solve(l, r) that returns the sum for all contiguous subarrays in [l, r].
+
+            It splits at mid=(l+r)/2, then:
+
+                left_ans = solve(l, mid)
+                right_ans = solve(mid+1, r)
+                cross_ans = compute_cross(l, r, mid)   // which computes the sum for subarrays that start in [l, mid] and end in [mid+1, r]
+
+            Then returns (left_ans+right_ans+cross_ans) % mod.
+
+          Now, let me test with sample input #2: n=4, [1,2,1,2] -> output=22.
+
+          We can compute by hand:
+
+            Subarrays:
+
+               [0,0]: 1*1=1
+               [1,1]: 2*2=4
+               [2,2]: 1*1=1
+               [3,3]: 2*2=4
+
+               [0,1]: min=1, max=2 -> 2
+               [1,2]: min=1, max=2 -> 2
+               [2,3]: min=1, max=2 -> 2
+
+               [0,2]: min=1, max=2 -> 2
+               [1,3]: min=1, max=2 -> 2
+               [0,3]: min=1, max=2 -> 4   [because min(1,2,1,2)=1, max=2 -> 2]
+
+            Total = 1+4+1+4+2+2+2+2+2+4 = 22.
+
+          How does our algorithm compute?
+
+            We do:
+
+                solve(0,3): 
+                    mid = 1
+                    left_ans = solve(0,1) 
+                    right_ans = solve(2,3)
+                    cross_ans = compute_cross(0,3,1)
+
+            solve(0,1): 
+                [0,0]:1
+                [1,1]:4
+                crossing: [0,1]: min(1,2)=1, max=2 -> 2
+                so solve(0,1)=1+4+2=7
+
+            solve(2,3):
+                [2,2]:1
+                [3,3]:4
+                crossing: [2,3]: min(1,2)=1, max=2 -> 2
+                so solve(2,3)=1+4+2=7
+
+            cross_ans for [0,3] (mid=1): 
+                left part: [0,1]: 
+                    Lmin_arr: 
+                         i=1: a1=2 -> Lmin_arr[1]=2
+                         i=0: min(a0, Lmin_arr[1])=min(1,2)=1
+                    Lmax_arr:
+                         i=1:2
+                         i=0:max(1,2)=2
+                right part: [2,3]:
+                    Rmin_arr: 
+                         j=2: a2=1 -> Rmin_arr[0]=1
+                         j=3: min(1,2)=1 -> Rmin_arr[1]=1
+                    Rmax_arr:
+                         j=2:1
+                         j=3:max(1,2)=2 -> Rmax_arr[1]=2
+                    Rprod_arr: [1*1=1, 1*2=2]
+
+                    PrefRmin: [0,1,1+1=2]
+                    PrefRmax: [0,1,1+2=3]
+                    PrefRprod: [0,1,1+2=3]
+
+                Now, iterate i in [0,1] (left part indices 0 and 1):
+
+                i=0: curLmin=1, curLmax=2.
+                    j1: last j in [0,1] (right array indices) such that Rmin_arr[j]>=1 -> both j=0 and j=1: Rmin_arr[0]=1, Rmin_arr[1]=1 -> j1=1.
+                    j2: last j in [0,1] such that Rmax_arr[j]<=2 -> both j=0:1<=2, j=1:2<=2 -> j2=1.
+                    j_low = min(1,1)=1, j_high=1.
+                    Region1: j in [0,1]: count=2 -> term = 1*2 * 2 = 4? 
+                        Actually, Case1: we use Lmin * Lmax for all j in [0,1] -> so 1*2 for each j? 
+                        Then 2 times = 2* (1*2) = 4.
+
+                    Region2: [2,1] -> nothing.
+                    Region3: nothing.
+
+                    total_i=4.
+
+                i=1: curLmin=2, curLmax=2.
+                    j1: Rmin_arr[0]=1<2 -> fails? j1: last j such that Rmin_arr[j]>=2 -> none? j1=-1.
+                    j2: Rmax_arr[0]=1<=2 -> j=0 satisfies, then j=1:2<=2 -> satisfies -> j2=1.
+                    Then j_low = min(-1,1) = -1, j_high = max(-1,1)=1.
+
+                    Region1: skip.
+                    Region2: j in [0,1] -> since j_low+1=0, j_high=1 -> so we have j from 0 to 1.
+
+                    Now, j1=-1, j2=1 -> j1<=j2? no -> so j1>j2? Actually, -1<1 -> so we are in if (j1<=j2) -> false? 
+
+                    Actually, condition: j1>j2? -> -1>1 -> false? 
+
+                    But our condition for Region2: we break by j1 and j2: 
+                         if (j1 <= j2) then Case3, else Case2.
+
+                    Here, j1=-1, j2=1 -> j1<j2 -> so we are in if (j1<=j2) -> true.
+
+                    Then Case3: term = Rmin_arr[j] * curLmax
+
+                    Then sum for j in [0,1] of Rmin_arr[j] = 1+1=2 -> then S2 = 2 * 2 = 4.
+
+                    Then total_i=4.
+
+                cross_ans = 4+4=8.
+
+            Then total = 7+7+8 = 22 -> matches.
+
+          Therefore, we code accordingly.
+
+          However, note: the entire array a is stored globally.
+
+          We assume the array a is 0-indexed.
+
+          Code:
+
+            #include <iostream>
+            #include <vector>
+            #include <algorithm>
+            #include <climits>
+            using namespace std;
+
+            const long long mod = 1000003233;
+            const int MAXN = 300000;
+            int a[MAXN];
+
+            long long compute_cross(int l, int r, int mid) {
+                // left part: [l, mid] -> length = lenL = mid-l+1
+                // right part: [mid+1, r] -> length = lenR = r - mid
+                int lenL = mid - l + 1;
+                int lenR = r - mid;
+                if (lenR == 0) return 0;
+
+                vector<long long> Lmin_arr(lenL);
+                vector<long long> Lmax_arr(lenL);
+                // Build from the end (mid) backwards to l.
+                Lmin_arr[lenL-1] = a[mid];
+                Lmax_arr[lenL-1] = a[mid];
+                for (int i=lenL-2; i>=0; i--) {
+                    int idx = l+i;   // global index
+                    Lmin_arr[i] = min(a[idx], Lmin_arr[i+1]);
+                    Lmax_arr[i] = max(a[idx], Lmax_arr[i+1]);
+                }
+
+                // Build the right part arrays: Rmin, Rmax, Rprod, and prefix sums.
+                vector<long long> Rmin_arr(lenR);
+                vector<long long> Rmax_arr(lenR);
+                vector<long long> Rprod_arr(lenR);
+                vector<long long> PrefRmin(lenR+1, 0);
+                vector<long long> PrefRmax(lenR+1, 0);
+                vector<long long> PrefRprod(lenR+1, 0);
+
+                Rmin_arr[0] = a[mid+1];
+                Rmax_arr[0] = a[mid+1];
+                Rprod_arr[0] = (Rmin_arr[0] % mod) * (Rmax_arr[0] % mod) % mod;
+
+                PrefRmin[1] = Rmin_arr[0];
+                PrefRmax[1] = Rmax_arr[0];
+                PrefRprod[1] = Rprod_arr[0];
+
+                for (int j=1; j<lenR; j++) {
+                    int global_j = mid+1+j;
+                    Rmin_arr[j] = min(Rmin_arr[j-1], a[global_j]);
+                    Rmax_arr[j] = max(Rmax_arr[j-1], a[global_j]);
+                    Rprod_arr[j] = (Rmin_arr[j] % mod) * (Rmax_arr[j] % mod) % mod;
+
+                    PrefRmin[j+1] = PrefRmin[j] + Rmin_arr[j];
+                    PrefRmax[j+1] = PrefRmax[j] + Rmax_arr[j];
+                    PrefRprod[j+1] = (PrefRprod[j] + Rprod_arr[j]) % mod;
+                }
+
+                long long cross_ans = 0;
+                // Iterate for each i in the left part: i in [0, lenL-1]
+                for (int i=0; i<lenL; i++) {
+                    long long curLmin = Lmin_arr[i];
+                    long long curLmax = Lmax_arr[i];
+
+                    // Binary search for j1: the last index j in [0, lenR-1] such that Rmin_arr[j] >= curLmin
+                    int low1 = 0, high1 = lenR-1;
+                    int j1 = -1;
+                    while (low1 <= high1) {
+                        int mid1 = (low1+high1)/2;
+                        if (Rmin_arr[mid1] >= curLmin) {
+                            j1 = mid1;
+                            low1 = mid1+1;
+                        } else {
+                            high1 = mid1-1;
+                        }
+                    }
+
+                    // Binary search for j2: the last index j in [0, lenR-1] such that Rmax_arr[j] <= curLmax
+                    int low2 = 0, high2 = lenR-1;
+                    int j2 = -1;
+                    while (low2 <= high2) {
+                        int mid2 = (low2+high2)/2;
+                        if (Rmax_arr[mid2] <= curLmax) {
+                            j2 = mid2;
+                            low2 = mid2+1;
+                        } else {
+                            high2 = mid2-1;
+                        }
+                    }
+
+                    int j_low, j_high;
+                    if (j1 == -1 && j2 == -1) {
+                        j_low = -1;
+                        j_high = -1;
+                    } else if (j1 == -1) {
+                        j_low = -1;
+                        j_high = j2;
+                    } else if (j2 == -1) {
+                        j_low = -1;
+                        j_high = j1;
+                    } else {
+                        j_low = min(j1, j2);
+                        j_high = max(j1, j2);
+                    }
+
+                    long long S1 = 0, S2 = 0, S3 = 0;
+
+                    // Region1: j in [0, j_low] (if j_low>=0)
+                    if (j_low >= 0) {
+                        long long count1 = j_low+1;
+                        long long temp = (curLmin % mod) * (curLmax % mod) % mod;
+                        S1 = count1 % mod * temp % mod;
+                    }
+
+                    // Region2: j in [j_low+1, j_high] (if j_high>=j_low+1)
+                    if (j_high >= j_low+1) {
+                        if (j1 <= j2) {
+                            // Case3: term = Rmin_arr[j] * curLmax
+                            long long sumRmin = PrefRmin[j_high+1] - PrefRmin[j_low+1];   // [j_low+1, j_high] inclusive
+                            S2 = (sumRmin % mod) * (curLmax % mod) % mod;
+                        } else {
+                            // Case2: term = curLmin * Rmax_arr[j]
+                            long long sumRmax = PrefRmax[j_high+1] - PrefRmax[j_low+1];
+                            S2 = (curLmin % mod) * (sumRmax % mod) % mod;
+                        }
+                    }
+
+                    // Region3: j in [j_high+1, lenR-1] (inclusive)
+                    if (j_high+1 <= lenR-1) {
+                        // PrefRprod is stored mod mod, and we have the prefix from 0 to j: PrefRprod[j] = sum_{k=0}^{j-1} Rprod_arr[k] mod mod?
+                        // But we built: PrefRprod[0]=0, PrefRprod[1]=Rprod_arr[0], PrefRprod[2]=Rprod_arr[0]+Rprod_arr[1] mod mod, etc.
+                        // The sum for j from j_high+1 to lenR-1: 
+                        //    = PrefRprod[lenR] - PrefRprod[j_high+1]   -> but this is mod mod, and we have to handle negative.
+                        S3 = (PrefRprod[lenR] - PrefRprod[j_high+1] + mod) % mod;
+                    }
+
+                    long long total_i = (S1 + S2 + S3) % mod;
+                    cross_ans = (cross_ans + total_i) % mod;
+                }
+
+                return cross_ans % mod;
+            }
+
+            long long solve(int l, int r) {
+                if (l == r) {
+                    return (long long) a[l] * a[l] % mod;
+                }
+                int mid = (l+r)/2;
+                long long left_ans = solve(l, mid);
+                long long right_ans = solve(mid+1, r);
+                long long cross_ans = compute_cross(l, r, mid);
+
+                return (left_ans + right_ans + cross_ans) % mod;
+            }
+
+            int main() {
+                int n;
+                cin >> n;
+                for (int i=0; i<n; i++) {
+                    cin >> a[i];
+                }
+                long long ans = solve(0, n-1);
+                cout << ans << endl;
+            }
+
+          However, note: the recursion depth is O(log n) and n=300000 -> about 19 levels, but the recursion stack might be 19*3 = 57 frames? 
+
+          But the arrays: we are storing for the left and right parts: the total memory per level is O(n) -> worst-case at top level: n=300000 -> then the left part is 150000 and right part 150000 -> then we do a vector of 150000 for left and 3 vectors of 150000 for the right part -> total about 150000*5 = 750000 integers? and each integer 8 bytes -> 6e6 bytes? 
+
+          But the total memory: the entire recursion tree: the top level: n, then two children: n/2, n/2 -> total O(n log n) memory? 
+
+          Actually, the recursion is depth first: we do left branch first, then right, then the current level. So the memory at the worst-case depth: the entire recursion stack: O(log n) * (memory per call) -> and the memory per call is O(n) for the current segment? 
+
+          At the top level: we use about 750000*8 = 6e6 bytes? 
+          Then when we do the left branch: we break the left part into two halves: so we use for the left branch: at the next level: about 37500? 
+
+          Actually, the total memory: 
+                At level0: n
+                level1: two calls: one for n/2 and one for n/2, but we are in the left branch first: so we do the left branch of the left branch? 
+
+          Actually, the memory is the sum over the recursion stack? 
+
+          The stack: 
+                main -> solve(0, n-1) -> then it calls solve(0, mid) -> then solve(0, mid/2) ... until base case.
+
+          The memory for each active call: the compute_cross part is only called when returning? 
+
+          Actually, the structure:
+
+            long long solve(int l, int r) {
+                if (l==r) ... 
+                left_ans = solve(l, mid);   // this call is active and we wait for it to return -> then we do the right_ans, then compute_cross.
+
+            So the memory for the entire recursion: at any time, the recursion stack has O(log n) calls. And each call that is active (waiting for children) does not use the big arrays? 
+
+          However, the compute_cross is called after the two recursive calls return. So when we are in the current call, we have already computed the left and right answers, and then we compute the cross_ans: we allocate the arrays for the left and right parts -> then free at the end.
+
+          Therefore, the total memory is the maximum over the recursion stack: the maximum memory for one compute_cross: O(n) -> and the recursion stack is O(log n) levels, but the compute_cross at the top level is O(n), then at the next level we have two compute_cross of O(n/2) but they are not active at the same time? 
+
+          Actually, we do:
+
+            solve(0, n-1): 
+                it calls solve(0, mid) -> then returns, then calls solve(mid+1, r) -> then returns, then compute_cross.
+
+          So the maximum memory: at the top level: we are doing compute_cross for n -> and then during the recursive calls we are doing compute_cross for n/2? 
+
+          But note: the compute_cross for the top level is done after the recursive calls, so the recursive calls are done and their memory is freed. 
+
+          Therefore, the memory is the maximum memory per compute_cross: which is O(n). 
+
+          But O(n) for n=300000: 
+                We are storing: 
+                  left part: lenL = 150000 -> two arrays: 150000*2 = 300000 elements
+                  right part: lenR = 150000 -> 3 arrays (Rmin, Rmax, Rprod) and 3 prefix arrays: 6 arrays of length 150000 -> 900000 elements -> total 1.2e6 elements -> 1.2e6 * 8 bytes = 9.6e6 bytes -> about 10 MB.
+
+          But the problem memory limit: 1024 MB -> so we are safe.
+
+          However, worst-case recursion: the depth is 19, but we do not have 19 levels of compute_cross active at the same time? Because the compute_cross is done after the recursive calls. 
+
+          Therefore, we are safe.
+
+          Let me run on the sample inputs.
+
+          Sample Input 3: 6 ones.
+
+            We know the answer: 21.
+
+            How many subarrays? n*(n+1)/2 = 21, each subarray: min=1, max=1 -> product=1 -> total=21.
+
+          We can run the code on this.
+
+          However, we might get TLE? because the binary search for each i: the inner loop is O(n log n) per level.
+
+          Total complexity: O(n (log n)^2) -> n=300000 -> 300000 * (19)^2 = 300000 * 361 = 108300000 -> about 100e6, which is acceptable in 1 second? 
+
+          But worst-case: 100e6 iterations? 
+
+          Actually, the binary search per i: two binary searches per i -> each takes O(log n) -> so total per level: O(n * log n) -> then total over all levels: O(n (log n)^2).
+
+          The depth: O(log n) -> and at each level the total n is the segment length? 
+
+          Actually, the recurrence:
+
+                T(n) = 2*T(n/2) + O(n log n)
+
+          Then T(n) = O(n (log n)^2).
+
+          For n=300000: O(300000 * (log2(300000))^2) = 300000 * (19)^2 = 300000*361 = 108300000 -> about 100e6, which is acceptable in C++.
+
+          But note: the constants: each binary search does about 20*2=40 operations per i? and then we do 300000*361 = 108e6 operations? 
+
+          Actually, at the top level: n=300000, we do 300000 * (log2(150000))? Actually, the binary search at the top level: the right part has 150000, so each binary search does about log2(150000) = 18 iterations? Then total operations at top level: 300000 * 2 * 18 = 10.8e6.
+
+          Then the next level: two segments of 150000 -> each segment: 150000 * 2 * log2(75000) = 150000 * 2 * 17 = 5.1e6 -> total for both: 10.2e6.
+
+          Then the next level: four segments of 75000 -> each: 75000 * 2 * log2(37500) = 75000*2*16 = 2.4e6 -> total 9.6e6.
+
+          Then total: 
+                top: 10.8e6
+                level1: 10.2e6
+                level2: 9.6e6
+                ... until base case.
+
+          The depth: about 19 levels? 
+
+          Actually, the total operations: 
+
+                T(n) = 2 * T(n/2) + 2 * n * log2(n/2)   [since the right part has size n/2?]
+
+          Actually, the size of the right part in the top level is n/2, so the binary search is log2(n/2) = log2(n)-1.
+
+          Then the total:
+
+                T(n) = 2 * T(n/2) + 2 * n * (log2(n)-1)
+
+          We can solve:
+
+                T(n) = 2 * [2*T(n/4) + 2*(n/2)*(log2(n/2)-1)] + 2 * n * (log2(n)-1)
+                      = 4*T(n/4) + 2 * n * (log2(n)-2) + 2 * n * (log2(n)-1)
+
+          After k levels: 
+
+                T(n) = 2^k * T(n/2^k) + 2 * n * [ (log2(n)-1) + (log2(n)-2) + ... + (log2(n)-k) ]
+
+          When k = log2(n): 
+
+                T(n) = n * T(1) + 2 * n * [ k * log2(n) - (1+2+...+k) ]
+
+          = n + 2 * n * [ (log n)^2 - (log n)(log n+1)/2 ]
+
+          = O(n (log n)^2)
+
+          The constant is about 2 * [ (log n)^2 - (log n)(log n+1)/2 ] = (log n)^2 - (log n)(log n+1)/2 = (log n)^2 * (1 - 1/2) - (log n)/2 = (log n)^2/2 - (log n)/2.
+
+          Then for n=300000: log2(300000) ~ 19 -> then T(n) ~ 300000 * (19*19)/2 = 300000 * 180.5 = 54.15e6 -> which is acceptable.
+
+          Therefore, we code accordingly.
+
+          But note: the base case: we return a[l]*a[l] mod mod.
+
+          Let me run the sample with 6 ones.
+
+          We'll run the code for n=6, a=[1,1,1,1,1,1]
+
+          The answer should be 21.
+
+          However, we can test the crossing part for a small segment.
+
+          Alternatively, we trust the recurrence? 
+
+          We'll run the code on the sample.
+
+          But due to the constraints, we hope it runs in 1s.
+
+          Let me test locally? 
+
+          If it passes the sample inputs, we submit.
+
+          Note: The problem says "SoCCat" and we are a competitive programmer.
+
+          Code:
+
+            We'll write as above.
+
+          Important: In the compute_cross function, when we build the right part, the Rmin_arr and Rmax_arr for j=0 to lenR-1: 
+                Rmin_arr[0] = a[mid+1]
+                for j>=1: Rmin_arr[j] = min(Rmin_arr[j-1], a[mid+1+j])
+
+          But if the array is all ones, then Rmin_arr[j] = 1 for all j.
+
+          Similarly, Rmax_arr[j]=1.
+
+          Then for the left part: also 1.
+
+          Then for each i: 
+                j1: last j such that Rmin_arr[j]>=1 -> j1 = lenR-1
+                j2: last j such that Rmax_arr[j]<=1 -> j2 = lenR-1
+
+          Then j_low = j_high = lenR-1.
+
+          Then Region1: j in [0, lenR-1] -> count = lenR, so S1 = lenR * (1*1) = lenR.
+
+          Then Region2: nothing.
+
+          Then Region3: nothing.
+
+          Then total_i = lenR.
+
+          Then the entire cross_ans = sum_{i in left} lenR = lenL * lenR.
+
+          For the entire array: 
+                The top level: 
+                    left part: [0,2] -> lenL=3, right part: [3,5] -> lenR=3 -> cross_ans=3*3=9.
+
+                Then the left part: [0,2] -> 
+                    left_ans: [0,0]=1, [1,1]=1, [2,2]=1, and the cross_ans for [0,2] (which is split at mid=1) -> 
+                         left: [0,1] -> cross_ans for [0,1] = 2? 
+                         Actually: 
+                            [0,1]: left part: [0,0] -> 1, right part: [1,1] -> 1, cross_ans for [0,1] = 1 (the subarray [0,1] -> 1*1=1) -> so left_ans for [0,1] = 1+1+1=3? 
+                         Then [0,2]: 
+                            left_ans = solve(0,1)=3, right_ans = solve(2,2)=1, cross_ans = for [0,1] and [2,2]: 
+                                left part: [0,1]: 
+                                    Lmin_arr: [min(0,1)=1, min(1)=1] -> [1,1]
+                                    Lmax_arr: [1,1]
+                                right part: [2,2]: 
+                                    Rmin_arr: [1]
+                                    Rmax_arr: [1]
+                                Then for i=0: 
+                                    j1: last j in [0,0] with Rmin_arr[j]>=1 -> j=0 -> j1=0.
+                                    j2: j2=0.
+                                    j_low=0, j_high=0.
+                                    Region1: count=1 -> S1=1
+                                    total_i=1.
+                                For i=1: 
+                                    same: total_i=1.
+                                So cross_ans=2.
+
+                            Then [0,2] total = 3+1+2=6.
+
+                Similarly, the right part [3,5] = 6.
+
+                Then the entire array: 6 (left_ans for [0,2]) + 6 (right_ans for [3,5]) + 9 (cross_ans for [0,2] and [3,5]) = 21.
+
+          Therefore, it matches.
+
+          We code accordingly.
+
+          One more: sample input #2: n=4, [1,2,1,2] -> we already tested the cross_ans for the top level was 8, and the left and right parts were 7 each -> total 22.
+
+          Now, we run the code.
+
+          Note: The arrays are global, and we use 0-indexed.
+
+          Important: the compute_cross function: when building the left part, the index for the left part: 
+                We have an array for [l, mid]. 
+                The last element of the left part is at mid. 
+                Then we build from the last element backwards: 
+                   Lmin_arr[lenL-1] = a[mid]
+                   then for i=lenL-2: which corresponds to l+ (lenL-2) = l + (mid-l+1-2) = mid-1? 
+
+                Actually, we have:
+                    i in the array Lmin_arr: index from 0 to lenL-1.
+                    For i = lenL-1: the element is a[mid] (global index mid)
+                    For i = lenL-2: the element is a[mid-1]? 
+                    But we do: 
+                         int idx = l+i;   // so for i=0: idx=l, for i=1: idx=l+1, ... for i=lenL-1: idx=l+lenL-1 = l + (mid-l) = mid.
+
+                This is correct.
+
+          We run the sample inputs.
+
+          Sample Input 1: n=3, [1,2,3] -> output=25.
+
+          We already traced and it worked.
+
+          We run the code.
+
+          But note: the prefix arrays for the right part: PrefRmin, PrefRmax: we built without modulo? Then we do mod when using? 
+
+          We do: 
+                S2 = (sumRmin % mod) * (curLmax % mod) % mod;
+
+          This is safe.
+
+          Let me run on the provided samples.
+
+          We write the main.
+
+          However, note: the recursion might cause stack overflow? The depth is about 19, which is safe.
+
+          But for n=300000, the recursion depth is about 19 -> safe.
+
+          We hope.
+
+          Let me run locally with n=300000 and all ones to check speed.
+
+          But if we do worst-case: the binary search per i: 300000 * 19 * 2 = 11.4e6 per top level? Then the total over levels: 
+
+                Level0: n=300000: 300000 * 2 * log2(150000) = 300000 * 2 * 17.2 = 10.32e6
+                Level1: two segments: each 150000 -> 2 * (150000 * 2 * log2(75000)) = 2 * (150000 * 2 * 16.2) = 2 * 4.86e6 = 9.72e6
+                Level2: 4 * (75000 * 2 * 15.2) = 4 * 2.28e6 = 9.12e6
+                ... 
+
+          The total is about the same as the recurrence: O(n (log n)^2) -> 300000 * (19)^2 = 108e6.
+
+          We can run a test.
+
+          Alternatively, we trust and submit.
+
+          Code:
+
+            We'll write as described.
+
+          But note: the sample input #1: n=3, [1,2,3] -> output=25.
+
+          Let me run the code:
+
+            a = [1,2,3] -> n=3, then:
+
+            solve(0,2): 
+                mid= (0+2)/2 = 1
+                left_ans = solve(0,1)
+                right_ans = solve(2,2) = 9
+
+                For solve(0,1): 
+                    mid= (0+1)/2=0
+                    left_ans = solve(0,0)=1
+                    right_ans = solve(1,1)=4
+                    cross_ans = compute_cross(0,1,0): 
+                         left part: [0,0] -> Lmin_arr[0]=1, Lmax_arr[0]=1
+                         right part: [1,1] -> Rmin_arr[0]=2, Rmax_arr[0]=2, Rprod_arr[0]=4
+                         Then for i=0: 
+                            j1: Rmin_arr[0]=2>=1 -> j1=0
+                            j2: Rmax_arr[0]=2<=1? no -> j2=-1
+                            Then j_low=-1, j_high=0.
+                            Region2: j in [0,0] -> Case2 (because j1>j2? false -> actually j1<=j2? 0<=-1? false -> so j1>j2? 0>-1 -> true? 
+                                Actually, we set: 
+                                    if (j1 <= j2) ... 
+                                Here j1=0, j2=-1 -> j1>j2 -> so we do the else: Case2: 
+                                    S2 = curLmin * (sum of Rmax_arr for j in [0,0]) = 1 * 2 = 2.
+                            Then total_i=2.
+                         cross_ans=2.
+
+                    Then solve(0,1)=1+4+2=7.
+
+                Then for the top level: compute_cross(0,2,1): 
+                    left part: [0,1]: 
+                         Lmin_arr: 
+                             i=1: a[1]=2 -> Lmin_arr[1]=2
+                             i=0: min(1,2)=1 -> Lmin_arr[0]=1
+                         Lmax_arr: 
+                             i=1:2
+                             i=0:2
+                    right part: [2,2]: 
+                         Rmin_arr[0]=3, Rmax_arr[0]=3, Rprod_arr[0]=9
+                    Then i=0: 
+                         j1: Rmin_arr[0]=3>=1 -> j1=0
+                         j2: 3<=2? no -> j2=-1
+                         Then j_low=-1, j_high=0.
+                         Region2: j in [0,0] -> Case2: 
+                             S2 = curLmin * Rmax_arr[0] = 1 * 3 = 3.
+                    i=1:
+                         j1: 3>=2 -> j1=0
+                         j2: 3<=2? no -> j2=-1
+                         S2 = 2 * 3 = 6.
+                    cross_ans=3+6=9.
+
+                Then total=7+9+9=25.
+
+          So it works.
+
+          We write the code accordingly.
+
+          However, note: in the condition for Region2: we have:
+
+                if (j1 <= j2) 
+                    Case3: use Rmin_arr and multiply by Lmax
+                else
+                    Case2: use Rmax_arr and multiply by Lmin
+
+          But in the sample for the top level for i=0: 
+                j1=0, j2=-1 -> so j1>j2 -> we did Case2: which is correct.
+
+          Therefore, we are good.
+
+          Code:
+
+            We note: the PrefRprod is stored mod mod, and the subtraction for S3 is done with mod.
+
+          Let me run on sample input #3: n=6, all ones -> output 21.
+
+          We run:
+
+            solve(0,5): 
+                mid=2
+                left_ans = solve(0,2) -> which we computed as 6? 
+                right_ans = solve(3,5) -> similarly 6
+                cross_ans = compute_cross(0,5,2): 
+                    left part: [0,2] -> 
+                         Lmin_arr: 
+                            i=2: a[2]=1 -> 1
+                            i=1: min(a[1],1)=1
+                            i=0: min(a[0],1)=1
+                         Lmax_arr: all 1.
+                    right part: [3,5] -> 
+                         Rmin_arr: [1,1,1]
+                         Rmax_arr: [1,1,1]
+                         Rprod_arr: [1,1,1]
+                         PrefRmin: [0,1,2,3]
+                         PrefRmax: [0,1,2,3]
+                         PrefRprod: [0,1,2,3] mod mod? 
+                    Then for each i in [0,2]:
+                         j1: last j in [0,2] such that Rmin_arr[j]>=1 -> j1=2
+                         j2: last j in [0,2] such that Rmax_arr[j]<=1 -> j2=2
+                         Then j_low=2, j_high=2.
+                         Region1: j in [0,2]: count=3 -> S1 = 3 * (1*1) = 3.
+                         Then total_i=3.
+
+                    Then cross_ans = 3 (for i=0) + 3 (for i=1) + 3 (for i=2) = 9.
+
+                Then total = 6+6+9=21.
+
+          So it matches.
+
+          We are ready.
+
+          Note: the array a is of size MAXN=300000.
+
+          Code:

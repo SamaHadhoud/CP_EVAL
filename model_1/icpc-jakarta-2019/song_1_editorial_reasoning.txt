@@ -1,0 +1,1255 @@
+We are given:
+  N, L, R, K
+  A[0..N-1] (the original melody)
+
+We need to create a new melody B[0..N-1] such that:
+1. For each i from 0 to N-2:
+   - If A[i] < A[i+1], then B[i] < B[i+1].
+   - If A[i] == A[i+1], then B[i] == B[i+1].
+   - If A[i] > A[i+1], then B[i] > B[i+1].
+2. For each i from 0 to N-2: |B[i] - B[i+1]| <= K.
+3. For each i: L <= B[i] <= R.
+
+Additionally, we want the lexicographically smallest B.
+
+Observations:
+- The relations between consecutive B[i] and B[i+1] are fixed by A. Specifically, we know the direction (increasing, constant, decreasing) and the constraint that the absolute difference is at most K.
+
+We can model the problem as having constraints on consecutive B[i] and B[i+1]:
+  Let d_i = B[i+1] - B[i]. Then:
+    If A[i] < A[i+1] => d_i >= 1 (and also |d_i|<=K, so 1<=d_i<=K)
+    If A[i] == A[i+1] => d_i = 0
+    If A[i] > A[i+1] => d_i <= -1 (so -K<=d_i<=-1)
+
+But note: we are also bounded by L and R.
+
+Moreover, we want the lexicographically smallest sequence. This suggests we should assign the smallest possible value for the first note, then the next, etc. However, note that if we assign a very small value at the beginning, we might not be able to satisfy the increasing requirements later (if we have a long increasing run) or the decreasing requirements (if we have a drop). Therefore, we need to consider the entire sequence.
+
+We can break the problem into two parts:
+  1. Determine if there is any solution.
+  2. Find the lexicographically smallest solution.
+
+Approach:
+
+One common approach for lexicographically smallest sequences with constraints is to do a forward pass to compute the feasible ranges for each B[i] and then a backward pass to fix the values. However, note that the constraints are bidirectional: the value at i affects i-1 and i+1.
+
+Alternatively, we can use a two-pass method:
+
+Pass 1: Forward propagation (from left to right) to determine the minimum and maximum values that each B[i] can take, if we start at B[0] and propagate the constraints forward.
+
+But note: we want lexicographically smallest, and we also have to consider that we have both forward and backward constraints. Actually, we can do:
+
+  Step 1: Forward pass to set the minimal possible values we can have at each position? 
+    However, if we set the first note to L, then we can set:
+        B[0] = L.
+        Then for i=1: 
+            if A[0] < A[1] -> B[1] in [L+1, min(R, L+K)] 
+            if A[0]==A[1] -> B[1] = L
+            if A[0]>A[1] -> B[1] in [max(L, L-K), L-1] -> but wait: if L=1 and K=6, then L-K = -5 -> but we have L=1 so we cannot go below 1. So we must have B[1] in [max(L, L-K), L-1] = [max(1,1-6)=1, 0] -> which is empty? That is impossible.
+
+Therefore, we cannot arbitrarily set the first note to L if the next note requires a drop? So we need to know the entire sequence to set the first note.
+
+Thus, we need to do:
+
+  Step 1: Backward pass to compute the feasible range for each note from the constraints going backwards.
+
+We can define:
+  Let low[i] and high[i] be the minimum and maximum possible values for B[i] that satisfy the constraints from i to the end.
+
+We can compute low and high arrays from right to left:
+
+  Start: i = N-1
+    low[N-1] = L, high[N-1] = R? -> Actually, no: the last note can be any value in [L,R]? But then we have constraints from the previous note.
+
+Actually, we do:
+
+  Initialize:
+    low[N-1] = L
+    high[N-1] = R
+
+  Then for i from N-2 down to 0:
+    We know the relation between B[i] and B[i+1] (which we denote as x = B[i] and y = B[i+1]).
+    Also, |x-y|<=K.
+
+    Case 1: A[i] < A[i+1] -> x < y -> x <= y-1 and also y - x <= K -> so x in [y-K, y-1]. But also we have the range for y: [low[i+1], high[i+1]]. So:
+        low[i] = max(L, low[i+1] - K)   ??? and then we also require x <= y-1 for every y? Actually, we have to satisfy for at least one y? 
+
+    Actually, we want the range for x such that there exists y in [low[i+1], high[i+1]] that satisfies:
+        x < y and |x-y|<=K  -> which is equivalent to: 
+          x in [y-K, y-1] for some y in [low[i+1], high[i+1]]
+
+    But note: the entire chain must be satisfied. We are propagating the constraints backwards.
+
+    We can compute the range for x:
+
+        x must be at least: max(L, low[i+1] - K)   -> because if y is at least low[i+1], then x >= low[i+1] - K, but also we have the upper bound: x <= y-1 <= high[i+1]-1.
+
+        However, we also have the constraint that x must be at most: min(R, high[i+1] - 1) because x < y and y <= high[i+1].
+
+        But wait: is that sufficient? Consider: we require that for the chosen y (which must be at least low[i+1]), we have x <= y-1 -> so the maximum x can be is high[i+1]-1. Also, the minimum x must be at least L and at least (low[i+1] - K) because if x is too small, we can still have y as low[i+1] as long as low[i+1] - x <= K -> but note we require x < y and the absolute difference condition is symmetric? Actually, the absolute difference condition is |x-y|<=K, so if x is too small then y-x might be too large. Therefore, we require x >= y - K. Since y>=low[i+1], we have x >= low[i+1] - K.
+
+        However, note that we also require that x is at most R and at least L.
+
+        Therefore, the constraints for x become:
+          low_bound = max(L, low[i+1] - K)
+          high_bound = min(R, high[i+1] - 1)
+
+        But wait: we also require that there exists a y in [low[i+1], high[i+1]] such that x in [y-K, y-1]. This is equivalent to:
+          y must be in [x+1, min(high[i+1], x+K)] and also in [low[i+1], high[i+1]]. Therefore, we require that x+1 <= high[i+1] and x+K >= low[i+1]? Actually, we don't need to check that again because we have set the bounds as above? 
+
+        Actually, the computed low_bound and high_bound might be inconsistent: if low_bound > high_bound, then there is no solution.
+
+    Case 2: A[i] = A[i+1] -> x = y.
+        Then: x must be in [max(L, low[i+1]), min(R, high[i+1])]? 
+        Actually, we require x=y, so the common range is:
+          low_bound = max(L, low[i+1])
+          high_bound = min(R, high[i+1])
+
+        But also, the constraint |x-y|<=K is automatically satisfied since 0<=K.
+
+    Case 3: A[i] > A[i+1] -> x > y -> x >= y+1 and |x-y|<=K -> so x in [y+1, y+K]. Then:
+        low_bound = max(L, low[i+1] + 1)
+        high_bound = min(R, high[i+1] + K)
+
+        However, note: we require x>=y+1, and y>=low[i+1] so x>=low[i+1]+1. Also, we require x<=y+K, and y<=high[i+1] so x<=high[i+1]+K.
+
+But note: the backward propagation must ensure that the entire chain from i to the end is feasible. So we set:
+
+    low[i] = low_bound
+    high[i] = high_bound
+
+However, there is a catch: the constraints from i to the end are not independent of the constraints from i+1 to the end. The above formulas actually propagate the constraints backwards: we are expressing the constraints for B[i] in terms of the constraints for B[i+1]. 
+
+But note: the constraints for B[i+1] (which are [low[i+1], high[i+1]]) were computed from the entire sequence from i+1 to the end. Therefore, if we set B[i] in [low[i], high[i]] as computed above, then we can choose B[i+1] in [low[i+1], high[i+1]] appropriately to satisfy the constraints.
+
+However, we must also note that the constraint for B[i] must be consistent with the constraints for the entire sequence from i to the end. This backward propagation is standard in such problems.
+
+But note: the above backward propagation might not be tight? Actually, we are taking the entire range of possibilities for the next note to set the current note. However, we are only propagating one step. Since the constraints are local (only one step constraint and the next step's entire range) it is sufficient.
+
+So algorithm for feasibility:
+
+  low[N-1] = L, high[N-1] = R.
+
+  for i from N-2 down to 0:
+      if A[i] < A[i+1]:
+          low[i] = max(L, low[i+1] - K)
+          high[i] = min(R, high[i+1] - 1)
+      elif A[i] == A[i+1]:
+          low[i] = max(L, low[i+1])
+          high[i] = min(R, high[i+1])
+      else: # A[i] > A[i+1]
+          low[i] = max(L, low[i+1] + 1)
+          high[i] = min(R, high[i+1] + K)
+
+  If at any point, low[i] > high[i], then there is no solution.
+
+But wait: is this correct? Consider the increasing case: 
+  We require B[i] < B[i+1] and |B[i]-B[i+1]|<=K -> which implies B[i] >= B[i+1]-K and B[i] <= B[i+1]-1. 
+  Then, for the entire range of B[i+1] (which is [low[i+1], high[i+1]]), the smallest value we can assign to B[i] is the maximum of L and (the smallest B[i+1] we can have) minus K -> which is max(L, low[i+1]-K). Similarly, the largest value we can assign to B[i] is the largest B[i+1] we can have minus one -> but note: if we set B[i] to a high value, then we require B[i+1] to be at least B[i]+1, but our high[i+1] is the maximum that B[i+1] can be. So we cannot set B[i] to be more than high[i+1]-1. 
+
+Similarly, for the decreasing case: 
+  We require B[i] >= B[i+1]+1 and B[i] <= B[i+1]+K. Then the smallest value for B[i] is the smallest B[i+1] plus one? -> but wait: if we have a small B[i+1], then B[i] can be as small as that small B[i+1]+1. So the minimum B[i] is max(L, low[i+1]+1). The maximum is min(R, high[i+1]+K).
+
+However, note: the backward propagation above is standard in problems like "jump the stairs" (or similar constraint propagation). 
+
+But wait: what if we have multiple constraints? The above propagation is one step. The entire chain is taken care of by propagating backwards.
+
+Now, if we get to index 0 and we have low[0] <= high[0], then there is at least one solution.
+
+But we want the lexicographically smallest solution. How to assign the values?
+
+We can do a forward pass:
+
+  We know that B[0] must be in [low[0], high[0]]. We want the lexicographically smallest, so we set B[0] = low[0] (the smallest possible value at the first note).
+
+  Then for i=0 to N-2:
+      We have to choose B[i+1] such that:
+        - It must be in [low[i+1], high[i+1]] (from the backward pass).
+        - It must satisfy the constraint with B[i] (the consecutive constraint) and also the relation with A.
+
+      Moreover, we want the smallest possible B[i+1] (to make the entire sequence lexicographically smallest).
+
+      How to choose B[i+1]? 
+
+        Case 1: A[i] < A[i+1] -> we require B[i] < B[i+1] and |B[i]-B[i+1]|<=K -> so:
+                B[i+1] in [max(low[i+1], B[i]+1), min(high[i+1], B[i]+K)]
+
+        Case 2: A[i] == A[i+1] -> we require B[i] = B[i+1]. So we must set B[i+1] = B[i]. But note: we must check if B[i] is within [low[i+1], high[i+1]]. If not, then it's impossible? But we did the backward propagation so it should be? However, we set B[0] to low[0], but the backward propagation for the next note might have a range that does not include B[i]? 
+
+        Actually, the backward propagation at step i (for the previous note) was computed using the entire range for the next note. So when we set the current note to a value, we must pick the next note from the intersection of the constraint from the current note and the backward constraint for the next note.
+
+        But note: the backward pass ensures that the current note (at i) is in a range that is compatible with the next note (at i+1) being in [low[i+1], high[i+1]]. However, the exact value we set for the current note (which we fixed) might restrict the next note to a subrange.
+
+        Therefore, we must:
+
+          In the increasing case: 
+             The next note must be at least max(low[i+1], B[i]+1) and at most min(high[i+1], B[i]+K). And we want the smallest possible, so we set:
+                 B[i+1] = max(low[i+1], B[i]+1)
+
+          In the constant case: 
+                 B[i+1] = B[i]   (but only if B[i] is in [low[i+1], high[i+1]]? Actually, by the backward propagation, the constraint for the current note (i) was set to the same as the next note? But wait: in the backward propagation for the constant case: 
+                    low[i] = max(L, low[i+1])
+                    high[i] = min(R, high[i+1])
+                 So if we set B[i] to low[i] (which is at least low[i+1]) and at most high[i+1] (because high[i] = min(R, high[i+1]) and we set B[i] to low[i] which is <= high[i]), then B[i] is in [low[i+1], high[i+1]]. Therefore, setting B[i+1] = B[i] is valid.
+
+          In the decreasing case: 
+                 We require B[i+1] <= B[i]-1 and B[i+1] >= B[i]-K. Also, we want the smallest possible value for B[i+1] (to be lexicographically smallest). But note: the entire sequence: we want the first note to be as small as possible, then the second, etc. So we want the smallest possible value for B[i+1] that satisfies the constraints. That would be max(low[i+1], B[i]-K) ??? 
+
+                 Actually: 
+                    The constraint: B[i] >= B[i+1] + 1  => B[i+1] <= B[i]-1.
+                    Also, |B[i]-B[i+1]|<=K -> B[i+1] >= B[i]-K.
+
+                 So B[i+1] must be in [B[i]-K, B[i]-1] and also in [low[i+1], high[i+1]]. And we want the smallest possible value for B[i+1]. The smallest value in the interval [max(low[i+1], B[i]-K), min(high[i+1], B[i]-1)] is max(low[i+1], B[i]-K). 
+
+                 However, note: we want the smallest value. The interval is [a, b] where a = max(low[i+1], B[i]-K) and b = min(high[i+1], B[i]-1). Then the smallest value is a.
+
+        Therefore, we can set:
+            Case 1: increasing: B[i+1] = max(low[i+1], B[i]+1)
+            Case 2: constant:   B[i+1] = B[i]
+            Case 3: decreasing: B[i+1] = max(low[i+1], B[i]-K)
+
+        But wait: in the decreasing case, we are setting B[i+1] to the maximum of the lower bound and (B[i]-K). However, note: if B[i]-K is below low[i+1], then we set to low[i+1]. But that might be larger than B[i]-1? Then we break the constraint? 
+
+        Actually, the backward propagation for the decreasing case: 
+            low[i] = max(L, low[i+1]+1)   -> so we must have set B[i] to at least low[i+1]+1. Therefore, B[i]-K might be less than low[i+1]? Then we set to low[i+1]. But then note: we require B[i+1] = low[i+1] and then we have:
+                B[i] >= B[i+1] + 1 -> which must hold because B[i] >= low[i] = max(L, low[i+1]+1) -> so B[i]>=low[i+1]+1. 
+
+        Therefore, the constraint is satisfied.
+
+        However, what if the constraint from the backward propagation was not tight? 
+
+        But we have to check: when we set B[i+1] = max(low[i+1], B[i]-K), we must also have that this value is at most B[i]-1. This is true because:
+          - If we set to low[i+1]: then since B[i]>=low[i+1]+1 (because by the backward propagation for the decreasing case: low[i] = max(L, low[i+1]+1) and we set B[i] to at least that, so B[i]>=low[i+1]+1 -> so low[i+1] <= B[i]-1.
+          - If we set to B[i]-K: then we require that B[i]-K <= B[i]-1? -> which is true as long as K>=1 (which is given: K>=1).
+
+        Therefore, it is safe.
+
+  However, note: we must also check that the value we assign is at most min(high[i+1], B[i]-1). But we don't explicitly check? 
+
+  Actually, the backward propagation for the decreasing case: 
+        high[i] = min(R, high[i+1] + K)
+        and we set B[i] to low[i] (the smallest possible) which is at most high[i] (which is min(R, high[i+1]+K)). Then when we set B[i+1] = max(low[i+1], B[i]-K), we have:
+          Since B[i] <= high[i] = min(R, high[i+1]+K), then B[i]-K <= min(R, high[i+1]+K) - K <= high[i+1] (because if min(R, high[i+1]+K) is R, then R-K might be above high[i+1]? but we don't know).
+
+        Actually, we are setting the next note to at least low[i+1] and at most min(high[i+1], B[i]-1) [but we are not taking the min? we are only taking the max for the lower bound]. 
+
+        We must ensure that the value we assign is at most min(high[i+1], B[i]-1). Since we set to max(low[i+1], B[i]-K) and then we know that:
+
+          max(low[i+1], B[i]-K) <= B[i]-1   (because if we take low[i+1]: then as above, low[i+1] <= B[i]-1. If we take B[i]-K: then by K>=1, we have B[i]-K <= B[i]-1).
+
+          and also: max(low[i+1], B[i]-K) <= high[i+1]? 
+
+          We have: 
+            low[i+1] <= high[i+1] (by the backward propagation for the next note) and B[i]-K might be above high[i+1]? 
+
+          But note: the backward propagation for the current note (i) in the decreasing case: 
+                high[i] = min(R, high[i+1] + K)
+          So we have B[i] <= high[i] = min(R, high[i+1]+K). Then:
+                B[i]-K <= min(R, high[i+1]+K) - K <= high[i+1]   (because if high[i] = R, then R-K might be above high[i+1]? Actually, we don't have that guarantee).
+
+          Example: 
+                high[i+1] = 10, K=5, then high[i] = min(R, 15). If R=20, then high[i]=15 -> then B[i] can be 15 -> then B[i]-K = 10 -> which is <= high[i+1] (10). 
+                If R=12, then high[i]=12 -> then B[i] can be 12 -> then B[i]-K=7 -> which is <=10? yes.
+
+          However, if we have high[i+1]=10, K=5, and R=14, then high[i]=14. Then B[i] can be 14 -> then B[i]-K=9, which is <=10 -> so it's okay.
+
+          But what if we have high[i+1]=10, K=3, and R=20: then high[i]=min(20,10+3)=13. Then B[i] can be 13 -> then B[i]-K=10, which is <=10 -> so it's okay.
+
+          Actually, we have: 
+                B[i] <= high[i] = min(R, high[i+1]+K) 
+                => B[i]-K <= min(R, high[i+1]+K) - K 
+                If min(R, high[i+1]+K) is R, then B[i]-K <= R-K -> but we don't know if R-K <= high[i+1]? 
+
+          But note: we don't require that? The constraint for B[i+1] is to be at most high[i+1]. And we set B[i+1] to max(low[i+1], B[i]-K). If B[i]-K <= high[i+1], then we are okay. If B[i]-K > high[i+1], then we set to low[i+1]? but that would be below high[i+1]? 
+
+          Actually, if B[i]-K > high[i+1], then we set B[i+1] to max(low[i+1], B[i]-K) = B[i]-K. But then we must have B[i+1] <= high[i+1] -> so we require B[i]-K <= high[i+1]. But by the backward propagation, we had:
+                high[i] = min(R, high[i+1] + K)
+          So if we set B[i] to a value that is at most min(R, high[i+1]+K), then B[i] <= high[i+1]+K -> so B[i]-K <= high[i+1]. 
+
+          Therefore, we have: B[i]-K <= high[i+1] always.
+
+        Hence, the value we set for the next note (B[i+1] = max(low[i+1], B[i]-K)) is at most B[i]-1 (as argued) and at most high[i+1] (because B[i]-K <= high[i+1]). So it is within [low[i+1], high[i+1]].
+
+  Therefore, the forward assignment:
+
+      B[0] = low[0]   (from backward propagation: we computed low[0] and high[0], and we choose the smallest: low[0])
+
+      for i in 0 to N-2:
+          if A[i] < A[i+1]:
+              B[i+1] = max(low[i+1], B[i]+1)
+          elif A[i] == A[i+1]:
+              B[i+1] = B[i]
+          else: # decreasing
+              B[i+1] = max(low[i+1], B[i]-K)
+
+  However, we must check that in the increasing case: we set B[i+1] = max(low[i+1], B[i]+1) and we also require that B[i+1] <= min(high[i+1], B[i]+K). But note: the backward propagation for the increasing case: 
+        high[i] = min(R, high[i+1]-1)   -> so we set B[i] to low[0] which is at most min(R, high[i+1]-1). Then B[i] <= high[i+1]-1 -> so B[i]+1 <= high[i+1]. Also, we have B[i+1] = max(low[i+1], B[i]+1) <= ? 
+
+        We know that low[i+1] <= high[i+1] (by the backward propagation for note i+1). Also, B[i]+1 <= high[i+1] (as above). So the value we set is at most high[i+1]. Also, we set it to at least B[i]+1 and at most B[i]+K? 
+
+        Actually, we set it to max(low[i+1], B[i]+1). Then:
+          If we set to B[i]+1: then it is in [B[i]+1, B[i]+K]? -> yes, because we require at least B[i]+1 and then we are setting to that, and we have |B[i] - B[i+1]| = 1 <= K (given K>=1). 
+          If we set to low[i+1]: then we require that low[i+1] >= B[i]+1? Not necessarily: it could be that low[i+1] is larger than B[i]+1? Actually, the backward propagation for the increasing case: 
+                low[i] = max(L, low[i+1]-K)
+          and we set B[i] = low[i] = max(L, low[i+1]-K). Then if we set B[i+1] = low[i+1] (because we take the max of low[i+1] and B[i]+1), then we require that low[i+1] >= B[i]+1? 
+          Since B[i] = max(L, low[i+1]-K), then:
+            If B[i] = low[i+1]-K: then we require that low[i+1] >= (low[i+1]-K)+1 -> which simplifies to K>=1 -> true.
+            If B[i] = L: then we set B[i+1] = max(low[i+1], L+1). And then we must have low[i+1] >= L (by the backward propagation) so L+1 might be above low[i+1]? Then we set to L+1. But then we must have L+1 <= high[i+1] and also L+1 >= low[i+1]? 
+
+          Actually, the constraint from the backward propagation for the increasing case: 
+                low[i] = max(L, low[i+1]-K) 
+          and we set B[i]=low[i]. Then the constraint for the next note: 
+                B[i+1] must be at least B[i]+1 -> so at least low[i]+1.
+
+          Also, the backward propagation for the next note: the next note must be at least low[i+1]. 
+
+          So we set B[i+1] = max(low[i+1], B[i]+1) = max(low[i+1], low[i]+1). 
+
+          Now, note: 
+            If low[i] = low[i+1]-K, then low[i]+1 = low[i+1]-K+1. Then if low[i+1] >= low[i]+1? -> that is: low[i+1] >= low[i+1]-K+1 -> which is K>=1 -> true.
+            So then max(low[i+1], low[i]+1) = low[i+1] (because low[i+1] >= low[i]+1).
+
+          But if low[i] = L, then we set B[i+1]=max(low[i+1], L+1). 
+
+          However, we must also have that L+1 is at least low[i+1]? Actually, the backward propagation for the current note: 
+                low[i] = max(L, low[i+1]-K) = L -> so that implies low[i+1]-K <= L -> so low[i+1] <= L+K. 
+
+          But we have no guarantee that L+1 <= low[i+1]. Therefore, if L+1 > low[i+1], then we set to L+1. And then we must check that L+1 <= high[i+1]? 
+
+          The backward propagation for the next note: we have the entire chain, so we know that the next note must be at least low[i+1] and at most high[i+1]. And we are setting it to L+1. But we have the constraint that the next note must be at least B[i]+1 = L+1. So that is satisfied.
+
+          However, we must also have that the next note is at most min(high[i+1], B[i]+K) = min(high[i+1], L+K). Since we set to L+1, we require that L+1 <= high[i+1] (which we know because the backward propagation for the next note: the note must be in [low[i+1], high[i+1]] and we set to L+1 which is at least low[i+1] and we assume L+1 <= high[i+1]? 
+
+          But note: the backward propagation does not guarantee that L+1 is below high[i+1]. It only guarantees that the entire chain is feasible. However, we did the backward propagation and we know that low[i+1] <= high[i+1]. But if we set to L+1, which might be above high[i+1]? 
+
+          Actually, we set the next note to max(low[i+1], L+1). Then if L+1 > high[i+1], then we set to low[i+1]? but then if low[i+1] is below L+1, we set to L+1? 
+
+          Correction: we set to the max of the two. But if L+1 is greater than high[i+1], then we set to L+1 which is above high[i+1] -> which is invalid.
+
+          Therefore, we must check: 
+                candidate = max(low[i+1], B[i]+1)
+                and if candidate > min(high[i+1], B[i]+K) -> then it's impossible? 
+
+          But note: the backward propagation for the current note: 
+                high[i] = min(R, high[i+1]-1) 
+          and we set B[i] to low[i] = max(L, low[i+1]-K). Then the constraint for the next note: 
+                B[i+1] must be at most min(high[i+1], B[i]+K). 
+
+          However, we did not store the entire constraints for the next note in the forward pass? We only stored [low[i+1], high[i+1]]. 
+
+  Actually, we have two sets of constraints:
+
+      From the backward propagation: the next note must be in [low[i+1], high[i+1]].
+
+      From the consecutive constraint: 
+          increasing: [B[i]+1, B[i]+K] 
+          constant: [B[i], B[i]] 
+          decreasing: [B[i]-K, B[i]-1] 
+
+      Then the feasible set for the next note is the intersection of [low[i+1], high[i+1]] and the consecutive interval.
+
+      Therefore, we must:
+
+          candidate = 
+            increasing: max(low[i+1], B[i]+1) 
+            constant: B[i]   (if in [low[i+1], high[i+1]]? but we know it is by backward propagation? Actually, we know the backward propagation for the constant case: the current note must be in [max(L,low[i+1]), min(R,high[i+1])] and we set the current note to low[i] which is at least low[i+1] and at most min(R,high[i+1]). Then the next note must be the same -> which is in [low[i+1], high[i+1]].)
+            decreasing: max(low[i+1], B[i]-K)
+
+          Then we must check that candidate is at most the upper bound of the consecutive constraint and the backward constraint? 
+
+          Specifically:
+
+            increasing: candidate must be <= min(high[i+1], B[i]+K)
+            constant: candidate = B[i] is automatically in the constraints? 
+            decreasing: candidate must be <= min(high[i+1], B[i]-1) -> but we argued that candidate <= B[i]-1 and candidate <= high[i+1] (because candidate = max(low[i+1], B[i]-K) and we know that B[i]-K <= high[i+1] and low[i+1]<=high[i+1] so candidate<=high[i+1], and also candidate<=B[i]-1 as argued above).
+
+          So we only need to check the increasing case? 
+
+          In the increasing case: 
+                candidate = max(low[i+1], B[i]+1) 
+                and we require candidate <= min(high[i+1], B[i]+K)
+
+          But if candidate > min(high[i+1], B[i]+K), then we have no solution? 
+
+          However, the backward propagation should have ensured that such a candidate exists? 
+
+          Actually, the backward propagation for the current note: 
+                low[i] = max(L, low[i+1]-K)
+                high[i] = min(R, high[i+1]-1)
+
+          and we set B[i] = low[i]. Then:
+
+                candidate = max(low[i+1], low[i]+1) 
+
+                The constraint: candidate must be <= min(high[i+1], low[i]+K)
+
+          We know:
+                candidate <= low[i]+K: 
+                   If candidate = low[i]+1: then we require low[i]+1 <= low[i]+K -> true because K>=1.
+                   If candidate = low[i+1]: then we require low[i+1] <= low[i]+K -> but note: low[i] = max(L, low[i+1]-K) -> if low[i] = low[i+1]-K, then low[i+1] = low[i]+K -> so we have candidate = low[i]+K, and then we require low[i]+K <= low[i]+K -> true.
+
+          Also, candidate <= high[i+1]? 
+                If candidate = low[i]+1: then we require low[i]+1 <= high[i+1]? 
+                    From the backward propagation: 
+                         high[i] = min(R, high[i+1]-1) 
+                    and we set B[i] = low[i] which must be <= high[i] = min(R, high[i+1]-1). 
+                    Then low[i] <= high[i+1]-1 -> so low[i]+1 <= high[i+1] -> true.
+
+                If candidate = low[i+1]: then we know low[i+1] <= high[i+1] (by the backward propagation for the next note) -> true.
+
+          Therefore, the candidate we choose is always <= min(high[i+1], B[i]+K).
+
+  So we do not need an extra check? 
+
+  But note: what if the backward propagation for the next note was inconsistent? We already checked in the backward pass that low[i] <= high[i] for each i. So we assume that the backward propagation was consistent.
+
+  Therefore, the algorithm:
+
+      Step 1: Backward propagation to compute low[i] and high[i] for i from N-1 down to 0.
+          low[N-1] = L, high[N-1] = R.
+          for i = N-2 down to 0:
+             if A[i] < A[i+1]:
+                 low[i] = max(L, low[i+1] - K)
+                 high[i] = min(R, high[i+1] - 1)
+             elif A[i] == A[i+1]:
+                 low[i] = max(L, low[i+1])   # Note: same as the next note
+                 high[i] = min(R, high[i+1])
+             else: # A[i] > A[i+1]
+                 low[i] = max(L, low[i+1] + 1)
+                 high[i] = min(R, high[i+1] + K)
+
+             If at any point low[i] > high[i]: output -1 and exit.
+
+      Step 2: If the backward propagation succeeded, then do the forward assignment:
+
+          B[0] = low[0]
+
+          for i in 0 to N-2:
+             if A[i] < A[i+1]:
+                 B[i+1] = max(low[i+1], B[i] + 1)
+                 # We don't need to check because the backward propagation ensures that this value is <= min(high[i+1], B[i]+K) and within [L,R]?
+             elif A[i] == A[i+1]:
+                 B[i+1] = B[i]
+             else: # decreasing
+                 B[i+1] = max(low[i+1], B[i] - K)
+
+          Then output B.
+
+  But wait: what about the constant case? We set B[i+1]=B[i]. What if the backward propagation for the next note had a range that does not include B[i]? 
+
+      In the backward propagation for the constant case: 
+          low[i] = max(L, low[i+1])
+          high[i] = min(R, high[i+1])
+          and we set B[i] = low[i] = max(L, low[i+1]). Then we set B[i+1]=B[i] = max(L, low[i+1]). 
+
+      Now, we require that this value is in [low[i+1], high[i+1]]. 
+          Since low[i] = max(L, low[i+1]) -> then B[i+1] = max(L, low[i+1]) >= low[i+1]. 
+          Also, since high[i] = min(R, high[i+1]) and we set B[i] to low[i] which is <= high[i] = min(R, high[i+1]) -> so B[i] <= high[i+1]. 
+
+      Therefore, it is in the range.
+
+  Therefore, the algorithm seems complete.
+
+  However, let us test with the sample:
+
+      Sample Input #1: 
+          16 1 8 6
+          [1, 3, 5, 6, 7, 8, 9, 10, 3, 7, 8, 9, 10, 11, 12, 12]
+
+      We'll do the backward propagation:
+
+        i = 15: (last note) 
+            low[15] = 1, high[15] = 8.
+
+        i = 14: A[14]=12, A[15]=12 -> constant.
+            low[14] = max(1, low[15]) = max(1,1)=1
+            high[14] = min(8, high[15]) = min(8,8)=8
+
+        i=13: A[13]=11, A[14]=12 -> increasing? no: 11<12 -> increasing? Actually, the problem says: 
+            If A_i < A_{i+1} -> increasing -> then we require B_i < B_{i+1} and |B_i-B_{i+1}|<=K.
+
+            So: 
+                low[13] = max(1, low[14]-6) = max(1,1-6)=max(1,-5)=1
+                high[13] = min(8, high[14]-1) = min(8,8-1)=7
+
+        i=12: A[12]=10, A[13]=11 -> increasing:
+                low[12]=max(1, low[13]-6)=max(1,1-6)=1
+                high[12]=min(8, high[13]-1)=min(8,7-1)=6
+
+        i=11: A[11]=9, A[12]=10 -> increasing:
+                low[11]=max(1,1-6)=1
+                high[11]=min(8,6-1)=5
+
+        i=10: A[10]=8, A[11]=9 -> increasing:
+                low[10]=max(1,1-6)=1
+                high[10]=min(8,5-1)=4
+
+        i=9: A[9]=7, A[10]=8 -> increasing:
+                low[9]=1
+                high[9]=min(8,4-1)=3
+
+        i=8: A[8]=3, A[9]=7 -> increasing? 3<7 -> increasing:
+                low[8]=max(1, low[9]-6)=max(1,1-6)=1
+                high[8]=min(8, high[9]-1)=min(8,3-1)=2
+
+        i=7: A[7]=10, A[8]=3 -> decreasing: 10>3 -> so:
+                low[7]=max(1, low[8]+1)=max(1,1+1)=2
+                high[7]=min(8, high[8]+6)=min(8,2+6)=8
+
+        i=6: A[6]=9, A[7]=10 -> increasing:
+                low[6]=max(1, low[7]-6)=max(1,2-6)=1
+                high[6]=min(8, high[7]-1)=min(8,8-1)=7
+
+        i=5: A[5]=8, A[6]=9 -> increasing:
+                low[5]=max(1,1-6)=1
+                high[5]=min(8,7-1)=6
+
+        i=4: A[4]=7, A[5]=8 -> increasing:
+                low[4]=1
+                high[4]=min(8,6-1)=5
+
+        i=3: A[3]=6, A[4]=7 -> increasing:
+                low[3]=1
+                high[3]=min(8,5-1)=4
+
+        i=2: A[2]=5, A[3]=6 -> increasing:
+                low[2]=1
+                high[2]=min(8,4-1)=3
+
+        i=1: A[1]=3, A[2]=5 -> increasing:
+                low[1]=1
+                high[1]=min(8,3-1)=2
+
+        i=0: A[0]=1, A[1]=3 -> increasing:
+                low[0]=max(1, low[1]-6)=max(1,1-6)=1
+                high[0]=min(8, high[1]-1)=min(8,2-1)=1
+
+        Then forward assignment:
+
+          B[0] = low[0] = 1.
+
+          i=0: A[0]=1, A[1]=3 -> increasing -> B[1]=max(low[1], B[0]+1)=max(1,1+1)=2.
+
+          i=1: increasing -> B[2]=max(low[2]=1, B[1]+1)=max(1,3)=3.
+
+          i=2: increasing -> B[3]=max(1,3+1)=4.
+
+          i=3: increasing -> B[4]=5.
+
+          i=4: increasing -> B[5]=6.
+
+          i=5: increasing -> B[6]=7.
+
+          i=6: increasing -> B[7]=max(low[7]=2, 7+1)=8.   [Note: low[7] was 2, but 8 is the value we assign]
+
+          i=7: decreasing: A[7]=10, A[8]=3 -> decreasing -> B[8]=max(low[8]=1, B[7]-K=8-6=2) -> max(1,2)=2.
+
+          i=8: increasing: A[8]=3, A[9]=7 -> increasing -> B[9]=max(low[9]=1, 2+1)=3.
+
+          i=9: increasing: B[10]=max(1,3+1)=4.
+
+          i=10: increasing: B[11]=5.
+
+          i=11: increasing: B[12]=6.
+
+          i=12: increasing: B[13]=max(low[13]=1, 6+1)=7.
+
+          i=13: increasing: B[14]=max(1,7+1)=8.
+
+          i=14: constant: B[15]=B[14]=8.
+
+        So the sequence: 
+          [1,2,3,4,5,6,7,8,2,3,4,5,6,7,8,8] -> matches sample.
+
+  Sample Input #2:
+        16 1 8 6
+        [1,3,5,6,7,8,9,10,3,7,8,9,10,11,12,13]   # only last note changed from 12 to 13.
+
+      Then backward propagation:
+
+        i=15: low[15]=1, high[15]=8.
+
+        i=14: A[14]=12, A[15]=13 -> increasing:
+                low[14]=max(1, low[15]-6)=max(1,1-6)=1
+                high[14]=min(8, high[15]-1)=min(8,8-1)=7
+
+        i=13: increasing: 
+                low[13]=max(1,1-6)=1
+                high[13]=min(8,7-1)=6
+
+        ... same as above until i=14 and i=13 are computed.
+
+        Then we continue:
+
+          i=12: increasing: 
+                  low[12]=max(1, low[13]-6)=max(1,1-6)=1
+                  high[12]=min(8,6-1)=5
+
+          i=11: increasing: high[11]=min(8,5-1)=4
+
+          ... and so on.
+
+        Then at i=14 we have high[14]=7, but the value we need for the last note is 13? Actually, we are propagating backwards and we don't care about the original A for the value, only the relation.
+
+        Then at i=7: 
+                low[7]=max(1, low[8]+1)=max(1,1+1)=2
+                high[7]=min(8, high[8]+6)=min(8,2+6)=8   (same as before)
+
+        Then at i=0: 
+                low[0]=1, high[0]=min(8, high[1]-1) -> but what is high[1]? 
+
+        Actually, we must compute all:
+
+          i=15: [1,8]
+          i=14: [1,7]  (because increasing: from 12 to 13)
+          i=13: [1,6]  (from 11 to 12: increasing -> so high[13]=high[14]-1=7-1=6)
+          i=12: [1,5]  (from 10 to 11: increasing -> high[12]=6-1=5)
+          i=11: [1,4]  (from 9 to 10: increasing -> 5-1=4)
+          i=10: [1,3]  (from 8 to 9: increasing -> 4-1=3)
+          i=9: [1,2]   (from 7 to 8: increasing -> 3-1=2)
+          i=8: [1, min(8,2+6)=min(8,8)=8]? -> no: 
+                A[8]=3, A[9]=7 -> increasing: 
+                    low[8]=max(1, low[9]-6)=max(1,1-6)=1
+                    high[8]=min(8, high[9]-1)=min(8,2-1)=1 -> so high[8]=1.
+
+          Then i=7: A[7]=10, A[8]=3 -> decreasing: 
+                low[7]=max(1, low[8]+1)=max(1,1+1)=2
+                high[7]=min(8, high[8]+6)=min(8,1+6)=7
+
+          Then i=6: increasing: 
+                low[6]=max(1, low[7]-6)=max(1,2-6)=1
+                high[6]=min(8, high[7]-1)=min(8,7-1)=6
+
+          ... then the rest as before.
+
+          Then at i=0: 
+                low[0]=max(1, low[1]-6)=max(1,1-6)=1
+                high[0]=min(8, high[1]-1) -> but what is high[1]? 
+
+          We need to compute i=1 to i=6:
+
+            i=1: A[1]=3, A[2]=5 -> increasing: 
+                  low[1]=max(1, low[2]-6)=max(1,1-6)=1
+                  high[1]=min(8, high[2]-1) -> we need high[2]?
+
+            i=2: increasing: 
+                  low[2]=max(1, low[3]-6)=max(1,1-6)=1
+                  high[2]=min(8, high[3]-1) -> we need high[3]?
+
+            i=3: increasing: 
+                  low[3]=1
+                  high[3]=min(8, high[4]-1) -> high[4]?
+
+            i=4: increasing: 
+                  low[4]=1
+                  high[4]=min(8, high[5]-1) -> high[5]?
+
+            i=5: increasing: 
+                  low[5]=1
+                  high[5]=min(8, high[6]-1)=min(8,6-1)=5
+
+            Then i=4: high[4]=min(8,5-1)=4
+            i=3: high[3]=min(8,4-1)=3
+            i=2: high[2]=min(8,3-1)=2
+            i=1: high[1]=min(8,2-1)=1
+
+          Then i=0: 
+                high[0]=min(8,1-1)=min(8,0)=0.
+
+          Then low[0]=1, high[0]=0 -> 1>0 -> no solution -> output -1.
+
+        This matches sample #2.
+
+  Sample Input #3:
+        16 1 10 10
+        [1,3,5,6,7,8,9,10,3,7,8,9,1,11,12,13]
+
+      We'll do backward propagation:
+
+        i=15: [1,10]
+        i=14: A[14]=12, A[15]=13 -> increasing:
+                low[14]=max(1,1-10)=1
+                high[14]=min(10,10-1)=9
+        i=13: A[13]=11, A[14]=12 -> increasing:
+                low[13]=max(1,1-10)=1
+                high[13]=min(10,9-1)=8
+        i=12: A[12]=1, A[13]=11 -> increasing? -> 1<11 -> increasing:
+                low[12]=max(1,1-10)=1
+                high[12]=min(10,8-1)=7
+        i=11: A[11]=9, A[12]=1 -> decreasing: 9>1 -> 
+                low[11]=max(1, low[12]+1)=max(1,1+1)=2
+                high[11]=min(10, high[12]+10)=min(10,7+10)=10
+        i=10: A[10]=8, A[11]=9 -> increasing:
+                low[10]=max(1, low[11]-10)=max(1,2-10)=1
+                high[10]=min(10,10-1)=9
+        i=9: A[9]=7, A[10]=8 -> increasing:
+                low[9]=1
+                high[9]=min(10,9-1)=8
+        i=8: A[8]=3, A[9]=7 -> increasing:
+                low[8]=max(1,1-10)=1
+                high[8]=min(10,8-1)=7
+        i=7: A[7]=10, A[8]=3 -> decreasing:
+                low[7]=max(1, low[8]+1)=max(1,1+1)=2
+                high[7]=min(10,7+10)=min(10,17)=10
+        i=6: increasing: A[6]=9, A[7]=10 -> 
+                low[6]=max(1,2-10)=1
+                high[6]=min(10,10-1)=9
+        i=5: increasing: 
+                low[5]=1
+                high[5]=min(10,9-1)=8
+        i=4: increasing: 
+                low[4]=1
+                high[4]=min(10,8-1)=7
+        i=3: increasing: 
+                low[3]=1
+                high[3]=min(10,7-1)=6
+        i=2: increasing: 
+                low[2]=1
+                high[2]=min(10,6-1)=5
+        i=1: increasing: 
+                low[1]=1
+                high[1]=min(10,5-1)=4
+        i=0: increasing: 
+                low[0]=max(1,1-10)=1
+                high[0]=min(10,4-1)=3
+
+        Then forward assignment:
+
+          B[0]=1
+          i0: increasing -> B[1]=max(low[1]=1, 1+1)=2
+          i1: increasing -> B[2]=max(1,2+1)=3
+          i2: increasing -> B[3]=max(1,3+1)=4
+          i3: increasing -> B[4]=5
+          i4: increasing -> B[5]=6
+          i5: increasing -> B[6]=7
+          i6: increasing -> B[7]=max(low[7]=2,7+1)=8   # but wait: the backward propagation for i7: [2,10] -> so 8 is in that range.
+
+          i7: decreasing: A[7]=10, A[8]=3 -> 
+                B[8]=max(low[8]=1, 8-10)=max(1,-2)=1 -> but 1? 
+                But we must check: we require B[7] > B[8]? 8>1 -> true.
+                And |8-1|=7<=10 -> true.
+
+          i8: increasing: A[8]=3, A[9]=7 -> 
+                B[9]=max(low[9]=1, 1+1)=2
+          i9: increasing: B[10]=max(1,2+1)=3
+          i10: increasing: B[11]=max(2,3+1)=4   # but wait: low[11]=2 -> so we set to 4? 
+          i11: decreasing: A[11]=9, A[12]=1 -> 
+                B[12]=max(low[12]=1, 4-10)=max(1,-6)=1
+          i12: increasing: A[12]=1, A[13]=11 -> 
+                B[13]=max(low[13]=1, 1+1)=2
+          i13: increasing: B[14]=max(1,2+1)=3
+          i14: increasing: B[15]=max(1,3+1)=4
+
+        Then the sequence: 
+          [1,2,3,4,5,6,7,8,1,2,3,4,1,2,3,4]
+
+        But the sample output is:
+          1 2 3 4 5 6 7 8 1 2 3 4 1 2 3 4
+
+        However, the sample output provided is:
+          "1 2 3 4 5 6 7 8 1 2 3 4 1 2 3 4"
+
+        So it matches.
+
+  However, note that in the forward assignment for i=11 (which is the 12th note, index11) we set to 4. Then for the next note (the 13th, index12) we set to 1. Then for the 14th note (index13) we set to 2. 
+
+  Check constraints:
+
+      For the 11th and 12th: A[11]=9, A[12]=1 -> decreasing -> we require B[11]>B[12] and |B[11]-B[12]|<=K=10 -> 4>1 and |4-1|=3<=10 -> valid.
+
+      For the 12th and 13th: A[12]=1, A[13]=11 -> increasing -> we require B[12]<B[13] -> 1<2 -> valid.
+
+  Therefore, the algorithm is correct.
+
+  Implementation note: 
+      We do a backward pass to compute arrays low and high of length N.
+      Then we do a forward pass to assign the melody.
+
+  Time: O(N) for each pass -> O(N) overall.
+
+  Memory: O(N) to store the arrays.
+
+  Since N<=100000, this is acceptable.
+
+  Code structure:
+
+      Read N, L, R, K.
+      Read A[0..N-1]
+
+      low = [0]*N
+      high = [0]*N
+
+      # Initialize last note
+      low[N-1] = L
+      high[N-1] = R
+
+      # Backward propagation from N-2 down to 0
+      for i in range(N-2, -1, -1):
+          if A[i] < A[i+1]:
+              low[i] = max(L, low[i+1] - K)
+              high[i] = min(R, high[i+1] - 1)
+          elif A[i] == A[i+1]:
+              low[i] = max(L, low[i+1])
+              high[i] = min(R, high[i+1])
+          else: # A[i] > A[i+1]
+              low[i] = max(L, low[i+1] + 1)
+              high[i] = min(R, high[i+1] + K)
+
+          # If at any point low[i] > high[i], then we break and output -1 at the end.
+
+      If after backward propagation, we have low[0] <= high[0]? Then we do the forward assignment. But note: we must check at every step in the backward pass? 
+
+      Actually, we can break early: if at any i, low[i] > high[i], then we break and output -1.
+
+      Then if we completed the backward pass, we do the forward assignment.
+
+      Then output the melody.
+
+  But note: what if we get a value in the forward assignment that is out of the [L,R]? 
+      The backward propagation and the forward assignment are designed to stay within [L,R]. 
+
+  However, in the forward assignment we set:
+
+      In the increasing case: 
+          B[i+1] = max(low[i+1], B[i]+1) 
+          But note: low[i+1] is at least L, and we set B[i] from the backward propagation which was at least L? so B[i]+1 might be above R? 
+
+      Actually, in the backward propagation for the current note (i) in the increasing case: 
+          high[i] = min(R, high[i+1]-1)
+          Then we set B[i] to low[i] which is at most high[i] = min(R, high[i+1]-1) -> so B[i] <= min(R, high[i+1]-1) -> then B[i]+1 <= min(R, high[i+1]-1)+1 <= R? 
+          But min(R, high[i+1]-1) might be R -> then B[i] <= R -> then B[i]+1 might be R+1 which is above R.
+
+      Then we set B[i+1] = max(low[i+1], B[i]+1). If B[i]+1 > R, then we set to low[i+1]? But then we must check that low[i+1] is at most R? It is because the backward propagation for the next note: the next note must be at most R (since we set high[i+1]=min(R, ...)).
+
+      However, if B[i]+1 > R, then we set to low[i+1]. But then we have B[i+1] = low[i+1] which is at most R. 
+
+      But we must have B[i+1] >= B[i]+1? -> because we are in the increasing case. But if we set to low[i+1] and low[i+1] < B[i]+1, then we break the increasing constraint.
+
+      How do we avoid that? 
+
+          The backward propagation for the current note (i) in the increasing case: 
+              high[i] = min(R, high[i+1]-1) 
+          and we set B[i] to low[i] which is at most min(R, high[i+1]-1). Then if we set B[i] to a value such that B[i]+1 > R, then we have:
+              B[i] >= R -> but then from the constraint: 
+                  B[i] <= min(R, high[i+1]-1) 
+              so B[i] <= R -> so B[i] = R? then B[i]+1 = R+1.
+
+          Then we set B[i+1] = max(low[i+1], R+1). But low[i+1] is at least L (>=1) and at most R. Then we set to R+1? which is above R? -> which is invalid.
+
+      Actually, we must not set to R+1 because we are bounded by R. 
+
+      Therefore, we must check: 
+          candidate = max(low[i+1], B[i]+1) 
+          and if candidate > R, then it is invalid? 
+
+      But note: the backward propagation for the next note: the next note must be in [low[i+1], high[i+1]] and high[i+1] <= R. So if candidate > R, then we have no solution.
+
+      However, the backward propagation should have ensured that the constraints are satisfied? 
+
+      Specifically, the backward propagation for the current note (i) in the increasing case: 
+          We had: 
+              high[i] = min(R, high[i+1]-1) 
+          Then when we set B[i] = low[i] (which is at least L and at most min(R, high[i+1]-1)), then the constraint for the next note: 
+              B[i+1] must be at least B[i]+1 and at most min(R, B[i]+K, high[i+1])? 
+
+          But we have: 
+              B[i] <= high[i] = min(R, high[i+1]-1) -> so B[i]+1 <= min(R, high[i+1]-1)+1 
+          and we require that min(R, high[i+1]-1)+1 <= high[i+1]? 
+              If min(R, high[i+1]-1) = R, then we require R+1 <= high[i+1]? but high[i+1] is at most R -> so R+1 <= R -> false.
+
+          Therefore, we must have: 
+              min(R, high[i+1]-1) = high[i+1]-1 -> so that B[i]+1 <= (high[i+1]-1)+1 = high[i+1] <= R.
+
+          But that is only if high[i+1]-1 <= R? 
+
+          Actually, the constraint: 
+              high[i] = min(R, high[i+1]-1) 
+          implies that if high[i+1]-1 <= R, then we set high[i] = high[i+1]-1, and then B[i] <= high[i+1]-1 -> so B[i]+1 <= high[i+1] -> which is <= R? because high[i+1] <= R? 
+
+          Yes: the backward propagation for the next note: high[i+1] = min(R, ...) -> so high[i+1] <= R.
+
+          Therefore, if the backward propagation did not break, then B[i]+1 <= high[i+1] <= R. 
+
+          Then candidate = max(low[i+1], B[i]+1) is at most R? because B[i]+1 <= R and low[i+1] <= R.
+
+      So we are safe.
+
+  Therefore, the algorithm as described is complete.
+
+  Code:
+
+      Read input.
+      low = [0]*n
+      high = [0]*n
+
+      low[n-1] = L
+      high[n-1] = R
+
+      for i in range(n-2, -1, -1):
+          if A[i] < A[i+1]:
+              low_i = max(L, low[i+1] - K)
+              high_i = min(R, high[i+1] - 1)
+          elif A[i] == A[i+1]:
+              low_i = max(L, low[i+1])
+              high_i = min(R, high[i+1])
+          else:
+              low_i = max(L, low[i+1] + 1)
+              high_i = min(R, high[i+1] + K)
+
+          if low_i > high_i:
+              print(-1)
+              exit(0)
+          else:
+              low[i] = low_i
+              high[i] = high_i
+
+      # Now, if we are here, then backward propagation succeeded.
+
+      res = [0]*n
+      res[0] = low[0]
+
+      for i in range(0, n-1):
+          if A[i] < A[i+1]:
+              # candidate = max(low[i+1], res[i] + 1)
+              candidate = max(low[i+1], res[i] + 1)
+              # We know candidate <= min(high[i+1], res[i]+K) and candidate is in [L,R] by the above reasoning.
+              res[i+1] = candidate
+          elif A[i] == A[i+1]:
+              res[i+1] = res[i]
+          else: # decreasing
+              candidate = max(low[i+1], res[i] - K)
+              res[i+1] = candidate
+
+      # Output res
+      print(" ".join(str(x) for x in res))
+
+  However, note: the problem says that the original melody might be the same as the output? Our algorithm does not assume that, it builds the new melody from scratch.
+
+  Let me test with a trivial sample: 
+        N=1, L=5, R=10, K=1, A=[7]
+
+        Backward: 
+            low[0]=5, high[0]=10.
+        Then forward: 
+            res[0]=5.
+
+        Output: 5.
+
+  Another: 
+        N=2, L=1, R=10, K=1, A=[2,2] (constant)
+        Backward:
+            i=1: [1,10]
+            i=0: constant -> low[0]=max(1,low[1])=max(1,1)=1; high[0]=min(10,10)=10.
+        Forward: 
+            res[0]=1
+            res[1]=1.
+
+        Then the sequence: [1,1] -> satisfies constant.
+
+  Another: 
+        N=2, L=1, R=10, K=1, A=[2,3] (increasing)
+        Backward:
+            i1: [1,10]
+            i0: increasing: low[0]=max(1,1-1)=max(1,0)=1; high[0]=min(10,10-1)=9.
+        Forward:
+            res[0]=1
+            res[1]=max(low[1]=1, 1+1)=2.
+
+        Output: [1,2] -> valid.
+
+  Another: 
+        N=2, L=1, R=10, K=1, A=[3,2] (decreasing)
+        Backward:
+            i1: [1,10]
+            i0: decreasing: low[0]=max(1,1+1)=2; high[0]=min(10,10+1)=10.
+        Forward:
+            res[0]=2
+            res[1]=max(low[1]=1, 2-1)=max(1,1)=1.
+
+        Output: [2,1] -> valid.
+
+  Therefore, we write the code accordingly.
+
+  However, note: the constraints say that K can be up to 10^9 and the integers are up to 10^9, so we must use integers and the operations are safe.
+
+  Let's code accordingly.
+
+  But note: the backward propagation for the increasing case: 
+        low[i] = max(L, low[i+1]-K)   -> if low[i+1] is 1 and K is 10^9, then 1-10^9 might be negative -> then we set to L. 
+
+  Similarly, the decreasing case: 
+        high[i] = min(R, high[i+1] + K) -> if high[i+1] is 10^9 and K is 10^9, then 2*10^9 might be above R? then we set to R.
+
+  So the computations are safe.
+
+  We'll implement as described.
+
+  One last note: the problem states that the vocal range is L to R, so we must ensure that every note is in [L,R]. The backward propagation and the forward assignment explicitly use L and R to clamp the bounds, so it should be satisfied.
+
+  We output the melody or -1.
+
+  Let's run the sample inputs.
+
+  Sample Input #1: 
+        16 1 8 6
+        1 3 5 6 7 8 9 10 3 7 8 9 10 11 12 12
+
+  We computed: 
+        low[0]=1, high[0]=1 -> so B[0]=1.
+
+        Then the forward assignment as above.
+
+  Sample Input #2: 
+        ... and we break at i=0 in backward propagation? Actually we break in the backward propagation at i=0: low[0]=1, high[0]=0 -> then we output -1.
+
+  Sample Input #3: 
+        ... we computed the backward propagation and then the forward assignment as above.
+
+  Therefore, we are done.
+
+  Code:
+
+      import sys
+
+      data = sys.stdin.read().split()
+      if not data: 
+          exit(0)
+
+      n = int(data[0]); L = int(data[1]); R = int(data[2]); K = int(data[3])
+      A = list(map(int, data[4:4+n]))
+
+      low = [0] * n
+      high = [0] * n
+
+      low[n-1] = L
+      high[n-1] = R
+
+      # Backward propagation from the last but one to the first
+      for i in range(n-2, -1, -1):
+          if A[i] < A[i+1]:
+              low_i = max(L, low[i+1] - K)
+              high_i = min(R, high[i+1] - 1)
+          elif A[i] == A[i+1]:
+              low_i = max(L, low[i+1])
+              high_i = min(R, high[i+1])
+          else: # A[i] > A[i+1]
+              low_i = max(L, low[i+1] + 1)
+              high_i = min(R, high[i+1] + K)
+
+          if low_i > high_i:
+              print(-1)
+              exit(0)
+          else:
+              low[i] = low_i
+              high[i] = high_i
+
+      # Now forward assignment
+      res = [0] * n
+      res[0] = low[0]
+
+      for i in range(0, n-1):
+          if A[i] < A[i+1]:
+              next_val = max(low[i+1], res[i] + 1)
+              res[i+1] = next_val
+          elif A[i] == A[i+1]:
+              res[i+1] = res[i]
+          else: # decreasing
+              next_val = max(low[i+1], res[i] - K)
+              res[i+1] = next_val
+
+      # Output the result
+      print(" ".join(map(str, res)) 
+
+  However, note: we did not check in the forward assignment that the consecutive constraint for the absolute difference is satisfied? 
+      The backward propagation and the way we set the next_val should guarantee that. 
+
+  But to be safe, we can add an assertion? 
+
+  But note: the problem says the constraints are up to 100000, and we want to run within 1 second. We don't want to check every constraint again (which would be O(N)).
+
+  Alternatively, we can rely on the backward propagation and the forward assignment formulas.
+
+  But let us test with a small example that fails the consecutive constraint? 
+
+      Example: 
+          N=2, L=1, R=10, K=1, A=[1,3] -> increasing.
+          Backward: 
+              i=1: [1,10]
+              i=0: increasing: 
+                  low[0] = max(1, 1-1)=max(1,0)=1
+                  high[0] = min(10,10-1)=9
+          Forward: 
+              res[0]=1
+              res[1]=max(low[1]=1, 1+1)=2 -> then |1-2|=1<=1 -> valid.
+
+      Decreasing: 
+          A=[3,1], K=1: 
+              i1: [1,10]
+              i0: decreasing: 
+                  low[0]=max(1,1+1)=2
+                  high[0]=min(10,10+1)=10
+              res[0]=2
+              res[1]=max(1,2-1)=max(1,1)=1 -> |2-1|=1<=1 -> valid.
+
+      What if K is 0? 
+          Then for increasing: we require 1<=K? but K=0 -> then the constraint for increasing: |B0-B1|<=0 -> then B0=B1. But we require B0 < B1 -> contradiction. 
+          Therefore, backward propagation for i0: 
+              low_i = max(L, low[1]-0)=max(1,1)=1
+              high_i = min(R, high[1]-1)=min(10,10-1)=9 -> so we get [1,9] for the first note.
+
+          Then forward: 
+              res[0]=1
+              then for the next: increasing -> we set to max(low[1], 1+1)=max(1,2)=2 -> but then |1-2|=1>0 -> invalid.
+
+          However, we must have |B0-B1|<=0 -> then they must be equal. But we set 1 and 2. 
+
+          How to fix? 
+
+          Actually, in the backward propagation for the increasing case with K=0, the constraint for the next note: 
+              B0 < B1 and |B0-B1|<=0 -> impossible? 
+          So the backward propagation for the first note: 
+              low_i = max(1, low[1]-0)=max(1,1)=1
+              high_i = min(10, high[1]-1)=9
+          Then we have a non-empty range? but then the consecutive constraint is impossible.
+
+          Therefore, we must ensure that the consecutive constraint is satisfied by the backward propagation? 
+
+          Actually, the backward propagation for the increasing case: 
+              We require that there exists a value for the next note in [low[i+1], high[i+1]] such that B0 is in [B1-K, B1-1]? 
+              But with K=0: we require B0 in [B1, B1-1] -> which is empty.
+
+          Therefore, we should have broken at the backward propagation: 
+
+              For i0: 
+                  low_i = max(L, low[1]-0)=1
+                  high_i = min(R, high[1]-1)=9
+                  But then we must also ensure that there is a value for B1 such that B0 < B1 and |B0-B1|<=0? -> impossible.
+
+          How do we catch that? 
+
+          The backward propagation for the increasing case: 
+              The consecutive constraint for the increasing case: 
+                  B0 must be in [B1-0, B1-1] = [B1, B1-1] -> which is empty.
+
+          Therefore, we set the interval for B0 to [1,9] but actually there is no valid B0? 
+
+          How can we fix the backward propagation? 
+
+          Actually, the backward propagation we did is:
+
+              low[i] = max(L, low[i+1] - K)
+              high[i] = min(R, high[i+1] - 1)
+
+          But for K=0: 
+              low[i] = max(L, low[i+1])   [because low[i+1]-0 = low[i+1]]
+              high[i] = min(R, high[i+1]-1)
+
+          Then the condition for the existence of a value for B0 is that the interval [max(L,low[i+1]), min(R, high[i+1]-1)] is non-empty? 
+
+          But even if it is non-empty, we must also have that for some B1 in [low[i+1], high[i+1]], we have B0 = some value in [B1, B1-1]? which is impossible.
+
+          Therefore, we should break in the backward propagation for the increasing case if we have K=0? 
+
+          Actually, the constraint for the increasing case is: 
+              B0 < B1 and |B0-B1|<=0 -> which forces B0 = B1? but then B0 < B1 is false. So it's impossible.
+
+          Therefore, we must break at the backward propagation step: if the consecutive constraint is impossible for the entire range? 
+
+          Specifically, for the increasing case: 
+              We require that there exists B0 and B1 such that:
+                  B0 < B1 and |B0-B1|<=K -> which is equivalent to 1<= B1-B0 <=K.
+
+              But if K=0, then no solution.
+
+          Similarly, for the decreasing case: 
+              We require 1<= B0-B1 <=K -> if K=0, then impossible.
+
+          For the constant case: 
+              We require B0=B1 -> which is possible with K=0.
+
+          Therefore, the backward propagation formulas we have are only valid when the consecutive constraint is possible? 
+
+          Actually, the increasing case formula: 
+              low[i] = max(L, low[i+1]-K) 
+              high[i] = min(R, high[i+1]-1)
+
+          This formula is derived by: 
+              B0 must be at least B1-K and at most B1-1, and B1 is in [low[i+1], high[i+1]].
+              Therefore, the smallest possible B0 is the smallest B1 minus K -> but we also have the constraint that B0>=L -> so we take the max.
+              The largest possible B0 is the largest B1 minus 1 -> but we also have B0<=R -> so we take min(R, high[i+1]-1).
+
+          But note: if K=0, then the smallest B0 is max(L, low[i+1]) and the largest B0 is min(R, high[i+1]-1). 
+          However, we must also have that for the chosen B0, there exists a B1 in [low[i+1], high[i+1]] such that:
+                B1 >= B0+1   (because B0 < B1) and B1 <= B0+K = B0? -> which is impossible.
+
+          Therefore, the consecutive constraint is impossible. 
+
+          How to catch that? 
+
+          The condition for the consecutive constraint to be possible is that the interval for B0 must be non-empty and also the interval for B1 must be non-empty and the intervals must be compatible? 
+
+          Actually, the condition for the increasing case to be feasible is:
+                There exists B1 in [low[i+1], high[i+1]] such that 
+                    B0 is in [max(L, B1-K), min(R, B1-1)] 
+
+          This is equivalent to: 
+                There exists B1 such that 
+                    low[i+1] <= B1 <= high[i+1] 
+                    and max(L, B1-K) <= min(R, B1-1)
+
+          And the condition max(L, B1-K) <= min(R, B1-1) is equivalent to:
+                L <= B1-1   and   B1-K <= R   and   B1-K <= B1-1   (which is K>=1) and L<=R? 
+          But if K=0, then we require L <= B1-1 and 0<=R? and also B1<=B1-1 -> false.
+
+          Therefore, if K=0, the increasing case is impossible. 
+
+          Similarly, the decreasing case: 
+                There exists B1 such that 
+                    low[i+1] <= B1 <= high[i+1] 
+                    and max(L, B1+1) <= min(R, B1+K)   [for the decreasing case, the constraint for B0 is [B1+1, B1+K] and also [L,R]]
+
+          Then the condition: 
+                max(L, B1+1) <= min(R, B1+K) 
+          ->  L <= B1+K and B1+1 <= R and B1+1 <= B1+K -> which is K>=1.
+
+          Therefore, for the consecutive constraint to be possible in the increasing or decreasing case, we must have K>=1. 
+
+          But the problem states: K>=1.
+
+          The input constraint: "1 <= K <= 10^9"
+
+          So we don't have to worry about K=0.
+
+          Therefore, the formulas are valid.
+
+  We output the code as described.
+
+  Let me run the provided examples.
+
+  Sample Input #1: 
+        16 1 8 6
+        1 3 5 6 7 8 9 10 3 7 8 9 10 11 12 12
+
+  We computed the backward propagation and the forward assignment and it matches.
+
+  Sample Input #2: 
+        16 1 8 6
+        1 3 5 6 7 8 9 10 3 7 8 9 10 11 12 13
+
+  We break in backward propagation at i=0: low[0]=1, high[0]=0 -> so we output -1.
+
+  Sample Input #3: 
+        16 1 10 10
+        1 3 5 6 7 8 9 10 3 7 8 9 1 11 12 13
+
+  We computed the sequence: [1,2,3,4,5,6,7,8,1,2,3,4,1,2,3,4] -> matches.
+
+  Therefore, we are confident.
+
+  Code:
+
+      Note: We break in the backward propagation if at any step low_i > high_i -> output -1.
+
+      We do the forward assignment only if the backward propagation succeeded for all.
+
+  Let's write the code accordingly.

@@ -1,0 +1,566 @@
+ We are going to follow the editorial approach.
+ Steps:
+ 1. For each test case, we read n, the list w, and the list l.
+ 2. We compute the total wealth T = sum(w) and the total_l = sum(l).
+ 3. We sort the list l and then group distinct values and their frequencies.
+ 4. We traverse the distinct values of l in increasing order. For each distinct value d, we consider the segment [d, next_d) (if any) and then the last segment beyond the maximum d.
+    In the segment [d, next_d), the function S(M) is: 
+        S(M) = (cumulative sum of l_i for all l_i <= d) + M * (number of cats with l_i > d) 
+        But note: actually, for cats with l_i <= d, we have set them to at least max(l_i, M) = max(l_i, M). However, when M is at least d, then for a cat with l_i <= d, we set it to M (if M>=l_i, which it is because M>=d and d>=l_i). However, note that we are grouping by distinct l_i. 
+
+    Actually, let's break down:
+      For cats with l_i <= d: 
+        - For the current segment [d, next_d) we have M>=d, so these cats must have at least M? Not exactly: only the ones that have l_i <= M? Actually, we have set the requirement for each cat i: max(l_i, M). 
+        - But note: we are iterating by distinct values. We have processed all l_i <= d. For these cats, when M>=d, then max(l_i, M)=M? Actually, for a cat with l_i <= d, if M>=d (and d>=l_i) then max(l_i, M)=M.
+
+      However, wait: the grouping is by distinct l_i. But note: we are considering M in the range [d, next_d) (if next_d exists). For a cat with l_i <= d, since M>=d and d>=l_i, then max(l_i, M)=M. 
+      For cats with l_i > d: they are not in the current cumulative set? Actually, we are processing distinct l_i in increasing order. So when we are at distinct value d, we have included all l_i <= d. The remaining cats (with l_i > d) are not yet included? 
+
+    Actually, the formula we can use is:
+        S(M) = [for cats with l_i <= d: we set to M?] + [for cats with l_i > d: we set to l_i?] 
+        But note: when M is in [d, next_d), then:
+          - For any cat with l_i <= d: we set to M (because M>=d>=l_i -> so max(l_i, M)=M).
+          - For any cat with l_i > d: we set to max(l_i, M). However, since M < next_d (the next distinct value) and the next distinct value is the smallest l_i that is greater than d, then M might be less than l_i for some of these cats? Actually, if M < l_i (for a cat with l_i>d) then max(l_i, M)=l_i. But if M>=l_i? That cannot happen because M is less than next_d (which is the next distinct value) and the next distinct value is the smallest l_i greater than d. Therefore, for any cat with l_i>d, we have l_i>=next_d>M. Therefore, max(l_i, M)=l_i.
+
+        So: S(M) = M * (cum_freq) + (total_l - cum_sum) 
+        Why? 
+          cum_freq: the number of cats with l_i <= d (we set each to M: so M * cum_freq)
+          total_l - cum_sum: the part of the minimum requirements for cats with l_i>d: because they must have at least l_i (so we take the sum of l_i for l_i>d, which is total_l minus the sum of l_i for l_i<=d).
+
+    Therefore, we require: M * cum_freq + (total_l - cum_sum) <= total_wealth.
+
+    Then we solve for M: 
+        M <= (total_wealth - (total_l - cum_sum)) / cum_freq
+        => M <= (total_wealth - total_l + cum_sum) / cum_freq.
+
+    Then the candidate M for this segment is: 
+        candidate_val = floor( (total_wealth - total_l + cum_sum) / cum_freq )   [but we can use integer floor division? Actually, we are working with integers and the problem constraints are integers]
+
+    However, note: we are iterating by distinct l_i. The segment for this distinct value d is [d, next_d) (if there is a next_d, then next_d is the next distinct value; if not, then we go to infinity? but bounded by total_wealth). So the candidate M in this segment is the minimum of:
+        candidate_val, (next_d-1) [if there is a next_d] and we also must be at least d? Actually, the candidate must be at least d to be in the segment? But we are iterating from small d to large, and we are considering M in [d, next_d). Also, we require candidate_val>=d? Not necessarily: if candidate_val < d, then we cannot use this segment? Actually, we skip because then the candidate M must be at least d to be in the segment? 
+
+    However, note: we are iterating in increasing order. If candidate_val < d, then we cannot set M to be in this segment? But wait: what if the previous segment already gave a candidate? Actually, we are trying to maximize M. We break the problem by segments. The segments are defined by the distinct l_i. The function S(M) is non-decreasing and piecewise linear. We want the maximum M such that S(M)<=T.
+
+    How we do:
+        For each distinct value d (and the segment [d, next_d)), we compute:
+            candidate_val = (total_wealth - total_l + cum_sum) // cum_freq   [using integer division? Actually, we can do floor division? But note: integer division in C++ truncates towards 0 for positive numbers. But we have nonnegative numbers. So floor division is the same as integer division?]
+
+        But note: we must consider that M must be an integer.
+
+        Then the candidate M in the segment is:
+            candidate_seg = min( (next_d - 1) if exists, candidate_val, and total_wealth (if no next_d) ) 
+            However, if candidate_seg < d, then we skip this segment? Because M must be at least d? Actually, we are in the segment [d, ...). So if candidate_val < d, then we skip.
+
+        But note: the segment condition: M must be at least d. So we require candidate_seg>=d to consider candidate_seg as a candidate.
+
+        Then we update the best candidate so far: best = max(best, candidate_seg) but note: candidate_seg must be at least d.
+
+    However, what if the candidate_val is huge? Then we are bounded by the next_d-1. Then we set candidate_seg = next_d-1. And we know that next_d-1>=d? Yes, because next_d>d.
+
+    Also, if we are at the last distinct value, then the segment is [d, infinity). Then we set candidate_seg = min(total_wealth, candidate_val). Why total_wealth? Actually, the maximum M cannot exceed total_wealth (since the total wealth is T and we have n cats, the minimum cannot exceed T, but also each cat cannot have more than T? Actually, but we are setting each cat to at least M? Actually, M is the minimum, and the total must be T. The maximum M we can set is at most T, but also note: we are distributing the entire T, so the minimum can be at most T (if n=1) but generally, the maximum M is at most T. However, we have the constraint that each cat must have at least l_i, so M cannot exceed T? Actually, the average is T/n, so M cannot exceed T. But also note: we have the constraint that we cannot take from a cat below l_i. However, the formula for S(M) for M beyond the maximum l_i: 
+        Then S(M)= M * n. 
+        We require M * n <= T -> M <= T/n.
+
+    But wait: the formula for the last segment: 
+        cum_freq = n, cum_sum = total_l? Then:
+            candidate_val = (T - total_l + total_l) / n = T/n.
+
+    So we set candidate_seg = min(total_wealth, candidate_val) -> but total_wealth is T, and T/n might be fractional? Then we take floor? Actually, we did integer division? 
+
+    Actually, we are computing candidate_val as integer division? Not exactly: we did (T - total_l + cum_sum) // cum_freq? But in the code we are using integer arithmetic. However, note: we are going to take the floor? Actually, the candidate_val we compute is the maximum integer M such that M * cum_freq <= (T - total_l + cum_sum). But we did integer division which truncates toward zero? That is the floor for nonnegative numbers.
+
+    However, we are not necessarily using integer division in the same way as in the sample? We are going to do:
+
+        candidate_val = (total_wealth - total_l + cum_sum) / cum_freq   [if we use integer division?] 
+
+    But note: we are working with integers. We want the largest integer M such that M * cum_freq <= (total_wealth - total_l + cum_sum). Then:
+
+        candidate_val = (total_wealth - total_l + cum_sum) // cum_freq   [because integer division truncates toward zero? But for nonnegative numbers, it is floor division, so it is the largest integer M such that M <= (total_wealth - total_l + cum_sum)/cum_freq].
+
+    However, we must be cautious: the expression (total_wealth - total_l + cum_sum) might be negative? 
+        total_wealth >= total_l? Not necessarily: we know that each w_i>=l_i, so total_wealth>=total_l? Actually, the problem states: l_i<=w_i for each cat. Therefore, total_wealth>=total_l.
+
+    So the numerator is nonnegative.
+
+    Therefore, we can do integer division.
+
+ 5. We update the best candidate for the test case.
+
+ Implementation details for C++:
+    We are going to:
+        - Read C test cases. The total n over test cases <= 300000, so we can do one pass per test case.
+
+    Steps for one test case:
+        n = read()
+        w = vector of n integers
+        l = vector of n integers
+
+        total_wealth = accumulate(w.begin(), w.end(), 0LL);
+        total_l = accumulate(l.begin(), l.end(), 0LL);
+
+        Sort the l vector.
+        Then compress: distinct and freqs.
+
+        Then initialize:
+            cum_freq = 0
+            cum_sum = 0
+            best = 0   // we are going to compute the maximum M we can achieve.
+
+        Then iterate over the distinct array (with index from 0 to len(distinct)-1).
+
+        For each distinct value d at index i:
+            count = freqs[i]
+            cum_freq += count
+            cum_sum += (long long)count * d
+
+            // Now, the segment: [d, next_d) where next_d = distinct[i+1] if exists, else INF (we use a big number? but we are bounded by total_wealth and the candidate_val formula).
+
+            numerator = total_wealth - total_l + cum_sum;
+            // candidate_val = numerator / cum_freq   (integer division: floor division for nonnegative)
+
+            candidate_val = numerator / cum_freq;   // integer division for nonnegative: truncates to floor.
+
+            // But note: integer division in C++ for nonnegative integers is floor.
+
+            if (i < distinct.size()-1) {
+                next_d = distinct[i+1];
+                candidate_seg = min(candidate_val, next_d - 1);
+            } else {
+                candidate_seg = candidate_val;   // but note: M cannot exceed total_wealth? Actually, the maximum M we can set is bounded by the total_wealth? But note: the average is total_wealth/n, so candidate_val is total_wealth/cum_freq = total_wealth/n, which is at most total_wealth? 
+                // Actually, total_wealth might be huge? But candidate_seg = candidate_val is at most total_wealth? Not necessarily: candidate_val = (total_wealth - total_l + cum_sum) / n. Since cum_sum <= total_l? Actually, cum_sum is the sum of l_i for l_i<=d, and total_l is the entire sum. So cum_sum <= total_l? Then numerator = total_wealth - total_l + cum_sum <= total_wealth? 
+                // Actually, total_l - cum_sum is the sum of l_i for l_i>d, which is nonnegative. So numerator = total_wealth - (total_l - cum_sum) <= total_wealth. So candidate_val <= total_wealth / n? Actually, cum_freq = n, so candidate_val = numerator / n <= total_wealth / n? But total_wealth might be huge? 
+                // However, note: total_wealth is the sum of w_i, which is at most 10^9 * n. So candidate_val is at most about 10^9? 
+                // But we don't need to bound by total_wealth? Because the total wealth is fixed and we are distributing, so M cannot be greater than total_wealth? Actually, the poorest cat having M: then the total wealth is at least M * n. So we must have M <= total_wealth / n. And candidate_val is computed as total_wealth/n? Actually, for the last segment: candidate_val = (total_wealth - total_l + total_l) / n = total_wealth / n -> which is the average. So it is bounded by total_wealth? 
+            }
+
+            // But note: candidate_seg must be at least d to be in the current segment? 
+            if (candidate_seg >= d) {
+                if (candidate_seg > best) {
+                    best = candidate_seg;
+                }
+            }
+            // Also, we can break early? Actually, we are iterating in increasing order. The candidate_seg might be decreasing? Actually, the function S(M) is linear and non-decreasing? And we are solving for the maximum M. But note: the segments are increasing in d. The candidate_seg in a segment might be larger than the candidate_seg in a previous segment? Actually, as d increases, cum_freq increases and cum_sum increases. How does candidate_val = (T - total_l + cum_sum) / cum_freq change? It might be non-monotonic? 
+
+            However, note: we are iterating from the smallest d to the largest. The candidate_val might be increasing? Actually, when we include more cats in the set that we set to M, we are increasing cum_freq and cum_sum. The numerator increases by (the new d * count) and cum_freq increases by count. The new candidate_val = (T - total_l + cum_sum) / cum_freq. This is the formula for the minimum required total wealth if we set the first cum_freq cats to M and the rest to their l_i. 
+
+            But note: the function S(M) is increasing in M and we are looking for the maximum M. However, the candidate_val in a segment might be larger than the candidate_val in a previous segment? 
+
+            Actually, we are updating best to the maximum candidate_seg we see. So we traverse all segments and take the maximum candidate_seg that is feasible.
+
+        After iterating, output best.
+
+    However, consider: what if the entire l is constant? Then we have one distinct value. Then we compute candidate_val = (T - total_l + n*d) / n = (T - total_l)/n + d. Then candidate_seg = candidate_val (since no next_d). Then we set best to that.
+
+    Let's test with sample 1:
+        n=5, w = [4,2,3,6,12] -> T = 4+2+3+6+12 = 27
+        l = [3,2,3,3,10] -> total_l = 3+2+3+3+10 = 21
+
+        Sort l: [2,3,3,3,10] -> distinct: [2,3,10]
+
+        Segment for d=2:
+            cum_freq = 1, cum_sum = 2
+            numerator = 27 - 21 + 2 = 8
+            candidate_val = 8/1 = 8
+            next_d=3 -> candidate_seg = min(3-1, 8) = min(2,8)=2.
+            candidate_seg>=d=2 -> so best=2.
+
+        Segment for d=3:
+            cum_freq = 1+3 = 4, cum_sum = 2 + 3*3 = 11
+            numerator = 27 - 21 + 11 = 17
+            candidate_val = 17/4 = 4 (integer division: 17//4=4)
+            next_d=10 -> candidate_seg = min(10-1,4)=4
+            candidate_seg>=d=3 -> update best = max(2,4)=4.
+
+        Segment for d=10:
+            cum_freq=5, cum_sum=21
+            numerator=27 - 21 + 21 = 27
+            candidate_val=27/5=5
+            candidate_seg=5 (since last segment) and 5>=10? -> no, so skip.
+
+        Then output 4.
+
+        The sample output is 4.
+
+    But wait: in the segment for d=10, we have candidate_seg=5, which is less than d=10, so we skip.
+
+    Another sample: 
+        Input: 
+            8
+            998 244 353 3109 4650 4305 6507 9699
+            100 200 300 2040 4230 4236 5234 3233
+
+        Output: 3233.
+
+        How does it work?
+          total_wealth = 998+244+353+3109+4650+4305+6507+9699 = 25865
+          total_l = 100+200+300+2040+4230+4236+5234+3233 = 19573
+
+          Sort l: [100,200,300,2040,3233,4230,4236,5234] -> distinct: [100,200,300,2040,3233,4230,4236,5234]
+
+          We iterate:
+
+          d=100: cum_freq=1, cum_sum=100, numerator=25865-19573+100=25865-19573=6292+100=6392 -> candidate_val=6392, next_d=200 -> candidate_seg=min(199,6392)=199 -> update best=199? (and 199>=100 -> yes)
+
+          d=200: cum_freq=2, cum_sum=300, numerator=25865-19573+300=6392+300=6692 -> candidate_val=6692/2=3346, next_d=300 -> candidate_seg=min(299,3346)=299 -> update best=299.
+
+          d=300: cum_freq=3, cum_sum=600, numerator=25865-19573+600=6392+600=6992 -> candidate_val=6992/3 = 2330 (integer division: 6992//3=2330) -> candidate_seg = min(2039,2330)=2039 -> update best=2039.
+
+          d=2040: cum_freq=4, cum_sum=600+2040=2640, numerator=25865-19573+2640=6392+2640=9032 -> candidate_val=9032/4=2258 -> candidate_seg=min(3232,2258)=2258 -> but 2258>=2040? yes -> update best=max(2039,2258)=2258.
+
+          d=3233: cum_freq=5, cum_sum=2640+3233=5873, numerator=25865-19573+5873=6392+5873=12265 -> candidate_val=12265/5=2453 -> candidate_seg= min(4229,2453)=2453 -> 2453>=3233? no -> skip.
+
+          Then the rest: d=4230: cum_freq=6, cum_sum=5873+4230=10103, numerator=6392+10103=16495, candidate_val=16495/6=2749 -> skip because 2749<4230.
+          d=4236: cum_freq=7, cum_sum=10103+4236=14339, numerator=6392+14339=20731, candidate_val=20731/7=2961 -> skip.
+          d=5234: cum_freq=8, cum_sum=19573, numerator=6392+19573=25965, candidate_val=25965/8=3245 -> skip? because 3245<5234? 
+
+          Then the answer would be 2258? but sample output is 3233.
+
+    Why 3233? 
+
+    Let me reexamine the problem: 
+        "the poorest cat has the maximum possible wealth"
+
+        In the sample, one cat has l_i=3233. We cannot let that cat have less than 3233? Actually, the requirement is: each cat must have at least l_i. So the poorest cat must be at least the minimum l_i? Actually, the poorest cat must be at least the minimum of the l_i? No: each cat i must have at least l_i. So the poorest cat must be at least the minimum l_i? Actually, the requirement per cat is different.
+
+        But note: the problem says: "the poorest cat" meaning the cat with the minimum wealth. We want to maximize that minimum wealth.
+
+        Why is the answer 3233? 
+            Because we can set:
+                The cats with l_i<=3233 can be set to 3233? 
+                But then the cats with l_i>3233 must be set to at least l_i (which is 4230,4236,5234). 
+
+            The total wealth required: 
+                3233 * 5 (for the first 5 cats) + (4230+4236+5234) = 3233*5 + 4230+4236+5234 = 16165 + 13700 = 29865.
+            But the total wealth is 25865? -> 29865>25865 -> not feasible.
+
+        Then how is the answer 3233? 
+
+        Actually, the sample output is 3233. So there must be an error in the sample input? Or in my calculation of total_wealth?
+
+        Let me recalculate total_wealth: 
+            998+244+353+3109+4650+4305+6507+9699 = 
+            998+244=1242
+            1242+353=1595
+            1595+3109=4704
+            4704+4650=9354
+            9354+4305=13659
+            13659+6507=20166
+            20166+9699=29865.
+
+        Oh! I miscalculated: 25865? Actually, the sample input says: 
+            8
+            998 244 353 3109 4650 4305 6507 9699
+
+        So total_wealth = 998+244+353+3109+4650+4305+6507+9699 = 29865.
+
+        And total_l = 100+200+300+2040+4230+4236+5234+3233 = 100+200=300; 300+300=600; 600+2040=2640; 2640+4230=6870; 6870+4236=11106; 11106+5234=16340; 16340+3233=19573.
+
+        Now for d=3233:
+            cum_freq=5, cum_sum=100+200+300+2040+3233= 100+200+300=600; 600+2040=2640; 2640+3233=5873.
+            numerator = total_wealth - total_l + cum_sum = 29865 - 19573 + 5873 = (29865+5873) - 19573 = 35738 - 19573 = 16165.
+            candidate_val = 16165 / 5 = 3233.
+
+            Then candidate_seg = 3233 (since next_d=4230, so we don't cap) -> and 3233>=3233 -> update best = max(2258,3233)=3233.
+
+        Then the answer is 3233.
+
+    Therefore, the algorithm is fixed.
+
+    Important: the distinct array must include every distinct value? and we must traverse in increasing order.
+
+    But note: the distinct array we built is from sorted l. Then we traverse from smallest to largest.
+
+    Code Implementation:
+
+        We are going to:
+          sort l.
+          Then build distinct and freqs by iterating.
+
+        Then we traverse the distinct array.
+
+    However, note: the distinct array must include duplicates? We have built distinct and freqs so that distinct has unique values and freqs has the frequency.
+
+    We assume that the input integers are positive.
+
+    Let's code accordingly.
+
+    Note: the total_wealth and total_l and cum_sum can be large: up to 300000 * 10^9 -> 300000*10^9 = 3e15 -> long long.
+
+    We'll use long long for total_wealth, total_l, cum_sum, numerator.
+
+    Steps in C++:
+
+        #include <iostream>
+        #include <vector>
+        #include <algorithm>
+        #include <cctype>
+        #include <cmath>
+        #include <climits>
+        #include <iomanip>
+        using namespace std;
+
+        int main() {
+            ios::sync_with_stdio(false);
+            cin.tie(0);
+
+            int C;
+            cin >> C;
+            vector<long long> answers;
+
+            for (int c=0; c<C; c++) {
+                int n;
+                cin >> n;
+                vector<long long> w(n);
+                vector<long long> l(n);
+                long long total_wealth = 0;
+                for (int i=0; i<n; i++) {
+                    cin >> w[i];
+                    total_wealth += w[i];
+                }
+                for (int i=0; i<n; i++) {
+                    cin >> l[i];
+                }
+
+                long long total_l = 0;
+                for (long long x : l) {
+                    total_l += x;
+                }
+
+                sort(l.begin(), l.end());
+
+                // Build distinct and freqs
+                vector<long long> distinct;
+                vector<int> freqs;
+                for (int i=0; i<n; ) {
+                    int j = i;
+                    while (j<n && l[j]==l[i]) {
+                        j++;
+                    }
+                    distinct.push_back(l[i]);
+                    freqs.push_back(j-i);
+                    i = j;
+                }
+
+                int num_distinct = distinct.size();
+                long long cum_freq = 0;
+                long long cum_sum = 0;
+                long long best = 0;
+
+                for (int idx=0; idx<num_distinct; idx++) {
+                    long long d = distinct[idx];
+                    int count_d = freqs[idx];
+                    cum_freq += count_d;
+                    cum_sum += (long long)count_d * d;
+
+                    long long numerator = total_wealth - total_l + cum_sum;
+                    // We have to compute candidate_val: floor(numerator / cum_freq) for nonnegative
+                    // But note: cum_freq>0, and numerator>=0? as established.
+                    long long candidate_val = numerator / cum_freq;   // integer division for nonnegative: floor.
+
+                    long long candidate_seg;
+                    if (idx < num_distinct-1) {
+                        long long next_d = distinct[idx+1];
+                        candidate_seg = min(candidate_val, next_d - 1);
+                    } else {
+                        candidate_seg = candidate_val;
+                    }
+
+                    if (candidate_seg >= d) {
+                        if (candidate_seg > best) {
+                            best = candidate_seg;
+                        }
+                    }
+                }
+
+                answers.push_back(best);
+            }
+
+            for (long long ans : answers) {
+                cout << ans << '\n';
+            }
+        }
+
+    However, note: the problem states that the total n over test cases <= 300000. So we are safe.
+
+    But wait: what if the candidate_val is negative? We said total_wealth>=total_l, so numerator>=0? But what if total_wealth < total_l? Actually, by the problem: each w_i>=l_i, so total_wealth>=total_l. So numerator>=0.
+
+    Let me test with the sample: 
+        n=1: w=[5], l=[3] -> total_wealth=5, total_l=3, cum_freq=1, cum_sum=3, numerator=5-3+3=5 -> candidate_val=5 -> candidate_seg=5 -> best=5? 
+        But the answer: we can set the cat to 5? and the poorest cat is 5. But we cannot take from the cat because it must have at least 3, and we are giving? Actually, we are only taking from cats that have strictly greater than l_i. Here, we can take from the cat? But we are giving to the same cat? Actually, we can give? The operation: choose cat i (with wealth>l_i) and give 1 to any cat j. So we can give to itself? That doesn't change anything. 
+
+        Actually, we don't need to take from the cat if we are going to give to the same cat? But we are allowed to give to any cat. So if we have only one cat, we cannot take from it? Because we require the cat to have at least 3, and if it has 5, we can take away? But the operation says: we can only take from a cat if it has strictly greater than l_i. So we can take away 2 units? and give to ... the same cat? That doesn't change. Or we can give to another cat? but there is only one cat. So we cannot change the wealth? Therefore, the poorest cat is 5. 
+
+        But the problem: we want the poorest cat to be as large as possible. So 5 is correct.
+
+        However, the requirement: each cat must have at least l_i. The cat has 5 which is above 3. 
+
+        So the algorithm: we are setting M=5? and that is the poorest cat's wealth.
+
+        How about if we set M=10? Then we would need total wealth 10? but we only have 5 -> not feasible.
+
+        So the answer 5 is correct.
+
+    But note: the formula: candidate_val = (5 - 3 + 3) / 1 = 5.
+
+    Therefore, the code is correct.
+
+    However, we must consider: integer division truncates toward zero? for nonnegative, it is floor. And we want the largest integer M such that M*cum_freq<=numerator. That is exactly floor(numerator/cum_freq). So it is correct.
+
+    Let me run the first sample again with the corrected total_wealth for the second sample.
+
+    But note: the problem says the total n over test cases does not exceed 300000. So we are safe.
+
+    However, note: the distinct array might be up to 300000 in a test case? But the total n over test cases is 300000, so each test case individually: the distinct array for one test case can be up to 300000? But the sum of n over test cases is 300000 -> meaning there is only one test case? Actually, the problem says: "The sum of n over all test cases does not exceed 300000". So we can have up to 300000 test cases? But C<=300000 and the sum of n<=300000 -> so the test cases are many but each n is small.
+
+    Actually, the constraint: 
+        C (number of test cases) <= 300000
+        the sum of n over test cases <= 300000.
+
+    Therefore, the worst-case is 300000 test cases, each with n=1. Then we do:
+
+        for each test case: 
+            n=1 -> then we read w0 and l0.
+
+            total_wealth = w0, total_l = l0.
+
+            sort l: [l0] -> distinct: [l0] with freq=[1]
+
+            Then we traverse one distinct value.
+
+            cum_freq=1, cum_sum=l0, numerator = w0 - l0 + l0 = w0 -> candidate_val = w0/1 = w0.
+
+            candidate_seg = w0 (last segment) and w0>=l0? yes -> update best = w0.
+
+        Then output w0.
+
+    So it's correct.
+
+    Let me run the first sample again: 
+        "5
+         4 2 3 6 12
+         3 2 3 3 10"
+
+        total_wealth = 4+2+3+6+12 = 27
+        total_l = 3+2+3+3+10=21
+
+        distinct: [2,3,10] -> freqs: [1,3,1]
+
+        idx0: d=2, count_d=1 -> cum_freq=1, cum_sum=2 -> numerator=27-21+2=8 -> candidate_val=8, candidate_seg = min(3-1,8)=2 -> update best=2.
+        idx1: d=3, count_d=3 -> cum_freq=4, cum_sum=2+9=11 -> numerator=27-21+11=17 -> candidate_val=17/4=4 (since 4*4=16<=17, 5*4=20>17) -> candidate_seg=min(10-1,4)=4 -> update best=4.
+        idx2: d=10, count_d=1 -> cum_freq=5, cum_sum=11+10=21 -> numerator=27-21+21=27 -> candidate_val=27/5=5 -> candidate_seg=5 -> but 5<10 -> skip.
+
+        Then answer=4.
+
+    So it's correct.
+
+    We output the code accordingly.
+
+    Important: use long long for all accumulations.
+
+    Edge: when n=0? but n>=1.
+
+    Code:
+
+        #include <bits/stdc++.h>
+        using namespace std;
+
+        int main() {
+            ios::sync_with_stdio(false);
+            cin.tie(0);
+            int C;
+            cin >> C;
+            vector<long long> results;
+            for (int c = 0; c < C; c++) {
+                int n;
+                cin >> n;
+                vector<long long> w(n);
+                vector<long long> l(n);
+                long long total_wealth = 0;
+                for (int i = 0; i < n; i++) {
+                    cin >> w[i];
+                    total_wealth += w[i];
+                }
+                for (int i = 0; i < n; i++) {
+                    cin >> l[i];
+                }
+                long long total_l = accumulate(l.begin(), l.end(), 0LL);
+                sort(l.begin(), l.end());
+                vector<long long> distinct;
+                vector<int> freqs;
+                for (int i = 0; i < n; ) {
+                    int j = i;
+                    while (j < n && l[j] == l[i]) {
+                        j++;
+                    }
+                    distinct.push_back(l[i]);
+                    freqs.push_back(j - i);
+                    i = j;
+                }
+                long long cum_freq = 0;
+                long long cum_sum = 0;
+                long long best = 0;
+                int num_d = distinct.size();
+                for (int i = 0; i < num_d; i++) {
+                    long long d = distinct[i];
+                    int cnt = freqs[i];
+                    cum_freq += cnt;
+                    cum_sum += (long long) cnt * d;
+                    long long numerator = total_wealth - total_l + cum_sum;
+                    long long candidate_val = numerator / cum_freq;   // floor division for nonnegative
+                    long long candidate_seg;
+                    if (i < num_d - 1) {
+                        candidate_seg = min(candidate_val, distinct[i+1] - 1);
+                    } else {
+                        candidate_seg = candidate_val;
+                    }
+                    if (candidate_seg >= d) {
+                        if (candidate_seg > best) {
+                            best = candidate_seg;
+                        }
+                    }
+                }
+                results.push_back(best);
+            }
+            for (long long res : results) {
+                cout << res << '\n';
+            }
+            return 0;
+        }
+
+    Let me run the second sample: 
+        n=8, total_wealth=29865, total_l=19573.
+
+        distinct: [100,200,300,2040,3233,4230,4236,5234] -> freqs: [1,1,1,1,1,1,1,1]
+
+        i0: d=100, cum_freq=1, cum_sum=100, numerator=29865-19573+100 = 10292? -> 29865-19573=10292, then +100=10392? -> candidate_val=10392 -> candidate_seg=min(200-1,10392)=199 -> best=199.
+        i1: d=200, cum_freq=2, cum_sum=300, numerator=29865-19573+300=10292+300=10592 -> candidate_val=10592/2=5296 -> candidate_seg=min(300-1,5296)=299 -> best=299.
+        i2: d=300, cum_freq=3, cum_sum=600, numerator=10292+600=10892 -> candidate_val=10892/3=3630 -> candidate_seg=min(2040-1,3630)=2039 -> best=2039.
+        i3: d=2040, cum_freq=4, cum_sum=600+2040=2640, numerator=10292+2640=12932 -> candidate_val=12932/4=3233 -> candidate_seg=min(3233-1,3233)=3232 -> best=3232? 
+
+        But wait: the next distinct value is 3233, so distinct[4]=3233 -> candidate_seg = min(3233-1,3233)=3232.
+
+        Then i4: d=3233, cum_freq=5, cum_sum=2640+3233=5873, numerator=10292+5873=16165 -> candidate_val=16165/5=3233 -> candidate_seg=3233 (since last segment? no, because there are more distinct values: 4230, etc. -> so we use next_d=4230 -> candidate_seg = min(4230-1,3233)=3233 -> and 3233>=3233 -> update best=3233.
+
+        Then the rest: 
+          d=4230: cum_freq=6, cum_sum=5873+4230=10103, numerator=10292+10103=20395 -> candidate_val=20395/6=3399 -> candidate_seg=min(4236-1,3399)=3399 -> 3399<4230 -> skip.
+          d=4236: cum_freq=7, cum_sum=10103+4236=14339, numerator=10292+14339=24631 -> candidate_val=24631/7=3518 -> skip.
+          d=5234: cum_freq=8, cum_sum=14339+5234=19573, numerator=10292+19573=29865 -> candidate_val=29865/8=3733 -> skip.
+
+        Then answer=3233.
+
+    Therefore, the code is fixed.
+
+    We output 3233 for the second sample.
+
+    However, note: in the segment for d=3233, the candidate_seg is 3233 and we update best to 3233.
+
+    So the code is correct.
+
+    Let me run the sample with n=1: 
+        n=1: w=[5], l=[3]
+        distinct=[3], freqs=[1]
+        cum_freq=1, cum_sum=3, numerator=5-3+3=5 -> candidate_val=5 -> candidate_seg=5 -> update best=5.
+
+    Therefore, we are confident.
+
+    We output the code.

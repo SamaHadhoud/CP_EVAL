@@ -1,0 +1,162 @@
+To solve this problem, we need to determine if there exists a valid edge coloring in a connected graph such that at least \(\left\lceil \frac{n}{2} \right\rceil\) edges are colored, adhering to specific constraints for each color. The constraints are:
+1. Each color \(c\) can be used on at most \(a_c\) edges.
+2. All edges colored with the same color \(c\) must form a connected subgraph.
+
+### Approach
+1. **Initial Checks**:
+   - Calculate \(k = \left\lceil \frac{n}{2} \right\rceil\), the minimum number of edges to color.
+   - If the total capacity (sum of all \(a_i\)) is less than \(k\), output "No" immediately.
+
+2. **Single Large Capacity**:
+   - If there exists any color \(c\) with \(a_c \geq k\), we can color \(k\) edges with this color. Use BFS to collect \(k\) connected edges starting from any vertex.
+
+3. **Multiple Small Capacities**:
+   - **Case 1 (Enough Colors)**: If the number of non-zero capacities is at least \(k\), color \(k\) distinct edges each with a different color.
+   - **Case 2 (Online Simulation)**: Otherwise, use a priority queue to manage components (by edge count). For each capacity, extract a connected subgraph of size \(\min(a_c, \text{component edge count})\). Update the components after extraction and repeat until \(k\) edges are colored or no capacities remain.
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <algorithm>
+#include <set>
+#include <cstring>
+#include <cmath>
+#include <unordered_set>
+#include <stack>
+
+using namespace std;
+
+struct Component {
+    int edge_count;
+    int rep;
+    Component(int ec, int r) : edge_count(ec), rep(r) {}
+    bool operator<(const Component& other) const {
+        return edge_count < other.edge_count;
+    }
+};
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int C;
+    cin >> C;
+
+    while (C--) {
+        int n, m;
+        cin >> n >> m;
+        vector<int> a(m);
+        for (int i = 0; i < m; i++) {
+            cin >> a[i];
+        }
+
+        vector<pair<int, int>> edges;
+        vector<vector<pair<int, int>>> graph(n);
+        for (int i = 0; i < m; i++) {
+            int u, v;
+            cin >> u >> v;
+            u--; v--;
+            edges.push_back({u, v});
+            graph[u].push_back({v, i});
+            graph[v].push_back({u, i});
+        }
+
+        int k = (n + 1) / 2;
+        long long total_capacity = 0;
+        for (int x : a) {
+            total_capacity += x;
+        }
+
+        if (total_capacity < k) {
+            cout << "No" << '\n';
+            continue;
+        }
+
+        vector<int> color_assignment(m, 0);
+        vector<bool> removed_edge(m, false);
+
+        int max_capacity = *max_element(a.begin(), a.end());
+        if (max_capacity >= k) {
+            int color_index = -1;
+            for (int i = 0; i < m; i++) {
+                if (a[i] == max_capacity) {
+                    color_index = i;
+                    break;
+                }
+            }
+
+            vector<bool> visited_vertex(n, false);
+            queue<int> q;
+            vector<int> collected_edges;
+            q.push(0);
+            visited_vertex[0] = true;
+
+            while (!q.empty() && collected_edges.size() < k) {
+                int u = q.front(); q.pop();
+                for (const auto& edge : graph[u]) {
+                    int v = edge.first;
+                    int eidx = edge.second;
+                    if (collected_edges.size() >= k) break;
+                    if (removed_edge[eidx]) continue;
+                    collected_edges.push_back(eidx);
+                    removed_edge[eidx] = true;
+                    if (!visited_vertex[v]) {
+                        visited_vertex[v] = true;
+                        q.push(v);
+                    }
+                }
+            }
+
+            for (int eidx : collected_edges) {
+                color_assignment[eidx] = color_index + 1;
+            }
+
+            cout << "Yes" << '\n';
+            for (int i = 0; i < m; i++) {
+                cout << color_assignment[i];
+                if (i == m-1) cout << '\n';
+                else cout << ' ';
+            }
+        } else {
+            vector<pair<int, int>> non_zero;
+            for (int i = 0; i < m; i++) {
+                if (a[i] > 0) {
+                    non_zero.push_back({a[i], i});
+                }
+            }
+            sort(non_zero.begin(), non_zero.end(), [](const pair<int, int>& a, const pair<int, int>& b) {
+                if (a.first != b.first) return a.first > b.first;
+                return a.second < b.second;
+            });
+            int t = non_zero.size();
+
+            if (t >= k) {
+                for (int i = 0; i < k; i++) {
+                    int eidx = i;
+                    color_assignment[eidx] = non_zero[i].second + 1;
+                }
+                cout << "Yes" << '\n';
+                for (int i = 0; i < m; i++) {
+                    cout << color_assignment[i];
+                    if (i == m-1) cout << '\n';
+                    else cout << ' ';
+                }
+            } else {
+                vector<int> current_component_vertices;
+                vector<bool> visited_vertex_global(n, false);
+                priority_queue<Component> pq;
+                vector<int> comp_vertex_count(n, 0);
+                vector<bool> vertex_in_pq_component(n, false);
+
+                vector<int> comp_edge_count_for_rep(n, 0);
+                vector<int> rep_to_comp_index(n, -1);
+
+                vector<bool> is_representative(n, false);
+                int total_covered = 0;
+
+                vector<bool> vertex_visited_comp(n, false);
+                vector<set<int>> comp_edges_set_by_rep;
+                vector<set<int>> comp_vertices_set_by_rep;
+

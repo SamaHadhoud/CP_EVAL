@@ -1,0 +1,134 @@
+### Overview
+The problem involves computing the sum of the squares of the sums of vertex values over all independent sets in a connected graph. The graph is constrained such that each edge is part of at most one simple cycle, making it a cactus graph. The solution requires efficiently handling the graph structure and leveraging dynamic programming (DP) with state information that tracks counts, linear sums, and quadratic sums of independent sets.
+
+### Key Insight
+The score for an independent set \( S \) is \( F(S) = \left( \sum_{v \in S} a_v \right)^2 \). This can be expanded as:
+\[
+F(S) = \sum_{v \in S} a_v^2 + 2 \sum_{\substack{u, v \in S \\ u < v}} a_u a_v
+\]
+Thus, the total sum over all independent sets \( \mathcal{I} \) is:
+\[
+\sum_{S \in \mathcal{I}} F(S) = \sum_{v} a_v^2 \cdot (\text{number of sets containing } v) + 2 \sum_{u < v} a_u a_v \cdot (\text{number of sets containing both } u \text{ and } v)
+\]
+However, directly computing these terms is infeasible for large graphs. Instead, we use a DP approach that processes the cactus graph by decomposing it into trees and cycles, maintaining states that aggregate counts, linear sums, and quadratic sums.
+
+### Dynamic Programming State
+For each node \( u \), maintain two states:
+- \( dp[u][0] = (c_0, s_0, q_0) \): Represents the count, sum of values, and sum of squares for independent sets in the subtree rooted at \( u \) where \( u \) is **not** included.
+- \( dp[u][1] = (c_1, s_1, q_1) \): Similar, but where \( u \) is included.
+
+The states are combined using convolution when merging subtrees, ensuring no edges are violated.
+
+### Handling Graph Components
+1. **Tree Edges (Bridges)**: For a child \( v \) connected by a bridge, combine states as:
+   - \( \text{new\_}dp[u][0] = dp[u][0] \times (dp[v][0] + dp[v][1]) \)
+   - \( \text{new\_}dp[u][1] = dp[u][1] \times dp[v][0] \)
+   Here, \( \times \) denotes convolution of states (detailed below).
+
+2. **Cycles**: When encountering a cycle during DFS (detected via back edges), process the entire cycle:
+   - Identify the cycle's root (node with smallest depth).
+   - Traverse the cycle's nodes. For each node, use precomputed states (excluding nodes in the cycle).
+   - Perform a linear DP over the cycle's nodes (as a chain) for two cases:
+     - **Case 1 (root taken)**: Force the first and last nodes in the chain to be excluded.
+     - **Case 2 (root not taken)**: No restrictions.
+   - Form block states for the cycle and merge them with the root's DP states.
+
+### State Convolution
+When combining two independent components \( A \) and \( B \):
+- \( c = A.c \times B.c \)
+- \( s = A.s \times B.c + A.c \times B.s \)
+- \( q = A.q \times B.c + A.c \times B.q + 2 \times A.s \times B.s \)
+All operations are modulo \( 998244353 \).
+
+### Algorithm Steps
+1. **Initialization**:
+   - For each node \( u \), initialize:
+     - \( dp[u][0] = (1, 0, 0) \) (only the empty set).
+     - \( dp[u][1] = (1, a_u, a_u^2) \) (only the set \( \{u\} \)).
+
+2. **DFS Traversal**:
+   - Process nodes in DFS order, maintaining depth and parent pointers.
+   - For each node \( u \):
+     - **Tree Edges**: For each child \( v \) (not in a cycle), recursively process \( v \), then merge its states into \( u \)'s states.
+     - **Back Edges (Cycle Detection)**: When a back edge to an ancestor \( v \) is found, extract the cycle, process it, and postpone integration until backtracking to \( v \).
+
+3. **Cycle Processing**:
+   - For a cycle with root \( r \) and nodes \( v_1, v_2, \ldots, v_k \):
+     - **Case 1 (root taken)**: Run a linear DP on the chain \( v_1, \ldots, v_k \) with \( v_1 \) and \( v_k \) forced to be excluded. The result is \( \text{chain\_case1} \).
+     - **Case 2 (root not taken)**: Run the same DP without restrictions, yielding \( \text{chain\_case2} \).
+     - Form block states:
+       - \( \text{block0} = \text{chain\_case2} \) (root not taken in the cycle).
+       - \( \text{block1} = ( \text{chain\_case1}.c, \text{chain\_case1}.s + a_r \cdot \text{chain\_case1}.c, \text{chain\_case1}.q + a_r^2 \cdot \text{chain\_case1}.c + 2 \cdot a_r \cdot \text{chain\_case1}.s ) \) (root taken in the cycle).
+     - Merge into \( r \)'s states:
+       - \( \text{new\_}dp[r][0] = dp[r][0] \times (\text{block0} + \text{block1}) \)
+       - \( \text{new\_}dp[r][1] = dp[r][1] \times \text{block0} \)
+
+4. **Final Answer**:
+   - After processing the root, the answer is \( (dp[\text{root}][0].q + dp[\text{root}][1].q) \mod 998244353 \).
+
+### Complexity
+The algorithm processes each node and edge exactly once. For cycles, the total length of all chains is \( O(n) \) because each node belongs to at most one cycle. Thus, the overall complexity is \( O(n) \), which is efficient for \( n \leq 10^5 \).
+
+### Solution Code
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+const int MOD = 998244353;
+const int N = 1e5 + 5;
+using ll = long long;
+
+struct State {
+    int c;
+    int s;
+    int ss;
+    State(int c = 0, int s = 0, int ss = 0) : c(c), s(s), ss(ss) {}
+};
+
+State operator+(const State& a, const State& b) {
+    return State((a.c + b.c) % MOD, (a.s + b.s) % MOD, (a.ss + b.ss) % MOD);
+}
+
+State operator*(const State& a, const State& b) {
+    int c = (ll)a.c * b.c % MOD;
+    int s = ((ll)a.s * b.c % MOD + (ll)a.c * b.s % MOD) % MOD;
+    int ss = ((ll)a.ss * b.c % MOD + (ll)a.c * b.ss % MOD + 2LL * a.s % MOD * b.s % MOD) % MOD;
+    return State(c, s, ss);
+}
+
+int n, m;
+int a[N];
+vector<int> g[N];
+int parent[N], depth[N];
+State dp[N][2];
+bool visited[N];
+
+void dfs(int u, int p) {
+    visited[u] = true;
+    depth[u] = depth[p] + 1;
+    parent[u] = p;
+    dp[u][0] = State(1, 0, 0);
+    dp[u][1] = State(1, a[u], (ll)a[u] * a[u] % MOD);
+
+    vector<vector<int>> cycles;
+    for (int v : g[u]) {
+        if (v == p) continue;
+        if (!visited[v]) {
+            dfs(v, u);
+        } else if (depth[v] < depth[u]) {
+            vector<int> cycle;
+            int cur = u;
+            while (cur != v) {
+                cycle.push_back(cur);
+                cur = parent[cur];
+            }
+            cycle.push_back(v);
+            cycles.push_back(cycle);
+        }
+    }
+
+    for (int v : g[u]) {
+        if (v == p || depth[v] != depth[u] + 1) continue;
+        bool in_cycle = false;
+        for (auto& cy : cycles) {
+            if (find(cy.begin(), cy.end(), v) != cy.end())

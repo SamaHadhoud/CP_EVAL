@@ -1,0 +1,2012 @@
+ Okay, let me summarize the plan:
+
+ We are dealing with a cactus graph (each edge in at most one cycle). We'll do a DFS and handle:
+   - Tree edges (bridges) by merging child's states.
+   - Cycles: when we find a back edge, we extract the cycle (from the current node up to the ancestor). Then, we process the entire cycle as a chain, and then merge the block states for the cycle with the root of the cycle.
+
+ Steps:
+
+ 1. We maintain for each node u:
+        dp[u][0]: state (count, sum, sum of squares) for independent sets in the subtree rooted at u, excluding u.
+        dp[u][1]: state for independent sets including u.
+
+    Initially: 
+        dp[u][0] = (1, 0, 0)   -> only the empty set
+        dp[u][1] = (1, a[u], a[u]^2)  -> only the set {u}
+
+ 2. When merging a child v (for a tree edge) that is not part of a cycle (already processed as a tree), we do:
+
+        new_dp[u][0] = dp[u][0] * (dp[v][0] + dp[v][1])
+        new_dp[u][1] = dp[u][1] * dp[v][0]
+
+    Note: We define the convolution of states: 
+        (c1, s1, ss1) * (c2, s2, ss2) = (c1*c2, c1*s2 + c2*s1, c1*ss2 + c2*ss1 + 2*s1*s2)
+
+    Also, note that we can add states: (c1, s1, ss1) + (c2, s2, ss2) = (c1+c2, s1+s2, ss1+ss2)
+
+ 3. For cycles:
+
+    When we find a back edge (u, v) such that v is an ancestor and we are at u, we extract the cycle: from u up to v.
+
+    However, note: we might have multiple cycles? But the graph is a cactus, so each edge in at most one cycle.
+
+    We mark the cycle and note that we haven't processed the entire cycle yet. Actually, during DFS we might have already processed some children that are in the cycle? We avoid processing the cycle when going down the tree, and instead, when we backtrack to the root of the cycle (the node with the smallest depth, which is v in the back edge), we then process the entire cycle.
+
+    How to handle a cycle:
+
+        Let the root of the cycle be r (the node with the smallest depth, which is v in the back edge). The cycle is composed of nodes: r, u1, u2, ..., uk, and then back to r. But note: in the DFS we started at r and then went to u1, then u2, ... until uk (which is the current u that found the back edge to r). So the cycle is [r, u1, u2, ..., uk].
+
+        However, note: the cycle we extracted is from u up to r (without the root's parent). So the cycle we have is [v, ..., u] and v is the root.
+
+        Steps for processing the cycle:
+
+        a) We have the current dp states for each node in the cycle, but these states include the entire subtree that is not part of the cycle? Actually, the DFS tree for the nodes in the cycle might have been processed for their non-cycle children (tree edges). But the children that are in the cycle have been skipped? Actually, we haven't processed the back edge. So we need to process the entire cycle when we are at the root.
+
+        b) Instead, we can do: when we backtrack to the root of the cycle, we have the states for the nodes in the cycle without including the cycle (because we skipped the back edge). Then we process the cycle as a chain: starting from the root and going along the cycle.
+
+        How?
+
+        We traverse the cycle: from the root's immediate child in the cycle, then the next, ... until the last node (the one that had the back edge to the root). Then we run a linear DP on this chain, but note that the root is connected to the last node? So we have to consider that the chain is circular? Actually, the root is the common endpoint.
+
+        We have two cases:
+
+          Case 1: The root is taken. Then we cannot take the first and last node of the chain (because they are adjacent to the root). 
+          Case 2: The root is not taken. Then the chain is independent of the root, so we can take independent sets in the chain arbitrarily.
+
+        However, note: our goal is to form a block that will be attached at the root. The block should represent the entire cycle component.
+
+        How to form the block?
+
+          We consider the chain of nodes: let the nodes in the cycle (excluding the root) be in order: u1, u2, ..., uk (where u1 is adjacent to root, and uk is adjacent to root and u_{k-1}).
+
+          We run a linear DP for the chain from u1 to uk. But note: in the cycle, u1 and uk are adjacent? Actually, no: the cycle is root, u1, u2, ..., uk, and then root. So u1 and uk are adjacent to root, but not to each other? Actually, in the chain they are adjacent? The entire cycle is: root - u1 - u2 - ... - uk - root. So u1 and uk are not adjacent? Only if k>=2, then u1 and uk are adjacent only through the root? Actually, in the cycle, the edges are: root-u1, u1-u2, ..., uk-1-uk, uk-root. So u1 and uk are not adjacent. Therefore, the chain u1, u2, ..., uk is a linear chain without the root, and the root is attached to both ends.
+
+        But when we form the independent set for the entire cycle (including the root) we must respect:
+
+          - If we take the root, then we cannot take u1 and uk.
+          - If we don't take the root, then we can take u1 and uk arbitrarily, but note that u1 and uk are not adjacent so they can be taken together? Actually, they are not adjacent, so the chain is independent.
+
+        However, wait: the chain is linear. So the independent sets in the chain are independent of the root? Actually, the root is not part of the chain. So we can compute:
+
+          Let F(chain) = the state for the entire chain (from u1 to uk) as if they form a linear chain.
+
+          Then:
+
+          Block state for the entire cycle (to be merged at the root) has two possibilities:
+
+            - If the root is not taken: then the entire chain can be taken arbitrarily. So the state for the cycle component without the root is F(chain).
+
+            - If the root is taken: then we must not take u1 and uk. How to enforce that? Actually, we cannot simply remove u1 and uk because the chain is connected. Instead, we run the linear chain DP with the constraint that u1 and uk are excluded.
+
+          How to run the linear chain DP?
+
+          We define:
+
+            Let A_i be the state for the chain from u_i to u_k, but we have to do it in order.
+
+          Actually, we can do a standard linear DP for a path:
+
+            We traverse the chain from left to right (u1 to uk). For each node, we have:
+
+                state0: the node is not taken
+                state1: the node is taken
+
+            The recurrence:
+
+                dp_i[0] = (dp_{i-1}[0] + dp_{i-1}[1])
+                dp_i[1] = dp_{i-1][0]   [then multiplied by the node's state when taken?]
+
+          But note: our states are not just counts, but (c, s, ss). And we have to incorporate the node's own value and the subtree hanging off that node? Actually, the nodes in the chain may have children that are not in the cycle (which we have already processed as trees). So we have the base states for each node u_i: 
+
+                base0 = dp[u_i][0]   (which includes the subtree of u_i that are not in the cycle)
+                base1 = dp[u_i][1]   (similarly)
+
+          However, when we are processing the chain, we must not include the edges that are part of the cycle? Actually, the children that are trees are already included in the base states. The cycle edges: we are going to handle by the linear DP.
+
+          So for the chain, we start with:
+
+            state0 = base0   (for the first node: if we don't take u1, then we have base0)
+            state1 = base1   (if we take u1, then we have base1)
+
+          Then for the next node u2:
+
+            new_state0 = (state0 + state1) * base0[u2]   -> because we can have any state for u2 as long as u2 is not taken? Actually, no: we can also take u2? But if we take u2, then we cannot have taken u1? So:
+
+            Actually, the recurrence for linear chain:
+
+                Let f[i][0] = state for up to i-th node without taking the i-th node.
+                f[i][1] = state for taking the i-th node.
+
+                Then:
+                  f[i][0] = (f[i-1][0] + f[i-1][1]) * base0[i]   -> because if we don't take the i-th node, then the previous node can be either taken or not, and we multiply by the state of the i-th node when not taken? Actually, we have to combine the states: the base0[i] already includes the entire subtree of the i-th node (excluding the next in the chain). But we are combining the entire chain.
+
+            How to combine? Actually, we have to convolve the states.
+
+            Specifically:
+
+                f[0] = base0[0]   for state0 at u0 (the first node in the chain)
+                f[1] = base1[0]
+
+            Then for the next node (index 1):
+
+                f[1][0] = (f[0][0] + f[0][1]) * base0[1]
+                f[1][1] = f[0][0] * base1[1]   [because we cannot take two adjacent]
+
+          So we do:
+
+            Let F_i = (state0, state1) at step i.
+
+            Then:
+
+                state0_new = (state0_prev + state1_prev) * base0_i
+                state1_new = state0_prev * base1_i
+
+          Now, for the entire chain (without any constraint) we get:
+
+                chain_total = F_k[0] + F_k[1]
+
+          For the case where we force the root to be taken, we must not take u1 and uk. How to get the state for the chain without taking u1 and uk? 
+
+          We can run the linear DP twice? Actually, we can run the linear DP for the chain with the constraint that the first node is not taken and the last node is not taken? Alternatively, we can do:
+
+          Case 1: root taken -> we require that u1 and uk are not taken. So we run the linear DP for the chain with the constraint that u1 is not taken and uk is not taken? But note: the linear DP naturally does not force the first node? Actually, we can run the DP as:
+
+            Option A: Run the linear chain without the constraint and then subtract the sets that have u1 taken and the sets that have uk taken? That would be complicated.
+
+          Instead, we can run the linear DP twice: 
+
+            First, for the entire chain without constraints: we get chain_total.
+
+            Then, for the chain with the constraint that the root is taken: we require u1 and uk excluded.
+
+          How about:
+
+            We break the chain at u1 and uk? Actually, we can run the linear DP for the chain from u1 to uk, but we set the base state for u1 to be only base0 (so u1 not taken) and then at the end we take only the state that does not take uk.
+
+          But note: we are not forcing uk at the end? We want uk to be not taken. So at the last node, we only take state0.
+
+          However, we can also run the entire chain and then at the end, we take the state0 for uk? But that does not force u1 to be not taken. 
+
+          Alternatively, we can run the chain from u1 to uk, and at the beginning we start with:
+
+             f0 = base0[0]   (for u1: not taken)
+             f1 = State(0,0,0)   (u1 taken is disallowed)
+
+          Then at the end, we take only the state0 for the last node? Actually, we don't care about the last node? We have to force uk to be not taken? So we take the state0 at the last step.
+
+          But note: we want both u1 and uk not taken. So:
+
+            Step 1: u1 -> we set: 
+                state0 = base0[0]
+                state1 = 0
+
+            Then we run the DP for the rest as normal? Then at the last node (uk), we take only state0? Actually, we can do:
+
+            Let F[0][0] = base0[0], F[0][1] = State(0,0,0)
+
+            for i from 1 to k-1 (if the chain has k nodes, then indices 0 to k-1) -> but note our chain is u1, u2, ... uk (k nodes). So we run from index0 (u1) to index k-1 (uk). Then at the last node, we only take F[k-1][0]? 
+
+          But then we are not forcing uk to be not taken? Actually, we do: at the last node, we don't allow it to be taken? So we set:
+
+            F[i][0] = (F[i-1][0] + F[i-1][1]) * base0[i]
+            F[i][1] = F[i-1][0] * base1[i]
+
+          Then at the last node (index=k-1), we only consider F[k-1][0]? 
+
+          But note: we are building the state for the entire chain with u1 not taken and uk not taken. So the state for the chain in this case is F[k-1][0].
+
+          However, what about the entire chain without the constraints? We run:
+
+            F[0][0] = base0[0], F[0][1] = base1[0]
+            for i from 1 to k-1: same recurrence
+            then chain_total = F[k-1][0] + F[k-1][1]
+
+          So for the constrained case (u1 and uk not taken):
+
+            chain_case1 = F[k-1][0]   (with the initial condition F[0][0]=base0[0], F[0][1]=0, and then run the recurrence, and at the last step take only state0? Actually, we don't take state1 at the last step? But note: we want uk not taken, so we take the state0 at the last node. But we are already storing both states until the last step. So we do:
+
+            Let F0[0] = base0[0], F1[0] = State(0,0,0)   [for u1: we force not taken]
+            for i from 1 to k-1 (the last node is index k-1, which is uk) {
+                F0[i] = (F0[i-1] + F1[i-1]) * base0[i];
+                F1[i] = F0[i-1] * base1[i];
+            }
+            Then the state for the chain with u1 and uk not taken is F0[k-1] (because uk is at index k-1 and we take the state0 for uk).
+
+          But note: what about the nodes in between? They are free.
+
+          Then:
+
+            block0 = chain_total   -> root not taken: then the entire chain is free (so we use chain_total)
+            block1 = State(chain_case1.c, 
+                           (chain_case1.s + (ll)a[r] * chain_case1.c % MOD) % MOD,
+                           (chain_case1.ss + (ll)a[r] * a[r] % MOD * chain_case1.c % MOD + 2LL * a[r] % MOD * chain_case1.s % MOD) % MOD)
+
+          Why? Because if we take the root, then we add the root to every set that is represented by chain_case1 (which is the chain without u1 and uk). Then the new state:
+
+            count: same as chain_case1.c (each set now includes the root, but the root is fixed so count remains)
+            sum: chain_case1.s + a[r] * chain_case1.c
+            sum of squares: 
+                (x1 + ... + xk + a[r])^2 = (x1+...+xk)^2 + a[r]^2 + 2*a[r]*(x1+...+xk)
+                so = chain_case1.ss + a[r]^2 * chain_case1.c + 2 * a[r] * chain_case1.s
+
+          Then we merge the block states at the root r:
+
+            new_dp[r][0] = dp[r][0] * (block0 + block1)
+            new_dp[r][1] = dp[r][1] * block0   // because if we take the root (in the entire state) then we cannot take the root again? Actually, the root is taken in the block1? But wait: in block1 we are including the root? Actually, we are forming two blocks:
+
+            - block0: the entire cycle without the root (so independent sets that do not include the root) and we can attach this to either state of the root (if we don't take the root) or if we take the root then we must not have the root in the cycle? Actually, the root is the common node.
+
+            How we merge:
+
+              The block0 and block1 are the states for the cycle component. Then:
+
+                If the root is not taken in the rest of the graph (so we are in state dp[r][0]), then we can attach the cycle component arbitrarily (so both block0 and block1).
+
+                If the root is taken in the rest of the graph (state dp[r][1]), then we cannot take the root again in the cycle? Actually, the cycle component has two cases: block0 does not include the root (so it's safe) and block1 includes the root? But wait: block1 is the case where the root is taken? Actually, no: we are going to merge the cycle component at the root. But the root is already taken in the rest of the graph? Then we must avoid having the root taken again. So we can only use block0 (which does not take the root) for the cycle component.
+
+          However, note: in the block1, we have already included the root? Actually, we formed block1 by adding the root to the chain_case1. So if we are merging with the root being taken in the rest of the graph, we cannot use block1 because that would take the root twice.
+
+          Therefore:
+
+            new_dp[r][0] = dp[r][0] * (block0 + block1)
+            new_dp[r][1] = dp[r][1] * block0
+
+          But note: the rest of the graph might have other children? Actually, we are processing the entire cycle at the root. We assume that we have already processed the non-cycle children? How?
+
+          Important: We must process the non-cycle children first (as tree edges) and then the cycles.
+
+          Steps for DFS:
+
+            - Start at node u, mark visited, set depth.
+            - For each neighbor v:
+                  if v is parent: skip.
+                  if v is visited and depth[v] < depth[u]: then we found a back edge. We then record the cycle (but do not process immediately) -> we push the cycle to a list for u.
+
+            - Then, for each child v that is not part of a cycle (i.e., depth[v] = depth[u]+1 and not in any cycle we found) -> we process recursively and then merge as a tree edge.
+
+            - Then, after processing all tree children, we process the cycles that have u as the root? Actually, how do we know the root of the cycle? The root is the deepest node in the cycle? Actually, the root is the node with the smallest depth. In the cycle we extracted, the root is the one with the smallest depth (which is the ancestor). So when we backtrack to that root, we will process the cycle.
+
+          How to handle multiple cycles? We can store at each node the cycles that have this node as the root? Actually, we can collect the cycles during DFS and then when backtracking to the root of the cycle, we process the cycle.
+
+          However, in the DFS we are backtracking to u. We have collected the cycles that start at u? Actually, when we found a back edge from u to an ancestor v, then the cycle is stored at v? Or we can process the cycle when we are at the root? 
+
+          We do: 
+
+            We do a DFS. When we see a back edge (u, v) with v an ancestor, we extract the cycle and store it at the root (v). But then we must process the cycle when we backtrack to v.
+
+          Alternatively, we can process the cycle when we are at the root (v). But note: we are currently at u. How do we store the cycle? We can store a list of cycles per node? And then when we backtrack to v, we process the cycles for which v is the root.
+
+          Implementation:
+
+            We maintain an array: vector<vector<int>> cycles_for_node[N];   // cycles_for_node[i] is a list of cycles (each cycle is a list of nodes) that have i as the root.
+
+            Then, when we find a back edge (u, v) (with depth[v] < depth[u]), we form the cycle and push it to cycles_for_node[v].
+
+          Then, when we finish processing all children of a node u (the tree edges), we then process the cycles for which u is the root (if any). Then we update the dp of u by processing the cycle.
+
+          But note: a node might be the root of multiple cycles? Yes, but the graph is a cactus so the cycles are edge-disjoint. So each cycle is independent? Actually, they share the root node.
+
+          How to process multiple cycles at the same root? We can process one by one: each cycle is attached at the root. So we update the root's dp by merging the cycle block (which we form as described) one cycle at a time.
+
+          Steps at node u:
+
+            - Initialize dp[u][0] = (1,0,0), dp[u][1] = (1, a[u], a[u]^2)
+
+            - For each tree child (not in a cycle): 
+                  dfs(child)
+                  then update:
+                      dp[u][0] = dp[u][0] * (dp[child][0] + dp[child][1])
+                      dp[u][1] = dp[u][1] * dp[child][0]
+
+            - Then, for each cycle that has u as the root (stored in cycles_for_node[u]):
+
+                  For a cycle: let the nodes be [u, u1, u2, ..., uk]? Actually, we extracted the cycle from u (as root) and then the next nodes? Actually, the cycle we stored is from the back edge: we have the cycle as [v0, v1, ... vk] where v0 = u (the root) and v1, v2, ... vk (the other nodes). But note: the cycle we extracted when we were at node vk (which found the back edge to u) was:
+
+                         vector: starting from the current node (vk) and going up until u: [vk, v_{k-1}, ..., u]? 
+
+                  Actually, we built:
+
+                         vector<int> cycle;
+                         int cur = u;   // the current node at which we found the back edge
+                         while (cur != v) {   // v is the ancestor (the root of the cycle)
+                             cycle.push_back(cur);
+                             cur = parent[cur];
+                         }
+                         cycle.push_back(v);   // which is the root
+
+                  Then we reversed? Actually, the cycle we built is from u up to v (the root). So the order is: [u, parent[u], parent[parent[u]], ... until v]. But the cycle is undirected. To get the chain for the cycle (excluding the root) we need the children of the root that are in the cycle? Actually, the chain we want is the direct children and then the next? 
+
+                  How to get the chain in the order from u1 to uk? We can note:
+
+                         The root u has two edges in the cycle: one to the first node and one to the last node. The chain is the path from the first node to the last node without the root.
+
+                  Actually, the cycle we built: [v0, v1, ... , vk] where v0 = u (the root) and v1 and vk are adjacent to u? Actually, no: the root is v0, then the next node is v1 (which is parent[u]?) -> that doesn't seem right.
+
+                  Actually, when we built the cycle:
+
+                         cycle = [u, parent[u], parent[parent[u]], ... until v] and then we push v.
+
+                  Then we reverse the cycle? Actually, we built the cycle from u up to v. Then we stored it as: [u, parent[u], ... , v]. But we want the cycle as: v (the root) then the next node is parent[u]? Actually, the root is v, and the next node in the cycle from the root is parent[u]? But we don't know the exact order.
+
+          Alternatively, we can store the cycle without the root? Actually, we have the entire cycle including the root. Then we remove the root? And the chain is the rest. But note: the rest of the nodes form a path? Actually, they form a path? Not necessarily: they form a cycle without the root? Actually, the root is removed and the rest is a chain? Actually, the rest is a chain because the root is adjacent to two nodes: the first and the last. But the rest of the nodes are connected in a linear chain? Yes.
+
+          So for a cycle stored at the root u:
+
+            Let the cycle nodes (including u) be: [u, v1, v2, ..., vk]? Actually, the cycle we stored is: 
+
+                   cycle = [u, w1, w2, ..., w_{l-1}, v]   and then we pushed v? Actually, we started at u and went up until v (the root). So the cycle we stored is: [u, w1, w2, ..., w_{l-1}, v] and then we know that u is adjacent to w1? and w_{l-1} is adjacent to v? and also u and v are adjacent? Actually, no: the back edge is from u to v, and the other edges are tree edges? The tree edges: u->parent[u] = w1, w1->parent[w1]=w2, ... until v. But then the cycle is: u, w1, w2, ..., v, and then the back edge from u to v? That would form a cycle: u->w1->w2->...->v->u.
+
+          So the chain (without the root u) is: w1, w2, ... , v. But note: v is the root? Actually, we stored the root as v, but then we are processing at the root v? Actually, we stored the cycle at the root v. Then the chain is: the nodes from the child of v (which is the next node in the cycle) to the last node (which is the parent of u) and then u? Actually, no: we built the cycle by going from u up to v. So the cycle we stored at the root v is: [u, w1, w2, ..., w_{l-1}, v]? Actually, we built:
+
+                 vector<int> cycle;
+                 int cur = u;
+                 while (cur != v) {
+                     cycle.push_back(cur);
+                     cur = parent[cur];
+                 }
+                 cycle.push_back(v);
+
+          Then the cycle is: [u, w1, w2, ... , w_{l-1}, v] and the edges: u->w1, w1->w2, ... , w_{l-1}->v, and then the back edge: u->v? But actually, the back edge is u->v? So the cycle is: u->w1->w2->...->v->u.
+
+          Then the chain we want (excluding the root v) is: u, w1, w2, ... , w_{l-1}. But note: u and w_{l-1} are adjacent to the root v. Also, u and w_{l-1} are not adjacent? So the chain is linear: u, w1, w2, ... , w_{l-1}. However, note that u and w_{l-1} are adjacent? Actually, no: the edges are: u->w1, w1->w2, ... , w_{l-2}->w_{l-1}, w_{l-1}->v. So the chain is linear.
+
+          But wait: in the cycle, we have the edge u->v and w_{l-1}->v, but we are removing v. Then the chain is u, w1, w2, ... , w_{l-1} and there is no edge between u and w_{l-1}? So it is a linear chain.
+
+          Therefore, for a cycle stored at root u (the root of the cycle is u), we have the chain = the vector of nodes we built without the root? Actually, we built the cycle including the root? Then we remove the root? Actually, we built the cycle as [u, w1, w2, ... , w_{l-1}, v] and v is the root? Then we remove the root v? Then the chain is [u, w1, w2, ... , w_{l-1}]. 
+
+          But note: the root of the cycle is v, and we are at v? So we call it u? Actually, we are processing the root as the current node. So we are at the root u (which is the same as v in the above). Then the chain is the entire cycle without the root? Then the chain is: the children of the root in the cycle? Actually, the chain is the entire cycle without the root? So we have:
+
+            chain_nodes = the cycle without the root? But the cycle we stored at the root u: 
+
+                vector<int> cycle = ... ;   // which we built as [u (the current node that found the back edge), ... , the root u?] -> wait, we stored the root as the last element? Actually, we pushed the root at the end.
+
+          How we built:
+
+                vector<int> cycle;
+                int cur = u;   // the current node (which is a descendant of the root)
+                while (cur != v) {   // v is the root
+                    cycle.push_back(cur);
+                    cur = parent[cur];
+                }
+                cycle.push_back(v);   // the root
+
+          So the cycle is: [u, w1, w2, ... , w_{k-1}, v] and then we know that u is adjacent to v (by the back edge) and the tree edges: u->w1, w1->w2, ... , w_{k-1}->v.
+
+          Then the chain (without the root v) is [u, w1, w2, ... , w_{k-1}]. 
+
+          But note: the root is v, and we are at v. So we have:
+
+            chain = [u, w1, w2, ... , w_{k-1}]
+
+          Then we run the linear DP on this chain? But note: the order? The chain starts with u and ends with w_{k-1}. The edges: u is adjacent to the root and w1? and w1 is adjacent to w2? ... and w_{k-1} is adjacent to the root. So the chain is linear: u - w1 - w2 - ... - w_{k-1}. 
+
+          Then we form:
+
+            chain_total = run the linear DP on the entire chain (without constraints) -> state = F[last][0] + F[last][1]
+
+            chain_case1 = run the linear DP on the chain with constraints: the first node (u) must be not taken and the last node (w_{k-1}) must be not taken? Actually, no: the constraint for the root taken is that we cannot take any neighbor of the root. The root (v) is adjacent to u and w_{k-1}. So we require u and w_{k-1} not taken.
+
+          Therefore, we run:
+
+            Let the chain be an array: nodes[0] = u, nodes[1] = w1, ... , nodes[k-1] = w_{k-1} (so the chain has k nodes, which is the entire cycle without the root).
+
+            Step 1: chain_total = linear_dp(chain, false, false)   // without constraints? Actually, without constraints we run the entire chain without any forced exclusion.
+
+            But we want the state for the entire chain without constraints? Actually, we don't need to force anything for the entire chain? Then we run the standard linear DP without initial constraint.
+
+            Step 2: chain_case1 = linear_dp(chain, true, true)   // meaning: force the first node to be excluded and force the last node to be excluded? Actually, we run:
+
+                F[0][0] = dp[nodes[0]][0]   // base state for the first node: if we take it, then we use base1? but we force not take -> so we set state0 = base0, state1 = 0.
+                F[0][1] = State(0,0,0)
+
+                Then for i=1 to k-1:
+                    F[i][0] = (F[i-1][0] + F[i-1][1]) * dp[nodes[i]][0]
+                    F[i][1] = F[i-1][0] * dp[nodes[i]][1]
+
+                Then chain_case1 = F[k-1][0]   (because we require the last node not taken? Actually, we don't force the last node in the recurrence? We just run the recurrence and then at the end we take the state that does not take the last node? But we want the last node not taken? So we take F[k-1][0]. 
+
+            However, note: we are forcing the first node to be not taken, and the recurrence for the last node: we are free to choose? But we want the last node to be not taken? So we take F[k-1][0]. 
+
+          Then:
+
+            block0 = chain_total   // root not taken: then the entire chain is independent? 
+            block1 = State(chain_case1.c, 
+                           (chain_case1.s + (ll)a[u] * chain_case1.c % MOD) % MOD,
+                           (chain_case1.ss + (ll)a[u] * a[u] % MOD * chain_case1.c % MOD + 2LL * a[u] % MOD * chain_case1.s % MOD) % MOD)
+
+          Then update:
+
+            new_dp[u][0] = dp[u][0] * (block0 + block1)
+            new_dp[u][1] = dp[u][1] * block0
+
+          And then we move to the next cycle.
+
+          Note: the base states for the nodes in the chain (dp[nodes[i]][0] and dp[nodes[i]][1]) already include the entire subtree that is not part of the cycle? Because we processed the DFS in the tree order and we skipped the back edge? Actually, we did a DFS and processed the children that are not in the cycle? Then the nodes in the cycle are processed as tree children? Actually, no: we skipped the back edge, but the other edges (tree edges) for the nodes in the cycle have been processed? 
+
+          How about: we have processed the DFS for the children that are not in the cycle? Then for a node in the cycle, its dp state includes the subtrees that are not in the cycle? Yes.
+
+          Steps for DFS:
+
+            We do:
+
+                visited[u] = true
+                depth[u] = depth[p] + 1
+                parent[u] = p
+
+                Initialize dp[u][0] and dp[u][1]
+
+                For each neighbor v:
+                    if v==p: skip
+                    if not visited: then we mark as tree edge? But we cannot: because if there is a back edge later, we will find a cycle? So we do:
+
+                We iterate through the neighbors:
+
+                  for v in g[u]:
+                      if v == p: skip
+                      if not visited[v]: 
+                          dfs(v, u)   -> but note: when we do this, we process the entire subtree? But if v is in a cycle, we haven't processed the cycle? Actually, the cycle will be processed when we backtrack to the root? So we process the entire subtree including non-cycle children? 
+
+                  But what about the children that are in the cycle? They are connected by a tree edge? Then we process them as tree edges? Then we update the node u? Then later, when we process the cycle, we use the updated states? Actually, that would be incorrect: because the cycle includes multiple nodes that are children of u? 
+
+          Actually, we must avoid processing the entire subtree for the cycle? 
+
+          How to avoid?
+
+            We do not process the back edge? But the tree edges that are part of the cycle are processed? Then when we form the cycle, we use the dp states of the nodes that have been updated by their non-cycle children? But the cycle processing will then merge the entire chain? 
+
+          However, note: the cycle we process at the root u: the chain nodes are descendants of u? Then we have processed them? And their dp states are computed including their non-cycle children? Then we use them to form the linear chain? Then that is correct.
+
+          But there is a catch: the chain nodes might have been updated by other cycles? Actually, no: because the root of the cycle is the deepest node? So when we backtrack, we process the deepest nodes first? Then when we are at the root u, the children in the chain have been processed? 
+
+          Therefore, the DFS order: we do a DFS and when we backtrack to u, we first process all tree children (which are not in the cycle? Actually, we don't know) -> but we process all children? Then we store the cycles that we found during DFS (the back edges) and then when backtracking, we process the cycles that have u as the root.
+
+          How to store the cycles? We can have a global vector: vector<vector<int>> cycles[N];
+
+          Then, during DFS at u:
+
+            for each neighbor v:
+                if v == p: skip
+                if visited[v] and depth[v] < depth[u]: 
+                    then we form the cycle: from u up to v, and then push that cycle to cycles[v] (the root of the cycle is v)
+
+          Then, after we processed all children (the DFS tree edges), we then check: if we are at a node u that has cycles stored (in cycles[u]), then we process each cycle.
+
+          Steps:
+
+            dfs(u, p):
+                visited[u] = true
+                depth[u] = depth[p]+1
+                parent[u] = p
+                dp[u][0] = State(1,0,0)
+                dp[u][1] = State(1, a[u], (ll)a[u]*a[u]%MOD)
+
+                for each v in g[u]:
+                    if v == p: continue
+                    if not visited[v]:
+                        dfs(v, u)   // we process the child
+                        // But note: if v is part of a cycle that we haven't processed, we don't merge it yet? Actually, we merge it as a tree edge? Then later we will process the cycle and update the root? But that would be incorrect: because the node v might be in a cycle and we have merged it as a tree edge? Then we would be double counting?
+
+          How to avoid double counting? We must not merge the children that are part of a cycle as tree edges? 
+
+          Solution: we mark the edges that are part of a cycle? Actually, we can't mark until we find the cycle.
+
+          Alternatively, we do:
+
+            We do DFS and for each tree edge, we process the child and then merge it? Then later, when we process the cycle at the root, we remove the effect of the tree edge? That would be complicated.
+
+          Instead, we do not process the child if it is part of a cycle? But we don't know until we find the back edge.
+
+          How about: we skip the back edge during DFS? Then we do:
+
+            for each v in g[u]:
+                if v==p: skip
+                if not visited[v]: 
+                    then we do DFS for v? 
+                else if depth[v] < depth[u]: 
+                    then we record the cycle and skip processing the DFS for v? Actually, we don't process the DFS for v again? But v has been visited? So we skip.
+
+          But what about the tree edge to v that is not a back edge? We process the DFS for the tree edges? Then the entire DFS tree is built without the back edges? Then the children that are in the cycle are processed as tree edges? Then when we form the cycle, we use the dp states of the nodes that have been updated by their own non-cycle children? Then we form the linear chain? Then we update the root? Then that is correct.
+
+          However, note: the chain includes the direct child of u? Then when we merged the child as a tree edge, we have already merged it? Then when we process the cycle, we are going to merge it again? That would be incorrect.
+
+          How to fix?
+
+            We must not merge the children that are part of a cycle as tree edges? 
+
+          Therefore, after we have processed all children (the DFS tree edges) for u, we then process the cycles. But the children that are part of a cycle are not merged? How do we know which children are part of a cycle? 
+
+          We can mark the edges that are bridges? Actually, we don't know.
+
+          Alternative approach:
+
+            We do not merge any child that is part of a cycle? How? 
+
+            We can: when we find a back edge (u, v) (v is an ancestor), we mark the entire cycle? Then we skip the tree edge for the first node of the cycle? 
+
+          Actually, we can do:
+
+            During DFS, we do:
+
+                for v in g[u]:
+                    if v==p: skip
+                    if not visited[v]:
+                        parent[v] = u
+                        depth[v] = depth[u]+1
+                        dfs(v, u)
+
+            But then, when we find a back edge (u, v) with v an ancestor, we form the cycle and store it at v. Then, when we backtrack to v, we process the cycle and update the dp of v. Then the direct child of v that is in the cycle has been processed? But we have merged it as a tree edge? Then we have to remove that effect.
+
+          How about: we do not merge the child if it is the first node in the cycle? Actually, we can avoid merging by storing the cycles and then processing them at the root? Then the root will update its dp by the entire cycle? Then we don't need to merge the children that are in the cycle? 
+
+          But note: the children that are in the cycle are also children in the DFS tree? Then we have already merged them? 
+
+          Therefore, we must revert the effect of merging the children that are in the cycle? 
+
+          Alternatively, we do:
+
+            We maintain an array dp[u][0] and dp[u][1] that does not include any cycle child? Then we process the cycles at the root? 
+
+          Actually, we can:
+
+            Initially, we process the non-cycle children: but how to know which children are non-cycle? 
+
+            We can: after DFS for a child, we do not immediately merge? We store the children and then, after we have collected the cycles, we know which children are not in any cycle? 
+
+          Steps at node u:
+
+            For each child v (by DFS tree edge) that is not part of any cycle: we merge them.
+
+            For the children that are part of a cycle, we do not merge them individually? Instead, we merge the entire cycle later.
+
+          How to know if a child is part of a cycle? 
+
+            We can mark the edges that are part of a cycle? Or mark the nodes? Actually, when we store a cycle at the root, we know the entire set of nodes in the cycle. Then we can know that the child v is in a cycle? But we are at u, and the cycle will be processed later? 
+
+          Alternatively, we do:
+
+            We process the DFS for all children. But then, when we process a cycle at u, we have to remove the effect of the children that are in the cycle? 
+
+          How to remove? 
+
+            We stored the dp[u] before merging the child v? Actually, we can store a temporary dp and then merge only the non-cycle children? 
+
+          Let's do:
+
+            dp[u][0] = State(1,0,0)
+            dp[u][1] = State(1, a[u], (ll)a[u]*a[u]%MOD)
+
+            // First, merge non-cycle children: we don't know which are non-cycle? 
+            // Instead, we merge all children that are tree edges, and then for each cycle, we will remove the effect of the children in the cycle and then replace with the entire cycle.
+
+          But note: the child v in the cycle might have been merged, but the cycle includes v and other nodes? 
+
+          Actually, the entire cycle will be merged as one block? Then we can:
+
+            Step 1: merge all children (tree edges) as if they are not in any cycle.
+
+            Step 2: for each cycle that has u as the root:
+
+                    Let the chain = [v0, v1, ... , v_{k-1}]   // the children of u in the cycle are v0 and v_{k-1}? Actually, the chain includes the direct child of u? 
+
+                    But we have already merged the children in the chain? 
+
+                    How to remove the effect of the chain? 
+
+                    We can store the state of u before merging the children in the chain? But we don't know which children are in the chain.
+
+          This becomes messy.
+
+          Instead, we can avoid merging the children that are in the cycle. How? 
+
+          We can: 
+
+            - Maintain an array for the children that are not in any cycle.
+            - Mark the edges that are part of a cycle? But initially we don't know.
+
+          We can do:
+
+            During DFS, we do not immediately merge any child. We store all children.
+
+            Then, after we have collected the cycles for this node (by back edges), we know which children are in the cycle? 
+
+            But note: the children in the cycle are the ones that are in the stored cycle vector? 
+
+            Then:
+
+              Let children_non_cycle = all tree-edge children that are not in any cycle stored at this node? 
+
+              Then we merge them.
+
+              Then, for each cycle stored at this node, we process the cycle (which includes the children in the cycle) and then merge the entire cycle as a block.
+
+          How to collect the tree-edge children that are in a cycle? 
+
+            When we store a cycle at u, the cycle is a vector of nodes that includes u and other nodes. The direct children of u in the cycle are the ones that are adjacent to u in the cycle? 
+
+            In the cycle, the direct children of u are the first and last nodes in the chain (excluding u)? Actually, the chain is [v0, v1, ... , v_{k-1}] and the direct children of u are v0 and v_{k-1}? 
+
+          Actually, the direct child in the DFS tree for the cycle might be only one? Because the DFS tree edge: we went from u to v0, and then the back edge from v_{k-1} to u? So the tree edge children that are in the cycle are v0 and also possibly v_{k-1}? 
+
+          But wait: the DFS tree has only one parent? So the other nodes in the cycle are reached from v0? Then v_{k-1} might be reached from a different branch? Actually, the entire cycle is built by going from u to v0, then to v1, then to v2, ... and then to v_{k-1} and then the back edge to u. So the tree edges: u->v0, v0->v1, ... , v_{k-2}->v_{k-1}. And then the back edge: v_{k-1}->u.
+
+          Therefore, the only direct child of u in the cycle is v0. The node v_{k-1} is not a direct child? It is a child of v_{k-2}. 
+
+          So then, we only have merged the child v0? 
+
+          Then, when we process the cycle, the chain includes v0, v1, ... , v_{k-1}. And we want to remove the effect of merging v0? 
+
+          How? 
+
+            We can store the state of u before merging v0? 
+
+          But we might have merged other children before v0? 
+
+          Alternatively, we can first merge the non-cycle children, then for the cycle, we 
+
+            - Revert the effect of merging the direct child v0? 
+            - Then process the entire cycle and merge the block.
+
+          How to revert? 
+
+            We have:
+
+              old_dp[u][0] = dp[u][0] 
+              old_dp[u][1] = dp[u][1]
+
+            Then we merged v0:
+
+              new_dp[u][0] = old_dp[u][0] * (dp[v0][0] + dp[v0][1])
+              new_dp[u][1] = old_dp[u][1] * dp[v0][0]
+
+            To revert, we need to compute the state before merging v0? 
+
+            But we might have merged other children after v0? 
+
+          Therefore, we avoid merging the children that are in any cycle initially. 
+
+          Plan:
+
+            Let's maintain an array skip[u] for each node u, which is the list of direct children that are part of a cycle? But initially, we don't know.
+
+          We can do:
+
+            - Do DFS for all children, but do not merge any child until we have collected the cycles.
+
+            - After DFS for a child, we don't merge.
+
+            - After we have collected the cycles (from back edges), then we know which direct children are in a cycle (they appear in any cycle stored at u) -> but note: the cycle stored at u includes the direct child only if the child is the next node in the cycle? Actually, the direct child is the first node in the chain (v0) and also the last node might be reached by a different child? But the last node is not a direct child? Only the first node is a direct child.
+
+          So for each cycle, there is exactly one direct child of u that is in the cycle (the first node).
+
+          Then, at node u:
+
+            - Identify the direct children that are in a cycle: for each cycle stored at u, the first node in the chain (after u) is a direct child.
+
+            - Let non_cycle_children = all tree-edge children except the ones that are the first node in any cycle stored at u.
+
+            - Merge non_cycle_children:
+
+                  for v in non_cycle_children:
+                      dp[u][0] = dp[u][0] * (dp[v][0]+dp[v][1])
+                      dp[u][1] = dp[u][1] * dp[v][0]
+
+            - For each cycle:
+
+                  Let the chain = [v0, v1, ... , v_{k-1}], where v0 is the direct child (which we skipped merging).
+
+                  Then, the state of v0 might include its own non-cycle children? Because we did DFS for v0 and then merged its non-cycle children? 
+
+                  Then, run the linear DP for the chain to get chain_total and chain_case1.
+
+                  Then form block0 and block1.
+
+                  Then update:
+                      dp[u][0] = dp[u][0] * (block0 + block1)
+                      dp[u][1] = dp[u][1] * block0
+
+          But note: the chain includes v0, v1, ... , v_{k-1}. The state for v0 already includes its non-cycle children, and the state for v1 includes its non-cycle children, etc.
+
+          Therefore, the base state for the linear DP for a node in the chain is its own dp state (which includes its non-cycle children).
+
+          Steps for the entire DFS:
+
+            visited[u] = true
+            depth[u] = depth[p]+1
+            parent[u] = p
+            dp[u][0] = State(1,0,0)
+            dp[u][1] = State(1, a[u], (ll)a[u]*a[u] % MOD)
+
+            vector<int> children_in_cycle;   // direct children that are in a cycle (which we will process later)
+
+            for each v in g[u]:
+                if v == p: continue
+                if not visited[v]:
+                    dfs(v, u)   // this will initialize dp[v] and also populate cycles for node (possibly)
+                    // But then, after dfs(v,u), we haven't merged v into u.
+
+            // Now, collect the cycles for which u is the root: they are stored in a global cycles[u] array.
+            // Also, during the DFS above, we may have added cycles to other nodes? 
+
+            // Then, identify the direct children that are in any cycle stored at u.
+            set<int> in_cycle_children;
+            for (auto& cycle : cycles[u]) {
+                // The cycle is a vector of nodes: [node1, node2, ... , node_last] where node1 is the direct child of u? 
+                // Actually, the cycle is stored as: we built it from the descendant up to u: [descendant, ... , parent of descendant, u] 
+                // So the direct child of u in the cycle is the first node in the cycle vector? 
+                // But we built the cycle by starting from the descendant (say w) and then going up to u, and then push u.
+                // So the cycle vector: [w, parent[w], ... , u] 
+                // Then the direct child of u in the cycle is the last node before u? -> parent[w] might not be the direct child.
+
+                // Actually, the direct child of u is the node that is adjacent to u in the DFS tree. In the cycle, that node is the one whose parent is u.
+                // In the cycle vector, the node that has parent = u is the direct child.
+
+                // How to find it? The cycle vector: we have u at the end. The previous node in the cycle vector is the direct child? 
+                // Because the cycle: we have u at the end, and the penultimate node must be the direct child? Because we came from the direct child to u in the DFS tree.
+
+                // But note: the cycle might be: u -> v0 -> v1 -> ... -> vk -> u. Then the direct child is v0 and also the node vk is adjacent to u (by the back edge). But in the cycle vector we built by going up the tree: we started at the node that found the back edge (say vk), then went to parent[vk], ... until u. 
+                // So the cycle vector: [vk, parent[vk], ... , v0, u]   -> wait, no: we did not include the back edge in the tree. The tree only has u->v0->v1->...->vk. Then when we are at vk, we found the back edge to u. Then the cycle vector: 
+                //   cycle.push_back(vk);
+                //   cur = parent[vk] = v_{k-1}
+                //   then push v_{k-1}, then v_{k-2}, ... until v0, then push u (when cur becomes u? or when cur becomes the root u, then we push u).
+
+                // So the cycle vector is: [vk, v_{k-1}, ... , v0, u] 
+
+                // Therefore, the direct child of u is v0, and v0 is the penultimate node in the vector.
+
+                // So the direct child is the node at index cycle.size()-2.
+
+                int child_node = cycle[cycle.size()-2];
+                in_cycle_children.insert(child_node);
+            }
+
+            // Merge non-cycle children: any tree-edge child v that is not in in_cycle_children.
+            for each tree-edge child v (visited in the DFS tree) {
+                if (in_cycle_children.find(v) == in_cycle_children.end()) {
+                    dp[u][0] = dp[u][0] * (dp[v][0] + dp[v][1]);
+                    dp[u][1] = dp[u][1] * dp[v][0];
+                }
+            }
+
+            // Now, process each cycle stored at u.
+            for (auto& cycle : cycles[u]) {
+                // The chain is the entire cycle without the root u: remove the last element (which is u) -> chain_nodes = everything except the last element.
+                vector<int> chain = vector<int>(cycle.begin(), cycle.end()-1);
+                // But note: the order of the chain: we have [vk, v_{k-1}, ... , v0] -> and we want to run the linear DP from v0 to vk? 
+                // In the linear chain, the connections are: v0->v1->...->vk? 
+                // But in our chain vector: the first node is vk, then v_{k-1}, etc. -> so the order is reversed.
+                // We need the order: from the direct child (v0) to the last node (vk)? Actually, the chain in the cycle is: v0->v1->...->vk. 
+                // But our vector has vk at the front and v0 at the back. So we reverse the chain.
+                reverse(chain.begin(), chain.end());   // now chain = [v0, v1, ... , v_{k-1}] if originally it was [vk, v_{k-1}, ... , v0] -> after reverse: [v0, v1, ... , v_{k-1}] 
+
+                // Now, run the linear DP for the chain without constraints -> chain_total
+                State total_chain = linear_chain(chain, false, false);
+                State case1_chain = linear_chain(chain, true, true);   // with first and last node excluded.
+
+                State block0 = total_chain;
+                State block1 = State(case1_chain.c, 
+                                     (case1_chain.s + (ll)a[u] * case1_chain.c % MOD) % MOD,
+                                     (case1_chain.ss + (ll)a[u] * a[u] % MOD * case1_chain.c % MOD + 2LL * a[u] * case1_chain.s % MOD) % MOD);
+
+                dp[u][0] = dp[u][0] * (block0 + block1);
+                dp[u][1] = dp[u][1] * block0;
+            }
+
+          The function linear_chain(chain, bool force_first, bool force_last):
+
+            if force_first and force_last: then we force the first and last node to be excluded.
+
+            Let n_chain = chain.size();
+
+            State f0, f1;   // for the current node
+
+            // initialize for the first node:
+            if (force_first) {
+                f0 = dp[chain[0]][0];
+                f1 = State(0,0,0);
+            } else {
+                f0 = dp[chain[0]][0];
+                f1 = dp[chain[0]][1];
+            }
+
+            for (int i=1; i<n_chain; i++) {
+                State new_f0 = (f0 + f1) * dp[chain[i]][0];
+                State new_f1 = f0 * dp[chain[i]][1];
+                f0 = new_f0;
+                f1 = new_f1;
+            }
+
+            if (force_last) {
+                // then we can only take f0 (last node not taken)
+                return f0;
+            } else {
+                return f0 + f1;
+            }
+
+          But note: the sample input #2: 
+              4 4
+              3 2 3 3
+              edges: 1-2, 2-3, 3-4, 4-1 -> a cycle of 4 nodes.
+
+          How would we process node 1? 
+            The cycle stored at node 1: 
+                when we are at node 4, we find a back edge to node 1. 
+                Then we build the cycle: starting at 4, then parent[4]=3, parent[3]=2, parent[2]=1 -> then we push 1.
+                So the cycle vector = [4,3,2,1] and we store it at cycles[1].
+
+            Then at node 1: 
+                direct child in the cycle: the penultimate node is 2 -> so child_node=2.
+                non_cycle_children: if there are other children? none.
+                Then chain = [4,3,2] without the last element (1) -> then reverse to [2,3,4].
+
+            Then we run linear_chain on [2,3,4]:
+
+                Without constraints: 
+                  f0 = dp[2][0] = (1,0,0)   [initially for node2: but note, we haven't merged any child? 
+                    But node2 has a child? In the DFS tree: 1->2->3->4. So node2 has child 3, node3 has child 4.
+
+                However, at node2, we have:
+                  dp[2][0] and dp[2][1] have been computed including its non-cycle children? 
+                  But note: the non-cycle children of 2: we skipped child 3? because 3 is in the cycle? 
+                  At node2: 
+                      cycles[2]: none? 
+                      direct children: 3. But then when we are at node2, we store the cycle that has node2 in it? Actually, the cycle is stored at node1, not node2.
+
+                So at node2: we would have merged child 3? But wait, our DFS for node2: 
+                  It will have a back edge to node1? 
+                  depth[2]=2, then we go to 3: depth[3]=3, then to 4: depth[4]=4, then at 4, we see a back edge to 1 (depth[1]=1) -> then we form the cycle and store it at 1.
+
+                Then at node2: 
+                  The direct child 3 is not in a cycle stored at node2? so we merge it.
+
+                Then dp[2][0] = State(1,0,0) * (dp[3][0]+dp[3][1]) = dp[3][0]+dp[3][1] 
+                dp[2][1] = State(1, a[2], a[2]^2) * dp[3][0]
+
+                Similarly, node3: 
+                  non-cycle children: child 4 -> but wait, at node3, does it know that 4 is in a cycle? 
+                  The cycle is stored at node1, not node3. So at node3, we will merge child4.
+
+                Then dp[3][0] = State(1,0,0) * (dp[4][0]+dp[4][1])
+                dp[3][1] = State(1, a[3], a[3]^2) * dp[4][0]
+
+                Then node4: 
+                  dp[4][0] = (1,0,0)
+                  dp[4][1] = (1, a[4], a[4]^2)
+
+                So:
+
+                  dp[4][0] = (1,0,0); dp[4][1] = (1,3,9)
+                  dp[3][0] = (1,0,0) * ( (1,0,0)+(1,3,9) ) = (2,3,9)
+                  dp[3][1] = (1,3,9) * (1,0,0) = (1,0,0)   -> because we multiply: (1,3,9) * (1,0,0) = (1, 0, 0) [because the state for child4 when not taken is (1,0,0)]
+
+                  Then dp[2][0] = (2,3,9) + (1,0,0) = (3,3,9)
+                  dp[2][1] = (1,2,4) * (2,3,9) = (1*2, 1*3+2*2, 1*9+2*4+2*2*3) = (2, 3+4=7, 9+8+12=29)
+
+                Then the chain = [2,3,4] 
+                Without constraints: 
+                  first node (2): 
+                      state0 = (3,3,9), state1 = (2,7,29)
+                  next (3): 
+                      state0 = ( (3,3,9)+(2,7,29) ) * dp[3][0] = (5,10,38) * (2,3,9) = (5*2, 5*3+2*10, 5*9+2*38+2*10*3) = (10, 15+20=35, 45+76+60=181)
+                      state1 = ( (3,3,9) ) * dp[3][1] = (3,3,9) * (1,0,0) = (3,0,0)   [because dp[3][1] = (1,0,0) ???]
+
+                But wait, we already incorporated node3 in the state for node2? Then we are using the state for node2 which already includes node3 and node4? Then we are double counting.
+
+          This indicates a flaw: we have already merged the entire subtree of node2, and then we are including node2 and its entire subtree in the chain? 
+
+          We must not have merged the children that are in the cycle? 
+
+          How about: at node2, we should not have merged child3? because child3 is in the cycle stored at node1? 
+
+          Therefore, we must globally avoid merging any child that is in a cycle. 
+
+          How? 
+
+            In the DFS of a node u, we:
+
+              - Collect the cycles that have u as the root (by back edges found during the DFS of u's descendants).
+
+              - Then, we know the direct children of u that are in a cycle (which are the penultimate nodes in the cycle vectors).
+
+              - Then, when we are at a node u, we only merge the children that are not in in_cycle_children.
+
+          And then, when we process the children in the DFS, we also avoid merging their cycle children? 
+
+          So the state for a node in the chain (say node2) only includes its non-cycle children? But what if node2 has a child that is not in the cycle? Then we merge that child? 
+
+          Yes. 
+
+          In the sample, node2 has only child3, which is in the cycle. So at node2, we do not merge any child. Then:
+
+            dp[2][0] = (1,0,0)
+            dp[2][1] = (1, a[2]=2, 4)
+
+            node3: similarly, we do not merge child4? because is child4 in a cycle? 
+                At node3: 
+                    We build: during DFS, for child4, we will find a back edge to node1? 
+                    Then the cycle is stored at node1, and the direct child of node3 in the cycle is child4? -> the penultimate node in the cycle vector (which is [4,3,2,1]) is 2 for node1, but at node3, we haven't stored any cycle? 
+
+          How to propagate the information of which children are in a cycle? 
+
+          We can store a global set: in_cycle_edges? or in_cycle_child[parent] = set of children that are in a cycle.
+
+          Actually, when we store a cycle at the root (node1), we know the entire cycle and we can mark for every node in the cycle (except the root) that its parent's edge is in the cycle? 
+
+          But note: the problem says each edge in at most one cycle. So we can mark the edges that are in a cycle? 
+
+          Alternatively, we can at the root when we process the cycle, we mark the direct child as in_cycle for the parent. Then when we are at node2, we know that its parent (node1) has marked it as in_cycle_child of node1, but node2 itself doesn't know that its child3 is in the cycle? 
+
+          How does node3 know that child4 is in the cycle? 
+
+          We can store a global boolean array: in_cycle[i] = true if node i is in a cycle. But then, the direct child relation: we need to know that the edge (3,4) is in the cycle? 
+
+          Or: when we store the cycle at the root, we can for each edge in the cycle, mark it. Then at node3, we see that the edge (3,4) is in the cycle, so we skip merging child4.
+
+          But we don't have edge representation.
+
+          Alternatively, we can store at each node u, the set of children that are in a cycle that has been stored at a higher level? 
+
+          Given time constraints, we change our approach: 
+
+            We will have a global array: bool in_cycle_child[u][v] = whether the edge u->v is in a cycle? 
+
+          But we don't know the cycle until we find it.
+
+          We can, when we store a cycle at the root, we can mark for each edge in the cycle: then during DFS at a node u, we can know which children are in a cycle by checking the edge.
+
+          Steps for a cycle stored at root r:
+
+            Let the cycle be: [v0, v1, ... , v_{k-1}, r] 
+            The edges: (r, v0), (v0, v1), ... , (v_{k-1}, r)
+
+            We mark the edges: (r, v0), (v0, v1), ... , (v_{k-1}, r) as cycle edges.
+
+          Then, during DFS at any node u, when processing a child v, if the edge (u,v) is a cycle edge, then we skip merging it at this node? 
+
+          But note: the edge (u,v) might be a tree edge and also in the cycle. 
+
+          Then, in the DFS at node u, we only merge the child v if the edge (u,v) is not in any cycle? 
+
+          However, the problem says the graph is a cactus, and the cycle we stored has been processed at the root. 
+
+          Therefore, we can do:
+
+            // Global: set< pair<int,int> > cycle_edges;   // but use minmax to store undirected edge.
+
+            When we store a cycle at root r with node list: [v0, v1, ... , v_{k-1}, r]:
+                for i=0 to cycle.size()-1:
+                    int uu = cycle[i];
+                    int vv = cycle[(i+1)%cycle.size()];
+                    if (uu > vv) swap(uu, vv);
+                    cycle_edges.insert({uu, vv});
+
+            Then, at node u, for a tree-edge child v: 
+                edge = (min(u,v), max(u,v))
+                if (cycle_edges.count(edge)) {
+                    // then skip merging at this node.
+                } else {
+                    // merge as tree edge.
+                }
+
+          But note: a cycle edge might be the back edge? 
+            In the cycle we stored, we include the back edge? 
+            In the cycle vector: [v0, v1, ... , v_{k-1}, r] and the back edge is between v_{k-1} and r. 
+            So we do include it.
+
+          However, the DFS tree does not include the back edge. So we never see the back edge as a tree edge child? 
+
+          Therefore, we only have tree edges that are in the cycle and also in the DFS tree. 
+
+          And we want to avoid merging them. 
+
+          Then, the state for a node u will only include children that are not in a cycle edge. 
+
+          Then, for the entire chain in the cycle, the states for the nodes in the chain have only merged their non-cycle children.
+
+          Sample #2:
+            n=4, edges: (1,2), (2,3), (3,4), (4,1) -> we will mark all these edges as cycle edges.
+
+            DFS at node1:
+              tree edges: 
+                 child2: edge (1,2) -> in cycle_edges -> skip merging.
+              child3: not visited? But we haven't seen it? Actually, we DFS from node1 to node2, then node2 to node3, then node3 to node4, then node4 has a back edge to node1.
+
+            At node4: 
+                depth[4]=4, then for edge to node1: back edge (depth[1]=1) -> then we form the cycle: [4,3,2,1] -> then we add edges: (4,3), (3,2), (2,1), (1,4) -> but wait, (1,4) is the back edge.
+
+            Then, at node1: 
+                direct children in the cycle: penultimate node in [4,3,2,1] is 2.
+                non_cycle_children: none.
+
+            Then, the chain = [4,3,2] -> reverse to [2,3,4]
+
+            dp[2] = ( dp[2][0] = (1,0,0), dp[2][1] = (1,2,4) )   [because node2 skipped child3 (edge in cycle)]
+            dp[3] = ( (1,0,0), (1,3,9) )
+            dp[4] = ( (1,0,0), (1,3,9) )   [because node4 has no tree child to merge? and the back edge is not a tree child edge]
+
+            Then run linear_chain on [2,3,4] with no constraints:
+                node2: 
+                  f0 = (1,0,0), f1 = (1,2,4)
+                node3:
+                  new_f0 = ( (1,0,0)+(1,2,4) ) * dp[3][0] = (2,2,4) * (1,0,0) = (2,0,0)
+                  new_f1 = (1,0,0) * dp[3][1] = (1,0,0) * (1,3,9) = (1,3,9)
+                node4:
+                  new_f0 = ( (2,0,0) + (1,3,9) ) * dp[4][0] = (3,3,9) * (1,0,0) = (3,0,0)
+                  new_f1 = (2,0,0) * dp[4][1] = (2,0,0) * (1,3,9) = (2,6,18)
+
+                total = (3,0,0) + (2,6,18) = (5,6,18)
+
+            Then block0 = (5,6,18)
+            block1 = for case1_chain: 
+                     run with force_first and force_last.
+                     node2: f0 = (1,0,0), f1 = (0,0,0)
+                     node3: f0 = ( (1,0,0)+(0,0,0) ) * (1,0,0) = (1,0,0)
+                            f1 = (1,0,0) * (1,3,9) = (1,3,9)
+                     node4: f0 = ( (1,0,0) + (1,3,9) ) * (1,0,0) = (2,3,9)
+                            // then force_last: take only f0 = (2,3,9)
+                     Then block1 = (2, (3+2*a[1] = 3+2*3=9) -> wait, no:
+
+                     block1 = State(2, 
+                                   (3 + 3*2) % MOD = (3+6) = 9, 
+                                   (9 + 9*2 + 2*3*3) = 9+18+18 = 45) 
+                            = (2,9,45)
+
+            Then update node1:
+              dp[1][0] = (1,0,0) * (block0+block1) = (1,0,0) * ( (5,6,18) + (2,9,45) ) = (1,0,0) * (7,15,63) = (7,15,63)
+              dp[1][1] = (1,3,9) * block0 = (1,3,9) * (5,6,18) = (5, 3*5+6, 9*5+18+2*3*6) = (5, 15+6=21, 45+18+36=99)
+
+            Total = dp[1][0].ss + dp[1][1].ss = 63+99 = 162? 
+
+            But sample output is 92.
+
+          Clearly, we have an error.
+
+          Let me recompute for sample #2 manually:
+
+            The independent sets in a 4-node cycle (nodes 1,2,3,4) with a[1]=3, a[2]=2, a[3]=3, a[4]=3.
+
+            The independent sets are:
+
+              1. {} -> 0
+              2. {1} -> 3
+              3. {2} -> 2
+              4. {3} -> 3
+              5. {4} -> 3
+              6. {1,3} -> 3+3=6
+              7. {1,4} -> not allowed (adjacent) -> no
+              8. {2,4} -> 2+3=5
+              9. {1,3} already counted.
+              10. {1 alone} already counted.
+              11. {3,1} same as 6.
+              12. {3,2} not allowed.
+              13. {4,2} -> allowed: 3+2=5.
+              14. {1,2} not allowed.
+              15. {2,3} not allowed.
+              16. {3,4} not allowed.
+              17. {4,1} not allowed.
+
+              Also sets with three nodes: 
+                 {1,3} is the only one with two non-adjacent nodes, but there is no independent set of size 3.
+
+              So the sets: 
+                 F(S) = 0, 9, 4, 9, 9, 36, 25.
+
+              Sum = 0+9+4+9+9+36+25 = 92.
+
+          How our states should be aggregated:
+
+            We should have: 
+              dp[1][0].ss + dp[1][1].ss = 63+99 = 162 -> which is not 92.
+
+          Where is the mistake?
+
+          Let me debug the chain processing for the cycle at node1.
+
+            The chain = [2,3,4] 
+            The states for the nodes in the chain should be for the entire subtree including non-cycle children? 
+            But in this example, there are no non-cycle children. 
+
+            dp[2] = (1,0,0) and (1,2,4)
+            dp[3] = (1,0,0) and (1,3,9)
+            dp[4] = (1,0,0) and (1,3,9)
+
+            Without constraints for the chain [2,3,4]:
+                independent sets for the chain [2,3,4] (which is a path of three nodes: 2-3-4) are:
+
+                  {}: 0
+                  {2}: 2
+                  {3}: 3
+                  {4}: 3
+                  {2,4}: 5
+
+                So the states for the chain should be:
+
+                  count = 5, linear sum = 2+3+3+5 = 13, sum of squares = 4+9+9+25 = 47.
+
+                But our linear_chain without constraints returned (5,6,18) -> which is not matching.
+
+            How did we compute for the chain [2,3,4]:
+                node2: 
+                  state0 = (1,0,0), state1 = (1,2,4)
+                node3:
+                  state0 = ( (1,0,0)+(1,2,4) ) * (1,0,0) = (2,2,4) * (1,0,0) = (2,0,0)  [because we multiply by dp[3][0] = (1,0,0)
+                  state1 = (1,0,0) * (1,3,9) = (1,3,9)
+                node4:
+                  state0 = ( (2,0,0) + (1,3,9) ) * (1,0,0) = (3,3,9) * (1,0,0) = (3,0,0)
+                  state1 = (2,0,0) * (1,3,9) = (2,6,18)
+                total = (3,0,0)+(2,6,18) = (5,6,18)
+
+            What's the problem?
+
+            When we do state0 = (3,0,0) for node4 not taken, this means:
+                count = 3, sum=0, sum_sq=0 -> but this should include the sets: {}, {3}, {2}? 
+                How does it become 3 sets? 
+                The recurrence: 
+                  state0 at node4 = [state0 and state1 at node3] * state0 at node4.
+
+                state0 at node4 = (1,0,0) (empty)
+                So the convolution: (2,0,0) [from node3 state0] + (1,3,9) [node3 state1] = (3,3,9) multiplied by (1,0,0) -> (3,0,0) 
+
+            We see: the multiplication by (1,0,0) sets the value of node4 to not taken, but it does not change the sum from the earlier nodes.
+
+            So the state0 at node4 should be the state from the entire chain up to node4 with node4 not taken: which is the same as the state from node3: (2,0,0)+(1,3,9) = (3,3,9). 
+
+            Therefore, we should not multiply by dp[4][0] at the last node? 
+            Because the state for node4 already includes the effect of node4's value in its own state? 
+
+            The states dp[u][0] and dp[u][1] for a node u include the entire subtree of u (non-cycle children). Then when we do the linear_chain, we are or are not taking node u. 
+
+            Therefore, the linear_chain should be: 
+
+              state0 = state0_prev * (child_state0 + child_state1)   for not taking the current node? 
+              state1 = state0_prev * child_state1   for taking the current node? 
+
+            But in our recurrence, we are multiplying by the child's state0 or state1. This is correct.
+
+            However, the state0 for a node means: we are not taking the node, but we still include the ways from its subtree. 
+
+            In our example for node3: 
+                state0 = (1,0,0) is the state for node3 not taken and its subtree (non-cycle) is considered. 
+                state1 = (1,3,9) for node3 taken and its subtree considered.
+
+            But the subtree of node3 is only node4? and we are not taking node4 in state0 of node3? 
+                dp[3][0] = (1,0,0) because we haven taken node3 not taken, and then multiply by the ways of node4: (1,0,0)+(1,3,9) = (2,3,9) -> so actually dp[3][0] should be (2,3,9) if we haven't done the skip? 
+
+            But in our skip, we avoid merging child4 at node3 because the edge (3,4) is in the cycle. 
+            Therefore, dp[3][0] = (1,0,0) and dp[3][1] = (1,3,9) because they have not merged child4.
+
+            This is the core of the issue: the states for the nodes in the chain do not include their subtrees in the cycle, but they might include non-cycle subtrees? In this example, there are none.
+
+            So the state for node3 only considers node3 itself? 
+
+            Therefore, the independent sets for the chain [2,3,4] should be computed only on the chain nodes, and not including any subtree. That is correct.
+
+            So then the linear_chain result for [2,3,4] without constraints is indeed the sets of the chain nodes alone. 
+
+            The sets are: 
+              {}: (0)
+              {2}: (2)
+              {3}: (3)
+              {4}: (3)
+              {2,4}: (5)
+
+            count=5, sum=2+3+3+5=13, sum_sq=4+9+9+25=47.
+
+            How to get that with our recurrence? 
+
+              node2: 
+                  state0 = (1,0,0) -> count=1, sum=0, ss=0   [{}]
+                  state1 = (1,2,4) -> {2}
+              node3:
+                  state0 = ( (1,0,0) + (1,2,4) ) = (2,2,4)   [ sets: {} and {2} ]
+                         then multiply by node3 not taken: that means we don't add anything for node3, so the state remains (2,2,4) for the sets: {} and {2} extended by not taking node3.
+                  state1 = (1,0,0) * (1,3,9) = (1,3,9)  [extend the set {} by taking node3: becomes {3} ]
+
+                  So after node3: state0=(2,2,4), state1=(1,3,9)
+              node4:
+                  state0 = ( (2,2,4) + (1,3,9) ) = (3,5,13) 
+                         then multiply by node4 not taken: -> state0 = (3,5,13)   [ sets: {}, {2}, {3} ]
+                  state1 = (2,2,4) * (1,3,9) = (2, 2*1+3*2 = 2+6=8, 4*1+9*2+2*2*3 = 4+18+12=34)   [ sets: {4} and {2,4} ]
+
+                  Then total = state0+state1 = (5,5+8=13, 13+34=47) 
+
+            So the recurrence in linear_chain should be for node i in the chain (0-indexed) at step i>=1:
+
+                  new_f0 = (f0 + f1) * ( dp[node_i][0] ) 
+                  new_f1 = f0 * dp[node_i][1]
+
+            But note: dp[node_i][0] is the state for node_i not taken (which includes the ways from its non-cycle children), and similarly for taken.
+
+            In the above example, we used for node3: dp[node3][0] = (1,0,0) and dp[node3][1] = (1,3,9), and for node4: dp[node4][0] = (1,0,0), dp[node4][1] = (1,3,9)
+
+            But then at node3: 
+                  new_f0 = ( (1,0,0)+(1,2,4) ) * (1,0,0) = (2,2,4) * (1,0,0) = (2,0,0)  -> this is because multiplying by (1,0,0) sets the current node's contribution to 0, but it should be that we are not taking node3 and then the state for node3's non-cycle children is (1,0,0) (which is empty) so it should leave the state unchanged.
+
+            The convolution operator for state is defined as:
+
+                 (c1, s1, ss1) * (c2, s2, ss2) = (c1*c2, c1*s2+s1*c2, c1*ss2 + c2*ss1 + 2*s1*s2)
+
+            So (2,2,4) * (1,0,0) = (2*1, 2*0+2*1, 2*0+1*4+2*2*0) = (2,2,4)   -> not (2,0,0) 
+
+            I see! In the sample calculation above for node3, if we do it correctly:
+
+                  state0 = (2,2,4) * (1,0,0) = (2, 2, 4) 
+                  state1 = (1,0,0) * (1,3,9) = (1,3,9)
+
+            Then for node4:
+                  state0 = ( (2,2,4) + (1,3,9) ) = (3,5,13) * (1,0,0) = (3,5,13) 
+                  state1 = (2,2,4) * (1,3,9) = (2, 2*1+3*2=2+6=8, 2*9+1*4+2*2*3 = 18+4+12=34)
+
+            total = (3,5,13) + (2,8,34) = (5,13,47) -> matches.
+
+            Therefore, the error was in the implementation of the convolution in the linear_chain recurrence? 
+            In our code, we did have the operator* defined correctly. 
+
+            So the mistake in the first place was that in the linear_chain function, we should have used the correct State convolution.
+
+            In the sample test, we have for node3: 
+                state0 = (2,2,4) * (1,0,0) = (2,2,4) 
+            which is not (2,0,0) -> our operator* is defined to do:
+
+                 (2,2,4) * (1,0,0) = 
+                     c = 2*1 = 2
+                     s = 2*0 + 1*2 = 2
+                     ss = 2*0 + 1*4 + 2*2*0 = 0+4+0 = 4   -> (2,2,4)
+
+            So then, the function linear_chain is defined correctly.
+
+            Therefore, the earlier result for the example would be (5,13,47) for chain_total.
+
+            Then block0 = (5,13,47)
+            block1 = for case1_chain: 
+                     force_first and force_last.
+                     node2: f0 = (1,0,0), f1 = (0,0,0)
+                     node3: f0 = ( (1,0,0)+(0,0,0) ) * (1,0,0) = (1,0,0) * (1,0,0) = (1,0,0)
+                            f1 = (1,0,0) * (1,3,9) = (1,3,9)
+                     node4: f0 = ( (1,0,0)+(1,3,9) ) * (1,0,0) = (2,3,9) * (1,0,0) = (2,3,9)
+                            // force last: take only f0 = (2,3,9)
+                     Then block1 = State(2, 
+                                         (3 + 3*2) % MOD = (3+6) = 9,   // ? 
+                                         (9 + 9*2 + 2*3*3) = 9+18+18 = 45) 
+                            = (2,9,45)
+
+            Let me compute block1 correctly:
+
+              case1_chain = (2,3,9)  // this is the state for the entire chain with node2 and node4 not taken.
+              block1 = we then add the root (node1) to every set in this state.
+
+              count = 2
+              sum = 3 (from the chain) + 3 (a[1]) * 2 = 3+6=9
+              ss = for each set: (x+3)^2 = x^2 + 6x + 9
+                  total_ss = (9) [ from chain] + 9*2 + 6 * (sum of x in the chain) 
+                          = 9 + 18 + 6*3 = 9+18+18 = 45
+
+            So block1 = (2,9,45)
+
+            Then for node1:
+              dp[1][0] = (1,0,0) * (block0+block1) = (1,0,0) * ( (5,13,47)+(2,9,45) ) = (1,0,0) * (7,22,92) = (7,22,92) 
+              dp[1][1] = (1,3,9) * block0 = (1,3,9) * (5,13,47) = 
+                         c = 5
+                         s = 3*5 + 13*1 = 15+13 = 28
+                         ss = 9*5 + 47*1 + 2*3*13 = 45+47+78 = 170
+
+            Total = 92 + 170 = 262? 
+
+            But expected is 92.
+
+            Wait, what is the independent set for the whole graph? 
+              We should have independent sets that may or may not include node1.
+
+            Our final answer = (dp[1][0].ss + dp[1][1].ss) = 92+170=262.
+
+            This is not 92.
+
+          What is the mistake in the final step? 
+
+            We have: 
+              dp[u][0] = state for the entire component (attached to u) for the independent sets that do not take u.
+              dp[u][1] = state for sets that take u.
+
+            In the example, the entire graph is the cycle. 
+
+            After processing the cycle at node1, we have:
+
+              dp[1][0] = (7,22,92) 
+              dp[1][1] = (5,28,170)
+
+            The independent sets for the whole graph should be the union of the sets in dp[1][0] and dp[1][1]?
+
+            And the sum of F(S) = 92+170 = 262.
+
+            Why the sample answer is 92 then? 
+
+          I see! The sample input #2 has answer 92, not 262.
+
+          The sample input #2 is a cycle of 4 nodes, and we computed the sum over all independent sets to be 92.
+
+          Therefore, our method must yield 92 for the entire graph.
+
+          What is the issue in the final step at node1? 
+
+            We have dp[1][0] = (7,22,92) and dp[1][1] = (5,28,170) -> total=262.
+
+          How did we get there?
+
+            dp[1][0] = (1,0,0) * (block0+block1) = (7,22,92) 
+            But what is the meaning of (1,0,0) for dp[1][0] initially? 
+                It is the state for node1 not taken and no other vertex? 
+
+            Then we multiply by (block0+block1) = (7,22,92) -> so the convolution is 
+               c = 1*7 = 7
+               s = 1*22 + 7*0 = 22
+               ss = 1*92 + 7*0 + 2*0*22 = 92
+
+            So dp[1][0] = (7,22,92)
+
+            dp[1][1] initially = (1,3,9) 
+            then multiply by block0 = (5,13,47) -> yields (5, 3*5+13*1 = 15+13=28, 9*5+47*1+2*3*13 = 45+47+78=170)
+
+            So we have two parts: 
+               dp[1][0]: which is the sets that do not take node1 and have the chain [2,3,4] in any independent set -> which yields 92 for the sum of squares.
+               dp[1][1]: which is the sets that take node1 and have the chain [2,3,4] in the independent sets that do not take any neighbor of node1 (i.e., block0) -> which yields 170.
+
+            But the total sum of squares should be 92.
+
+          Why are we double counting the sets that appear in block1 for node1 not taken? 
+
+          Let me list the sets in dp[1][0] ( sets not taking node1) and dp[1][1] (sets taking node1) for the whole graph:
+
+            dp[1][0] = (7,22,92): 
+               the 7 sets are the independent sets of the chain [2,3,4] (5 sets) plus the independent sets from the cycle with node1 not taken and also not taking the root in the cycle? 
+               But wait, block0 is the entire independent sets of the chain [2,3,4] (5 sets) and block1 is the sets that take node1 and have the chain [2,3,4] with node2 and node4 not taken (2 sets: {1} and {1, something else}? 
+
+            How we formed dp[1][0]:
+               = initially: not take node1, and then the cycle component can be either block0 or block1? 
+               but block1 is defined as: we take node1 in the cycle -> which is not allowed if we are not take node1 in the global state? 
+
+          This indicates a flaw in the block1 definition: 
+
+            In the cycle processing, we defined:
+               block0: the cycle component without taking the root (node1) -> then the independent sets for the cycle component that do not take node1.
+               block1: the cycle component taking the root (node1) -> then the independent sets for the cycle component that take node1.
+
+            Then, when we are at node1 and we are in the state not take node1 (dp[u][0]), we can attach either block0 or block1? 
+               - block0: does not take node1 -> fine.
+               - block1: takes node1 -> but then we would have node1 taken in the cycle component, which is not allowed because we are not take node1 in the global state? 
+
+            Therefore, we cannot attach block1 to dp[u][0] because that would take node1 in the cycle component while the global state does not take node1.
+
+          Similarly, for dp[u][1] (global state takes node1), we cannot attach block1 because that would take node1 again in the cycle component.
+
+          Therefore, the cycle component should be either:
+
+            - If we are not take node1 in the global state, then the cycle component can only be block0 (because block1 takes node1, conflict).
+            - If we are take node1 in the global state, then the cycle component can only be block0 (because block1 takes node1 again, conflict) -> wait, but block1 is defined as the cycle component that takes node1, but the global state also takes node1 -> duplicate.
+
+          But note: the cycle component is attached at the global node1. In block1, we already include node1. So we should not attach block1 to either state? 
+
+          Let me reassess the cycle processing at node1 ( the root of the cycle ):
+
+            The cycle component states that we computed (block0 and block1) are for the entire cycle, including the root node1 in block1.
+
+            Then, when we attach to the global dp states for node1, we must not attach the entire cycle component states to the global node1's states, because the global node1 might be taken or not.
+
+          What we computed for the cycle component is two possibilities:
+
+             block0: represents the independent sets for the entire cycle component (which includes the root node1 and the chain) where the root node1 is NOT taken. -> so it does not include node1.
+             block1: represents the independent sets for the entire cycle component where the root node1 IS taken. -> so it includes node1.
+
+          Then, when integrating with the global state (which might include other parts of the graph hanging off node1), we do:
+
+             - If the global state does not take node1, then we can attach either block0 or block1? 
+                   attaching block0: then the cycle component does not take node1.
+                   attaching block1: then the cycle component takes node1, which is allowed because the global state does not take node1? -> no, wait: the cycle component's node1 is the same as the global node1. 
+             So we cannot attach block1 to the global state that does not take node1, because block1 takes node1.
+
+             - If the global state takes node1, then we cannot attach block1 (because it also takes node1) and we cannot attach block0? because block0 might take some vertices adjacent to node1? -> but block0 does not take node1, so it is safe. However, block0 might take node2 and node4? and they are adjacent to node1, so if the global state takes node1, then the cycle component must not take node2 and node4. 
+
+          Therefore, we should:
+
+            new_dp[u][0] = dp[u][0] * block0   // because we can only use block0 (not block1) for the global state not taken.
+            new_dp[u][1] = dp[u][1] * block0   // for the taken state, we can only use block0? 
+            // and we ignore block1? 
+
+          But wait, then what about the sets that take node1 in the cycle component? 
+
+          The block1 is the cycle component that takes node1. If the global state does not take node1, then we can also have the cycle component take node1? -> then the global state not take node1 and the cycle component take node1 -> overall take node1. 
+
+          This is allowed. 
+
+          Therefore, we should attach block1 to dp[u][0]? 
+             dp[u][0] * block1: then the global state does not take node1, but the cycle component takes node1 -> overall take node1.
+          Then we have node1 taken once, not twice.
+
+          So then:
+
+            new_dp[u][0] = dp[u][0] * (block0 + block1)   // for the global state not take node1, the cycle component can be either block0 or block1.
+            new_dp[u][1] = dp[u][1] * block0   // for the global state take node1, the cycle component must not take node1 (so only block0) and also not take any neighbor of node1? -> but block0 might take node2 or node4? 
+
+          However, in block0, the cycle component might take node2 or node4, which are adjacent to node1. So we would have taken node1 in the global state and node2 in the cycle component -> conflict.
+
+          Therefore, for new_dp[u][1] (global state take node1), we must ensure that the cycle component does not take any neighbor of node1. 
+
+          In block0, there is no such restriction. 
+
+          How did we ensure that in the cycle processing for block0? 
+             We didn't. 
+
+          Only in block1 we have ensured that the neighbors node2 and node4 are not taken.
+
+          For block0, the chain can take node2 and node4 arbitrarily. 
+
+          Therefore, for the global state take node1, we cannot use the entire block0, but only the part of block0 that does not take node2 and node4. 
+
+          This part is exactly chain_case1 ( the state for the chain with node2 and node4 not taken) and without then yield the root in the cycle component taken? -> no, because block0 does not take the root. 
+
+          But wait: chain_case1 is only used in block1. In block0, we have the entire chain without constraints.
+
+          So then, for the global state take node1, we must use a filtered block0: only the sets in block0 that do not take node2 and node4. 
+
+          How to get that? 
+
+            We already have chain_case1 = the state for the chain with node2 and node4 not taken. 
+            And in block0, the part that has node2 and node4 not taken is exactly chain_case1.
+
+          Therefore, for new_dp[u][1] = dp[u][1] * chain_case1   [because we cannot take node2 and node4] 
+
+          But wait, in block0, there are also sets that take node2 or node4, which are not safe. So we only want the sets in block0 that do not take node2 and node4. 
+
+          And chain_case1 is exactly that state.
+
+          Therefore, we should have:
+
+            new_dp[u][0] = dp[u][0] * (block0 + block1)
+            new_dp[u][1] = dp[u][1] * chain_case1   // not block0, but the safe part of block0: the sets that do not take node2 and node4.
+
+          Let me recompute for sample #2 with this change:
+
+            dp[1][0] = (1,0,0) * (block0+block1) = (1,0,0) * ( (5,13,47) + (2,9,45) ) = (7,22,92)   [unchanged]
+
+            dp[1][1] = (1,3,9) * chain_case1 = (1,3,9) * (2,3,9) = 
+                       c = 2
+                       s = 3*2 + 3*1 = 6+3=9
+                       ss = 9*2 + 9*1 + 2*3*3 = 18+9+18 = 45
+
+            total = 92 + 45 = 137, still not 92.
+
+          What is chain_case1 for the sample? 
+            It is (2,3,9) -> which we computed as the state for the chain [2,3,4] with node2 and node4 not taken: 
+               sets: 
+                 {}: 0
+                 {3}: 3
+               -> count=2, sum=3, sum_sq=9.
+
+          Then attaching the global node1 taken (value 3) to these sets:
+
+            {} with node1: {1} -> value=3, squared=9.
+            {3} with node1: not allowed because node1 and node3 are not adjacent? 
+               In the cycle: node1 is adjacent to node2 and node4, and to node3? 
+               The cycle: node1- node2 - node3 - node4 - node1. 
+               So node1 is not adjacent to node3. 
+               Therefore, {1,3} is allowed.
+
+            {1} -> 3: squared=9.
+            {1,3} -> 3+3=6: squared=36.
+
+            -> sum of squares = 9+36 = 45, which matches.
+
+            then total for the whole graph should be the sum over all independent sets: 
+               dp[1][0] includes sets without node1: 
+                 the 7 sets: which are the sets of the chain [2,3,4] (5 sets) and the sets from block1 ( which are {1} and {1} with the chain in the safe state? ) -> wait, block1 is {1} and {1, something}? 
+                 actually, block1 is the sets that take node1 in the cycle component: 
+                    safe state in the chain: not taking node2 and node4, and taking node1: 
+                    sets: 
+                      {1} 
+                      {1,3} 
+                 and block0 is the sets without node1: the 5 sets of the chain alone.
+
+                 so in dp[1][0] ( which is (7 sets) ) we have the 5 sets of the chain and the 2 sets of the cycle component that take node1? 
+                 -> duplicate node1? 
+
+          I see the error: 
+
+            dp[1][0] = not take node1 globally, and then the cycle component can be block0 or block1. 
+            block0: not take node1 -> 5 sets.
+            block1: take node1 -> 2 sets.
+
+            -> total 7 sets.
+
+            dp[1][1] = take node1 globally and then the cycle component must be chain_case1 (2 sets) -> yielding the sets {1} and {1,3} again? 
+
+          This is double counting the sets that take node1.
+
+          Therefore, the cycle component should be either:
+
+            - (block0 + block1) for the global state not take node1, and 
+            - only chain_case1 ( which is the safe state for the chain) for the global state take node1.
+
+          But note: in block1, we have already taken node1 in the cycle component. In the global state take node1, we are not allowed to attach any cycle component that takes node1 again. And the safe state for the chain (chain_case1) does not involve node1 (because it's only the chain) and does not take node2 or node4, so it is safe. 
+
+          However, in the above sample, the set {1} appears in both:
+             - dp[1][0] * block1: {1} ( from the cycle component taking node1) 
+             - dp[1][1] * chain_case1: {1} ( from the global state taking node1 and the chain component being the empty set) 
+
+          So we are double counting.
+
+          How to avoid? 
+
+            The cycle processing should only be done once. 
+            The correct approach is to consider that the cycle component attached at node1 should be either:
+
+              - (block0 + block1) for the global state not take node1: then node1 might be taken in the cycle component or not.
+              - only the safe state for the chain (chain_case1) for the global state take node1: then we are not using the cycle component's node1.
+
+          then the set {1} would be represented as:
+
+              In the first: not take node1 globally but take node1 in the cycle component.
+              In the second: take node1 globally and not take node1 in the cycle component (because chain_case1 does not include node1).
+
+          So we have two representations for the set {1}.
+
+          To avoid this, the cycle component should not include the global node1 in its own node1. 
+
+          In the cycle processing, the node1 in the cycle is the same as the global node1. Therefore, the cycle component should not be allowed to take node1 when we are in the global state not take node1? 
+          -> no, because then we want the sets that take node1 would be only in the global state take node1.
+
+          Therefore, we should not have block1 in dp[u][0] at all. 
+          Instead, we should have:
+
+            new_dp[u][0] = dp[u][0] * block0   // because in the cycle component, node1 is not taken.
+            new_dp[u][1] = dp[u][1] * chain_case1   // because in the cycle component, node1 is not taken (chain_case1 does not include node1) and also not take the neighbors.
+
+          Then, what about the sets in the cycle component that take node1? 
+             They would be: 
+                 new_dp[u][1] with the cycle component's node1 taken? -> no, because we haven't included them.
+
+          So then, we must also include in new_dp[u][1] the possibility of not taking the global node1 and taking the cycle component's node1? 
+
+          But wait, the global node1 and the cycle component's node1 are the same node. 
+          Therefore, the cycle component's state for node1 should be integrated into the global state.
+
+          This means that the cycle processing should not include the node1 in the cycle component's states. 
+
+          We should have processed the cycle component not including the root node1. 
+
+          Then, the cycle component only includes the chain [2,3,4] and we are left with the independent sets for the chain. 
+          Then, the effect of the root node1 is that it is adjacent to node2 and node4.
+
+          Therefore, when we attach the cycle component to the global state, we have two ways for the global state not take node1: then the chain can be any independent set.
+          for the global state take node1: the chain must not take node2 and node4.
+
+          So then we don't need block1 at all. 
+
+          then 
+             new_dp[u][0] = dp[u][0] * (state for the chain without constraints)   // which is chain_total = (5,13,47)
+             new_dp[u][1] = dp[u][1] * (state for the chain with node2 and node4 not taken)   // chain_case1 = (2,3,9)
+
+          and we do not use any block1 that includes node1.
+
+          then for sample #1 
+             dp[1][0] = (1,0,0) * (5,13,47) = (5,13,47)
+             dp[1][1] = (1,3,9) * (2,3,9) = (2, 3*2+3*1=6+3=9, 9*2+9*1+2*3*3=18+9+18=45) = (2,9,45)
+
+             total = 47+45 = 92
+
+          Therefore, the correct approach is to not include the root in the cycle component's states. 
+          In the cycle processing, we only for the chain and leave the root for the global state.
+
+          then we don't need to form block1. 
+
+          Summary for the cycle processing at node1 (root):
+
+            Let chain = [v0, v1, ... , v_{k-1}]   // the entire cycle except the root.
+
+            Let chain_total = linear_chain(chain, false, false)   // any independent set for the chain.
+            Let chain_safe = linear_chain(chain, true, true)   // independent set for the chain that does not take v0 and does not take v_{k-1} (the two neighbors of the root).
+
+            then integrate as:
+               new_dp[u][0] = dp[u][0] * chain_total
+               new_dp[u][1] = dp[u][1] * chain_safe
+
+          This is both for the non-cycle children already merged in dp[u] and the chain is the cycle component.
+
+          Therefore, we change the cycle processing to:
+
+            for each cycle in cycles[u]:
+                // get the chain ( cycle without the last element (u) and reversed to the correct order)
+                // then:
+                State chain_total = linear_chain(chain, false, false);
+                State chain_safe = linear_chain(chain, true, true);
+
+                new_dp[u][0] = new_dp[u][0] * chain_total;
+                new_dp[u][1] = new_dp[u][1] * chain_safe;
+
+            // and then move to next cycle.
+
+          Note: the states for the nodes in the chain have been computed with their non-cycle children merged.
+
+          Also, we must have skipped merging any tree edge that is in a cycle.
+
+          Therefore, we will:
+
+            1. Mark cycle edges in a global set.
+            2. During DFS, when encounter a tree edge that is in a cycle_edge, skip merging.
+            3. In the DFS at node u, after processing children, for each cycle stored at u (found by back edge), process the cycle as above.
+
+          Let me test on sample #2: 
+             chain = [2,3,4] 
+             chain_total = (5,13,47)
+             chain_safe = (2,3,9)
+
+             dp[u][0] initially = (1,0,0) for not take u and no non-cycle children merged (because skipped the only tree edge).
+             dp[u][1] initially = (1,3,9)
+
+             then new_dp[u][0] = (1,0,0) * (5,13,47) = (5,13,47)
+             new_dp[u][1] = (1,3,9) * (2,3,9) = (2, 3*2+3*1=9, 9*2+9*1+2*3*3=18+9+18=45) = (2,9,45)
+
+             answer = 47+45 = 92.
+
+          sample #1: 
+            3 2
+            1 1 1
+            edges: 1-2, 2-3
+
+            This is a tree. 
+            No cycles, so we only have tree edges.
+
+            We mark no cycle edges.
+
+            DFS at node1:
+              dp[1][0] = (1,0,0), dp[1][1] = (1,1,1)
+              child2: 
+                 dfs at node2: 
+                     dp[2][0] = (1,0,0), dp[2][1] = (1,1,1)
+                 child3: dfs at node3: 
+                     dp[3][0] = (1,0,0), dp[3][1] = (1,1,1)
+                 merge child3 into node2:
+                     dp[2][0] = (1,0,0) * ( (1,0,0)+(1,1,1) ) = (1,0,0)*(2,1,1) = (2,1,1)
+                     dp[2][1] = (1,1,1) * (1,0,0) = (1,0,0)
+                 merge child2 into node1:
+                     dp[1][0] = (1,0,0) * ( (2,1,1) + (1,0,0) ) = (1,0,0) * (3,1,1) = (3,1,1)
+                     dp[1][1] = (1,1,1) * (2,1,1) = (2, 1*2+1*1=3, 1*2+1*1+2*1*1=2+1+2=5) 
+                     // note: (1,1,1) * (2,1,1) = 
+                            c=1*2=2
+                            s=1*1+2*1=1+2=3
+                            ss=1*1+2*1+2*1*1=1+2+2=5
+
+             total = (3,1,1) for not take node1: which are the sets: 
+                     {}:0, {2}:1, {3}:1 -> sum of squares = 0+1+1=2, but we have 1 in the state ss=1? 
+
+          How do we compute the sum of squares for the not take node1 state for node1's subtree:
+
+            The states are:
+              not take node1: 
+                 independent sets: 
+                    {}: score=0
+                    {2}: score=1
+                    {3}: score=1
+                    {2,3}: not independent.
+                 so the scores: 0,1,1 -> sum of squares = 0+1+1 = 2.
+
+            But we have dp[1][0].ss = 1.
+
+          The state for node2 after merging child3: 
+            dp[2][0] = (2,1,1) -> which is: 
+                 count=2, sum=1, sum_sq=1 -> sets: {} and {3} ? 
+            Then when merging into node1 not taken, we dp[1][0] = (1,0,0) * (2,1,1) + (1,0,0) for node2 taken state? 
+            Actually, we did: 
+               dp[2][0] + dp[2][1] = (2,1,1) + (1,0,0) = (3,1,1)
+            then multiply by (1,0,0) -> 
+               c=3, s=1, ss=1.
+
+          The convolution operator for states is defined for the Cartesian product. 
+          For node1 not taken, the state is for the whole subtree: the independent sets in the subtree of node1 (which includes node2 and node3) given that node1 is not taken.
+
+          The state (3,1,1) for the subtree of node1 (node2 and node3) means:
+             There are 3 sets: 
+                 set1: score x1
+                 set2: score x2
+                 set3: score x3
+             then s = x1+x2+x3 = 1
+             ss = x1^2+x2^2+x3^2 = 1
+
+          which is only possible if two sets have score 0 and one set has score 1.
+
+          But we have three sets: {}, {2}, {3} with scores 0,1,1 -> then s=0+1+1=2, ss=0+1+1=2.
+
+          Therefore, the state should be (3,2,2) for the subtree of node2 and node3.
+
+          How to compute it for node2 and node3 as a tree:
+
+            node2 initially: (1,0,0) and (1,1,1)
+            node3 initially: (1,0,0) and (1,1,1)
+
+            Then for node2 merging node3 (tree edge):
+               dp[2][0] = (1,0,0) * ( (1,0,0)+(1,1,1) ) = (1,0,0) * (2,1,1) = 
+                         c = 1*2 = 2
+                         s = 1*1+2*0 = 1
+                         ss = 1*1+2*0+2*0*1 = 1   -> (2,1,1)
+               dp[2][1] = (1,1,1) * (1,0,0) = (1,0,0)
+
+            Then the subtree at node2: (2,1,1) and (1,0,0) -> total state = (3,1,1)
+
+          To get the state (3,2,2) for the subtree, we would need to do differently.
+
+          I see! The state for a node should represent the entire collection of independent sets in the subtree.
+
+          The state (c, s, ss) for a node u should be such that:
+
+             c = number of independent sets in the subtree of u (for the states considered: take u or not take u)
+             s = sum_{ sets } ( sum_{v in set} a_v )
+             ss = sum_{ sets } ( (sum_{v in set} a_v)^2 )
+
+          In the example for node2's subtree (nodes {2,3}):
+
+             independent sets: 
+                 {}: score=0
+                 {2}: score=1
+                 {3}: score=1
+                 {2,3}: not allowed.
+
+             so c=3, s=0+1+1=2, ss=0+1+1=2.
+
+          How to compute it with our recurrence for node2 (with child3)? 
+
+            dp[2][0] = state for node2 not taken: 
+                  = the state of the subtree of node2 (node3) for any independent set: which are sets: {} and {3} -> so state = (2,1,1) 
+                       because: 
+                         {}:0 -> contributes (1,0,0)
+                         {3}:1 -> contributes (1,1,1)
+                         then combined: (1,0,0) + (1,1,1) = (2,1,1)
+
+            dp[2][1] = state for node2 taken: 
+                  = only the sets that do not include node3: {2} -> state = (1,1,1) for node2 taken and then multiplied by the state of node3's subtree with node3 not taken: dp[3][0] = (1,0,0)
+                  = (1,1,1) * (1,0,0) = (1,0,0)   [because (1,1,1)*(1,0,0) = (1, 0+0, 0+0+0) = (1,0,0) ]
+
+            Then the whole state for node2: 
+                  dp[2][0] + dp[2][1] = (2,1,1) + (1,0,0) = (3,1,1) 
+
+          But should be (3,2,2) for the whole.
+
+          The issue is in the state for node2 taken: 
+             should be (1,1,1) -> only the set {2} and not include node3's state? 
+          But when we do (1,1,1) * (1,0,0) = only the set {2} combined with the empty set for node3: which is {2}. 
+          This is correct: score=1.
+
+          So then the state for node2 taken is (1,1,1) for the set {2} and not including node3's other sets? 
+
+          The set {2} has score=1, and that's it.
+
+          The state for node2 not taken is (2,1,1) for the sets {} and {3} with scores 0 and 1.
+
+          Then the total state for node2's subtree is (3,2,2) only if we do:
+
+             {}:0, {2}:1, {3}:1 -> then ss=0+1+1=2.
+
+          In our states, we have: 
+             dp[2][0] = (2,1,1) -> meaning for the two sets: 
+                 set1: score0 = 0, set2: score1 = 1 -> then ss=0^2+1^2=1.
+             dp[2][1] = (1,0,0) -> for the set {2} (score1) represented as (1,0,0)? -> no, it should be (1,1,1) for the set {2} alone. 
+
+          Therefore, the state for node2 taken should not be (1,0,0) but (1,1,1)? 
+          and then the total state = (2,1,1) [node2 not taken] + (1,1,1) [node2 taken] = (3,2,2) 
+
+          How did we get dp[2][1] = (1,0,0)? 
+             dp[2][1] = (initial for node2 taken: (1,1,1)) * (dp[3][0] = (1,0,0)) = (1,1,1)*(1,0,0)= (1,0,0)
+
+          Why are we multiplying by dp[3][0]? 
+             Because when node2 is taken, we cannot take node3 (adjacent), so we can only use the state of node3's subtree with node3 not taken: which is dp[3][0] = (1,0,0) -> the empty set.
+
+          So the set for node2 taken and node3's subtree is {2} union empty = {2}. 
+          The score is 1.
+
+          Then the state for node2 taken should be: 
+             count=1, sum=1, ss=1.
+
+          So why did we get (1,0,0)? 
+
+          Our convolution operator for states for Cartesian product is defined as:
+
+             State operator*(const State& a, const State& b) {
+                 c = a.c * b.c
+                 s = a.s * b.c + a.c * b.s
+                 ss = a.ss * b.c + a.c * b.ss + 2 * a.s * b.s
+             }
+
+          For (1,1,1) * (1,0,0): 
+             c = 1*1 = 1
+             s = 1*1 + 1*0 = 1
+             ss = 1*1 + 1*0 + 2*1*0 = 1
+          -> (1,1,1)
+
+          Therefore, we must have a mistake in the implementation of the State convolution.
+
+          Let me check the operator* in the code: 
+
+             State operator*(const State& a, const State& b) {
+                 int c = (ll)a.c * b.c % MOD;
+                 int s = ((ll)a.s * b.c % MOD + (ll)a.c * b.s % MOD) % MOD;
+                 int ss = ((ll)a.ss * b.c % MOD + (ll)a.c * b.ss % MOD + 2LL * a.s % MOD * b.s % MOD) % MOD;
+                 return State(c, s, ss);
+             }
+
+          This is correct.
+
+          So then in the example for node2 taken: 
+             = (1,1,1) * (1,0,0) = (1, (1*1+1*0=1), (1*0+1*1+2*1*0=0+1+0=1) ) = (1,1,1)
+
+          Then node2's state = (2,1,1) [dp[2][0]] + (1,1,1) [dp[2][1]] = (3,2,2)
+
+          Then when we merge into node1 not taken: 
+             dp[1][0] = (1,0,0) * ( (3,2,2) ) = (3,2,2)   [because (1,0,0)*(3,2,2) = (3,2,2) ]
+          node1 taken: 
+             = (1,1,1) * ( something from node2: which is the state for node2's not taken and not take node2's children that are adjacent to node1? 
+             In this case, node1 taken -> cannot take node2, so we use dp[2][0] = (2,1,1) 
+             = (1,1,1) * (2,1,1) = 
+                 c=2, s=1*2+1*1=3, ss=1*2+2*1+2*1*1=2+2+2=6
+          total = (3,2,2) for not take node1: sum_sq=2
+                  (2,3,6) for take node1: sum_sq=6
+          total answer = 2+6 = 8, but sample is 7.
+
+          The independent sets for the whole graph (3 nodes in a chain) are:
+             {}:0
+             {1}:1
+             {2}:1
+             {3}:1
+             {1,3}:2
+
+          sum of squares = 0+1+1+1+4 = 7.
+
+          In our states for node1 taken: 
+             we have the sets: 
+                 {1} and {1} with the safe state from node2: which is the state for node2 not taken -> sets from node2 not taken: {} and {3} 
+                 so the sets: {1} and {1,3} -> which yield the scores 1 and 2, and then the sum of squares=1+4=5, and not 6.
+
+          how did we get 6 for dp[1][1].ss? 
+             = (1,1,1) * (2,1,1) = 
+                 c=1*2=2
+                 s=1*2+1*1=3
+                 ss=1*1+2*1+2*1*1=1+2+2=5   -> not 6.
+
+          In the operator* for ss: 
+             = a.ss * b.c + a.c * b.ss + 2 * a.s * b.s
+             = 1*2 + 1*1 + 2*1*1 = 2+1+2=5.
+
+          So then why we computed as 6 before? 
+
+          Therefore, with the correct convolution, we have for node1 taken: (2,3,5)
+
+          total = not take node1: ss=2, take node1: ss=5 -> total=7.
+
+          sample #1 is fixed.
+
+ Therefore, the solution:
+
+   - Use a global set to mark cycle edges.
+   - DFS from node0 (root at 0 index, but we use 1-indexed) with parent=-1 for the root.
+   - In the DFS, for each neighbor v of u:
+          if v is parent, skip.
+          if not visited: 
+              dfs(v,u)
+          else if depth[v] < depth[u]:
+              then we found a back edge. Then we add the cycle by storing it in a vector for cycles for the node v (the root of the cycle), and add the edges of the cycle to the global cycle_edges set.
+
+   - In the DFS, after processing children, we:
+          dp[u][0] = (1,0,0)
+          dp[u][1] = (1, a[u], a[u]^2)
+
+          // Then, for each child v that is not in cycle_edges (tree edge not in cycle) and not in_cycle_edges marked by the global set, we skip. 
+          // Instead, we merge only the children for which the edge (u,v) is not in cycle_edges.
+          for each tree-edge child v (visited[v] and depth[v]==depth[u]+1) such that the edge (min(u,v), max(u,v)) is not in cycle_edges:
+              dp[u][0] = dp[u][0] * (dp[v][0]+dp[v][1])
+              dp[u][1] = dp[u][1] * dp[v][0]
+
+          // Then, for each cycle in cycles[u]: 
+          for each cycle in cycles for node u:
+              Let the cycle_vector = cycle (which is the list from the back edge: starting from the descendant and going up to u, including u at the end)
+              Let chain = vector without the last element (u) and then reversed.
+              State total_chain = linear_chain(chain, false, false)
+              State safe_chain = linear_chain(chain, true, true)
+
+              dp[u][0] = dp[u][0] * total_chain
+              dp[u][1] = dp[u][1] * safe_chain
+
+   - Then the answer is (dp[1][0].ss + dp[1][1].ss) % MOD
+
+   Note: the linear_chain function:
+        State linear_chain(const vector<int>& chain, bool force_first, bool force_last) {
+            int n = chain.size();
+            if (n == 0) {
+                return State(1,0,0);
+            }
+            State f0, f1;
+            // first node:
+            if (force_first) {
+                f0 = dp[chain[0]][0];
+                f1 = State(0,0,0);
+            } else {
+                f0 = dp[chain[0]][0];
+                f1 = dp[chain[0]][1];
+            }
+
+            for (int i=1; i<n; i++) {
+                State new_f0 = (f0 + f1) * dp[chain[i]][0];
+                State new_f1 = f0 * dp[chain[i]][1];
+                f0 = new_f0;
+                f1 = new_f1;
+            }
+
+            if (force_last) {
+                return f0;
+            } else {
+                return f0 + f1;
+            }
+        }
+
+ Let's hope.
+
+  Note: the root of the DFS can be node1.
+
+  We'll do:
+
+      depth[1] = 0, parent[1]=-1
+
+  Note: sample in #3 is large, but we hope.
+
+  However, note: the sample input might have multiple cycles at a node.
+
+  We must use a vector to store cycles for node u.
+
+  Implementation:
+
+    We'll use:
+        vector<vector<int>> cycles[N];   // cycles[i]: list of cycles with root i.
+
+    But how to store a cycle? we can store the raw vector we built.
+
+    However, note: the cycle might be stored as a vector of nodes, and we will then reuse.
+
+    Steps when we find a back edge (u,v) with v an ancestor:
+
+        vector<int> cycle;
+        int cur = u;
+        while (cur != v) {
+            cycle.push_back(cur);
+            cur = parent[cur];
+        }
+        cycle.push_back(v);
+        // then add this cycle to cycles[v]
+
+        // and add edges: 
+        for i=0 to cycle.size()-1:
+            int a = cycle[i], b = cycle[(i+1)%cycle.size()];
+            if (a>b) swap(a,b);
+            cycle_edges.insert({a,b});
+
+    But note: the edge between the last and the first is the back edge, which is not a tree edge, but we still need to mark it.
+
+  However, the tree edge children might be not the back edge, so it's safe.
+
+  Finally, we output for the root (node1) the sum of the ss for dp[1][0] and dp[1][1].
+
+  Let's hope sample #1 and #2 work.
+
+  We'll code accordingly.
+
+  Note: the sample input might have up to 10^5 nodes, and the cactus property ensures the total length of chains is O(n).
+
+  Complexity: O(n)
+
+  Let's code accordingly.
+
+  Note: the State convolution might be heavy, but the chains are the only ones we do a linear scan, and the merging at a node is proportional to the degree. The cactus has at most O(n) edges.
+
+  We use:
+      MOD = 998244353
+
+  And note: a_i can be up to 10^8, so squares up to 10^16 -> use long long for intermediate.
+
+  We already used long long in the operator.
+
+  Let's code accordingly.
+
+  Due to the complexity of the code, we must be cautious.

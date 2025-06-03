@@ -1,0 +1,1225 @@
+ We are going to implement the solution in C++ for efficiency.
+ Steps:
+ 1. Parse input: n, k, the initial array P, and the constraints.
+ 2. Initialize:
+    - base_prefix: prefix sum array for the base sequence (where free positions are set to -1 and fixed positions are as given).
+    - We will maintain two Fenwick trees (Binary Indexed Trees):
+        - flip_tree: to count how many flips (from -1 to 1) have been done in a range. Initially zeros.
+        - available_tree: to count the number of available (free and not yet flipped) positions in a range. Initially 1 for each free position, 0 for fixed.
+    - We also need a sorted set (or vector) of the free positions that are currently available. We will use a sorted vector and update it by removing elements when we flip. Since we need to remove elements and we are going to process constraints in increasing order of B, we can use a sorted vector and remove by position (using binary search and then erasing). However, note: we need to remove the smallest available free positions in [A, B] first.
+
+ 3. Precomputation:
+    - Build base_prefix: base_prefix[0]=0, then for i from 1 to n: 
+          base_prefix[i] = base_prefix[i-1] + (if P[i-1] is not 0 then P[i-1] else -1)
+
+ 4. Organize constraints: group by B (the right endpoint) and for each B, sort the constraints by A descending (so that within the same B, we process the constraint with the largest A first? Actually, we need the one that starts later to be processed first? But note: if we have two constraints with the same B, one [A1, B] and one [A2, B] with A2 < A1, then if we process the constraint with A1 (larger) first, then when processing the constraint with A2 (which includes more elements) we might have to flip more? Actually, we want to process the constraint that is more restrictive (larger A) first? However, the editorial guideline says: sort constraints by increasing B and then by decreasing A.
+
+ 5. For each B from 1 to n (in increasing order), and for each constraint (A, B, C) that ends at B (with constraints sorted by A descending for the same B):
+    - Compute the current base sum in the interval [A, B]: base_interval = base_prefix[B] - base_prefix[A-1]
+    - Compute the current extra sum from flips that have already been done in [A, B]: extra = 2 * (number of flips in [A, B]) -> because each flip adds 2 (from -1 to 1: difference is 2).
+        So total current sum = base_interval + extra.
+    - Let d = C - (base_interval + extra). If d <= 0, then the constraint is already satisfied.
+    - Otherwise, we need to flip some additional free positions: each flip adds 2, so we need t = ceil(d/2) = (d+1)//2 flips.
+    - Check: the number of available free positions in [A, B] must be at least t. If not, output "Impossible".
+    - Then, we flip the t smallest available free positions in [A, B]. How?
+          We have a sorted list of available free positions. We can binary search the smallest available position >= A and then take the first t (which are the leftmost) in the interval [A, B]. But note: we are maintaining the available positions in a sorted vector. We also have to update the Fenwick trees and remove these positions from the available set.
+
+ 6. Implementation of the available positions:
+    - We maintain a sorted vector `free_positions` (initially all free indices).
+    - We also have the Fenwick tree `available_tree` that we update when removing a free position.
+
+ 7. However, note: we need to update the available_tree and flip_tree as we flip a position.
+
+ 8. Steps for a constraint [A, B, C]:
+    - base_interval = base_prefix[B] - base_prefix[A-1]
+    - already_flipped = flip_tree.range_query(A, B)   -> this returns the number of flips in [A, B] that have been done so far.
+    - d = C - (base_interval + 2 * already_flipped)
+    - if d <= 0: skip.
+    - else: t = (d+1)/2   (if d is odd, then (d+1)/2 is integer? Actually, (d+1)//2 in integer arithmetic: e.g., d=1 -> t=1; d=2 -> t= (3//2)=1? but wait: 2 flips would give 4, but we only need 2? Actually, we need to add 2*t, so we require 2*t >= d -> t>=ceil(d/2). So t = (d+1)//2 is the smallest integer satisfying 2*t >= d.
+
+    - count_avail = available_tree.range_query(A, B)
+    - if count_avail < t -> impossible.
+
+    - Then, we need to remove the smallest t available positions in the interval [A, B] from `free_positions` and mark them as flipped. Also update:
+          available_tree: set those positions to 0 (by subtracting 1 for each).
+          flip_tree: add 1 for each of these positions.
+
+    - How to find the smallest t available positions in [A, B]? 
+          We have the sorted vector `free_positions`. We can find the first occurrence >= A and then take the next t positions that are <= B? But note: the vector is sorted and we are going to remove them, so we do:
+
+          auto it = lower_bound(free_positions.begin(), free_positions.end(), A);
+          Then we need to take the next t positions (if they are <= B). But note: we cannot take more than t and they must be consecutive in the sorted array? Actually, they are consecutive in the sorted array? But what if there are positions that are not consecutive? The array is sorted by index, so we can take the first t starting from the first one >= A that are <= B.
+
+    - However, we must be cautious: we are going to remove these positions from the vector. We can do:
+
+          vector<int> to_remove;
+          int pos_index = it - free_positions.begin();
+          while (t > 0 && pos_index < free_positions.size() && free_positions[pos_index] <= B) {
+              to_remove.push_back(free_positions[pos_index]);
+              pos_index++;
+              t--;
+          }
+
+          But if t>0 at the end, we break and output impossible? Actually we already checked the available count, so we know there are at least t available in [A,B]. However, what if the available_tree count is correct but we are not able to get t positions because the vector is broken? We rely on the Fenwick tree to be correct and the vector `free_positions` to contain exactly the available positions. So we maintain consistency: when we remove a position from the vector, we also update the Fenwick tree for available_tree.
+
+    - But note: the above while loop might take O(t) per constraint and overall t can be large. However, the total number of flips is at most the number of free positions (<=n). So overall we remove at most n positions. But the constraint processing is O(n) per constraint? Actually, we are iterating over the constraints and each flip is removed once. However, the inner while loop that collects t positions for a constraint might be heavy if we do a linear scan? We cannot do a linear scan over the entire free_positions vector each time.
+
+ 9. Alternative: we use a sorted set? Actually we can use a set (which is a balanced BST) to remove elements by value. But we also need to get the lower bound. We can use `std::set` which is a red-black tree.
+
+    Steps:
+        We maintain a set `available_set` that is initially all free positions.
+
+        For each constraint that requires t flips in [A, B]:
+            vector<int> to_remove;
+            auto it = available_set.lower_bound(A);
+            while (t > 0 && it != available_set.end() && *it <= B) {
+                to_remove.push_back(*it);
+                it++;
+                t--;
+            }
+
+            If we collected less than the required t, then impossible? Actually we already checked available_tree so we know there are at least t, so this should not happen.
+
+            Then for each position in to_remove:
+                - remove from available_set (so we break the iterator? we stored the values so we can remove by value).
+                - update available_tree: subtract 1 at that position.
+                - update flip_tree: add 1 at that position.
+                - set ans[position] = 1.
+
+        However, note: the set operations: each removal is O(log n) and the total removals is at most the number of free positions (n). So overall O(n log n). The constraint grouping: we have up to k constraints (100000) and each constraint we do a while loop that runs at most the number of flips we take for that constraint (which is at most the available positions in that interval). The total flips is <= n, so the while loops over all constraints together run in O(n) (each flip is processed once). But the set lower_bound is O(log n) per constraint? Actually we do one lower_bound per constraint and then we break after t. The total cost of the while loops that collect t positions is O(total_flips) which is O(n). However, we also have the cost of the set operations: each removal is O(log n) and we do O(n) removals -> O(n log n).
+
+ 10. But note: we already have the Fenwick tree for the available_tree. How did we update it? We update when we remove a position. The Fenwick tree is updated in O(log n) per update.
+
+ 11. However, the problem: we cannot use the set to count the available positions in [A,B]? We use the Fenwick tree for that. The set is only for knowing which positions are available and to remove the smallest ones.
+
+ 12. Implementation:
+
+     We will:
+        - Precompute base_prefix.
+        - Initialize:
+            vector<int> ans(n+1);   // 1-indexed? let's do 1-indexed for trees.
+            Fenw flip_tree(n);
+            Fenw available_tree(n);
+            set<int> available_set;
+
+            for i from 1 to n:
+                if P[i-1] == 0:
+                    ans[i] = -1;
+                    available_tree.update(i, 1);
+                    available_set.insert(i);
+                else:
+                    ans[i] = P[i-1];
+
+        - Then, group constraints by B. We can use a vector of vectors: constraints_by_B[B] = list of (A, C) for constraints with right endpoint B.
+
+        - Sort each list for a fixed B by A descending? Actually: we want the constraint that starts at a larger A (i.e., the one that covers a smaller interval) to be processed first? Why? Because if we process the constraint with a larger A first, then when we flip positions in [A, B] (which is a small interval) we might help the constraint with a smaller A (which covers a larger interval) by having more flips? But note: the constraint with larger A is more restrictive? Actually, we want to satisfy the constraint that requires the most flips per available position? 
+
+        However, the editorial says: sort by decreasing A for the same B. The reason: if we have two constraints [A1, B] and [A2, B] with A1 > A2, then the constraint [A1, B] is contained in [A2, B]. Therefore, if we satisfy [A1, B] first, then when we satisfy [A2, B] we have already counted the flips in [A1, B]. But note: the constraint [A1, B] might require more flips per unit length? Actually, we are going to flip the smallest available positions. The constraint with larger A (A1) might force us to flip a position that is in [A1, B] and that position is also in [A2, B]. So processing the one with larger A first is safe because it has fewer available positions? 
+
+        Actually, the problem: if we process the constraint with smaller A first, we might flip a position that is outside [A1, B] (if we flip a position in [A2, A1-1]) which does not help the constraint [A1, B]. Then the constraint [A1, B] might require flipping more positions in [A1, B]. But we want to minimize the flips? Actually, we want to use as few flips as possible and use the leftmost ones. However, the constraint with larger A has a smaller interval, so it might require flipping positions that are the only ones available in that interval? So we must satisfy it first.
+
+        Therefore: for same B, we process constraints by decreasing A.
+
+     Steps for B from 1 to n:
+        for each constraint (A, C) in constraints_by_B[B] (sorted by A descending):
+            base_interval = base_prefix[B] - base_prefix[A-1];
+            already_flipped = flip_tree.range_query(A, B);   // number of flips in [A,B]
+            d = C - (base_interval + 2 * already_flipped);
+            if d <= 0: continue.
+
+            t = (d+1)/2;   // integer: (d+1) divided by 2.
+
+            count_avail = available_tree.range_query(A, B);
+            if count_avail < t: 
+                cout << "Impossible" << endl; return;
+
+            // Now, we need to flip t positions: the smallest t available positions in [A, B]
+            vector<int> to_remove;
+            auto it = available_set.lower_bound(A);
+            while (t > 0) {
+                // We know there are at least t positions, so we can take t consecutive from the set.
+                if (it == available_set.end() || *it > B) {
+                    // This should not happen because we checked count_avail.
+                    cout << "Impossible" << endl;
+                    return;
+                }
+                to_remove.push_back(*it);
+                t--;
+                it++;
+            }
+
+            // Now remove these positions from the set and update trees.
+            for (int pos : to_remove) {
+                available_set.erase(pos);
+                available_tree.update(pos, -1);
+                flip_tree.update(pos, 1);
+                ans[pos] = 1;
+            }
+
+            // But note: after removing, the iterator becomes invalid? We break the set so we don't use the iterator beyond the removals? Actually we break the while loop and then move to the next constraint.
+
+        End for constraints for this B.
+
+     After processing all constraints, output the answer for positions 1..n.
+
+ 13. However, the above while loop for removing t positions: we are using an iterator and incrementing it t times. But when we remove an element, the set is modified and the iterator becomes invalid? Actually, we are storing the values to remove in to_remove. We are not removing during the iteration. We do the removal after the while loop. So the iterator is still valid? Actually, the set is not modified until we remove the elements. So the iterator we have is valid until we remove. But note: we are storing the values and then we break the while loop? Then we remove the stored values. Then we move to the next constraint.
+
+ 14. But what about the next constraint for the same B? The set is updated. So the next constraint will see the updated set.
+
+ 15. However, we break the iterator when we remove the elements? We are not using the iterator after the removals. We start a new iterator for the next constraint.
+
+ 16. But note: we are processing multiple constraints for the same B. And we have updated the set and trees for the previous constraint. So the next constraint (for the same B) will have updated base_interval? Actually, the base_interval is fixed? But the base_interval is computed from base_prefix which is fixed? The base_prefix does not change. However, the flips that we have done so far are accounted for by the flip_tree. And the available_tree is updated. So the next constraint will see the updated counts.
+
+ 17. But note: the base_interval does not change? Actually, we are not changing the base sequence. The base sequence is fixed: the fixed positions and the free positions initially set to -1. The flips only change the free positions from -1 to 1, and we account for the flip_tree. So the total sum for [A, B] is base_interval (which is the initial sum with free as -1) plus 2 * (number of flips in [A,B]). So we are correctly accounting.
+
+ 18. However, the base_prefix is computed once at the beginning. So we don't update it when we flip? That is correct: because base_prefix is the base sequence without flips. The flips are stored in the flip_tree and we add 2 per flip.
+
+ 19. But note: what if a constraint for a later B uses a position that we flipped? That is accounted by the flip_tree: when we query the flip_tree for a constraint [A, B], it will include all flips done so far (including those done for constraints with smaller B and also for the same B but earlier constraints). So it is cumulative.
+
+ 20. However, the order of constraints for the same B: we do decreasing A. And we update the flip_tree as we go. So when we do the next constraint for the same B (with a smaller A) we have already accounted for the flips we did in the previous constraint (which were in [A_prev, B] and A_prev > A, so they are in the interval [A, B] as well). So the flip_tree.range_query(A, B) will include them.
+
+ 21. Therefore, the algorithm is correct.
+
+ 22. But note: the set `available_set` is global and we are removing elements as we flip. And we are iterating B from 1 to n. The constraints are grouped by B.
+
+ 23. Implementation of Fenwick tree:
+
+        class Fenw {
+            vector<int> tree;
+            int n;
+        public:
+            Fenw(int size) {
+                n = size;
+                tree.assign(n+1, 0);
+            }
+            void update(int idx, int delta) {
+                while (idx <= n) {
+                    tree[idx] += delta;
+                    idx += idx & -idx;
+                }
+            }
+            int query(int idx) { // returns prefix sum [1..idx]
+                int sum = 0;
+                while (idx) {
+                    sum += tree[idx];
+                    idx -= idx & -idx;
+                }
+                return sum;
+            }
+            int range_query(int l, int r) {
+                if (l > r) return 0;
+                if (l < 1) l = 1;
+                if (r > n) r = n;
+                return query(r) - query(l-1);
+            }
+        };
+
+ 24. One more issue: the constraints can be up to 100000, and we are grouping by B, so we can have a vector of size n+1 (indexed 1..n) for constraints_by_B.
+
+ 25. Steps:
+
+        Read n, k.
+        Read P of size n.
+
+        vector< vector<pair<int, int>> > constraints_by_B(n+1);   // for B from 1 to n: list of (A, C)
+
+        for each constraint (a, b, c):
+            constraints_by_B[b].push_back({a, c});
+
+        Then for each B from 1 to n:
+            sort constraints_by_B[B] by the first element (A) in descending order? 
+            sort(constraints_by_B[B].rbegin(), constraints_by_B[B].rend())? Actually, we can sort in descending order by:
+                sort(constraints_by_B[B].begin(), constraints_by_B[B].end(), [](const pair<int,int>& p1, const pair<int,int>& p2) {
+                    return p1.first > p2.first;
+                });
+
+        Then process.
+
+ 26. Edge: when d is negative? we skip.
+
+ 27. Finally, if we complete all constraints, output the answer for indices 1..n.
+
+ 28. However, note: what if there is no constraint for a particular B? Then we skip.
+
+ 29. Also, note: the available_tree and flip_tree are 1-indexed.
+
+ 30. Let's code accordingly.
+
+ 31. But note: the constraints might not be in increasing order of B? But we are grouping by B and then iterating B from 1 to n.
+
+ 32. Complexity: O(n log n + k log n) which is acceptable for n, k up to 100000.
+
+ 33. One more issue: the set `available_set` might be large, and each removal is O(log n). The total removals is at most the number of free positions (<=n). So O(n log n) overall.
+
+ 34. Let's code accordingly.
+
+ 35. However, we must be cautious: when we remove an element from the set, we must not break the iterator we are using in the while loop. In the while loop we are storing the values and then we remove after the while loop. So the set is unchanged during the while loop.
+
+ 36. But note: we are doing multiple constraints for the same B. We break the while loop and then remove the collected positions. Then the set is updated and the next constraint for the same B will use the updated set.
+
+ 37. Code:
+
+        #include <iostream>
+        #include <vector>
+        #include <set>
+        #include <algorithm>
+        #include <cctype>
+        #include <cmath>
+        using namespace std;
+
+        // Fenwick tree class
+
+        ... (implement Fenw as above) ...
+
+        int main() {
+            ios_base::sync_with_stdio(false);
+            cin.tie(0);
+
+            int n, k;
+            cin >> n >> k;
+            vector<int> P(n);
+            for (int i = 0; i < n; i++) {
+                cin >> P[i];
+            }
+
+            // base_prefix: 1-indexed, base_prefix[0]=0, base_prefix[i] for i from 1 to n.
+            vector<long long> base_prefix(n+1, 0);
+            for (int i = 1; i <= n; i++) {
+                if (P[i-1] == 0) {
+                    base_prefix[i] = base_prefix[i-1] - 1;
+                } else {
+                    base_prefix[i] = base_prefix[i-1] + P[i-1];
+                }
+            }
+
+            Fenw flip_tree(n);   // to count the number of flips at each position (each flip is 1)
+            Fenw available_tree(n); // to count the available free positions (each free position is 1, then becomes 0 when flipped)
+
+            set<int> available_set;
+            vector<int> ans(n+1);   // 1-indexed: ans[1..n]
+
+            // Initialize the available_set and the trees for free positions.
+            for (int i = 1; i <= n; i++) {
+                if (P[i-1] == 0) {
+                    ans[i] = -1;
+                    available_tree.update(i, 1);
+                    available_set.insert(i);
+                } else {
+                    ans[i] = P[i-1];
+                }
+            }
+
+            // Read constraints and group by B.
+            vector<vector<pair<int, int>>> constraints_by_B(n+1); // constraints_by_B[b] = list of (a, c)
+            for (int i = 0; i < k; i++) {
+                int a, b, c;
+                cin >> a >> b >> c;
+                constraints_by_B[b].push_back({a, c});
+            }
+
+            // For each B from 1 to n, sort the constraints by A descending.
+            for (int b = 1; b <= n; b++) {
+                if (constraints_by_B[b].size() == 0) continue;
+                sort(constraints_by_B[b].begin(), constraints_by_B[b].end(), [](const pair<int,int>& p1, const pair<int,int>& p2) {
+                    return p1.first > p2.first;   // larger A comes first
+                });
+            }
+
+            // Process each B from 1 to n in increasing order.
+            for (int b = 1; b <= n; b++) {
+                for (auto &con : constraints_by_B[b]) {
+                    int a = con.first;
+                    int c = con.second;
+                    // Compute base_interval: [a, b]
+                    long long base_interval = base_prefix[b] - base_prefix[a-1];
+                    long long already_flipped = flip_tree.range_query(a, b); // number of flips in [a,b]
+                    long long total_current = base_interval + 2 * already_flipped;
+                    long long d = c - total_current;
+
+                    if (d <= 0) {
+                        continue;
+                    }
+
+                    // t = ceil(d/2) = (d+1)/2 (if d is odd: (d+1)/2 is integer, if even: (d+1)/2 = d/2+0.5 -> integer? but (d+1)/2 in integer division is the ceiling for positive d? 
+                    // Example: d=1 -> (1+1)/2 = 1; d=2 -> (2+1)/2 = 1? but we need 1 for d=2? Actually: we need to add 2*t >= d -> minimum t: ceil(d/2). 
+                    // But note: d is positive. So t = (d+1)/2 is integer? If d is even: (d+1)/2 is not integer? Actually we want integer t: so we do integer arithmetic: (d+1)/2 -> if d is odd: (d+1) is even -> integer. If d is even: (d+1) is odd -> (d+1)/2 is integer? Actually no: 2/2=1, 3/2=1? But we use integer division: truncation? We want ceiling: so we do (d+1) / 2 using integer division? Actually: 
+                    //   t = (d+1) / 2;   -> if d is odd: (d+1) is even -> exact. If d is even: (d+1) is odd -> then (d+1)/2 = d/2 + 0.5 -> integer truncation in C++ for positive integers? Actually it truncates toward zero? But d is positive. So (d+1)/2 is integer? No: if d=3: (3+1)/2 = 4/2=2 -> correct (ceiling(3/2)=2). If d=2: (2+1)/2 = 3/2 = 1? -> but ceiling(2/2)=1 -> correct. So it works: because (d+1)/2 in integer division is the ceiling for positive integers.
+
+                    long long t = (d+1) / 2;
+
+                    long long count_avail = available_tree.range_query(a, b);
+                    if (count_avail < t) {
+                        cout << "Impossible" << endl;
+                        return 0;
+                    }
+
+                    vector<int> to_remove;
+                    auto it = available_set.lower_bound(a);
+                    // We need to remove t positions: the first t positions starting from the smallest that is >=a and <=b.
+                    while (t > 0) {
+                        if (it == available_set.end() || *it > b) {
+                            // Should not happen because we have count_avail>=t.
+                            cout << "Impossible" << endl;
+                            return 0;
+                        }
+                        to_remove.push_back(*it);
+                        t--;
+                        it++;
+                    }
+
+                    // Now remove the collected positions from the set and update trees and ans.
+                    for (int pos : to_remove) {
+                        available_set.erase(pos);
+                        available_tree.update(pos, -1);
+                        flip_tree.update(pos, 1);
+                        ans[pos] = 1;
+                    }
+                }
+            }
+
+            // Output the sequence
+            for (int i = 1; i <= n; i++) {
+                if (i>1) cout << " ";
+                cout << ans[i];
+            }
+            cout << endl;
+
+            return 0;
+        }
+
+ 38. But note: the base_interval and d might be large? But n up to 100000, and the base_interval is at most n (in absolute value) and d is at most 2*n? So long long is safe.
+
+ 39. Let's test with sample #1:
+        n=3, k=2, P=[0,0,0] -> base_prefix: 
+            base_prefix[0]=0
+            base_prefix[1]=-1
+            base_prefix[2]=-2
+            base_prefix[3]=-3
+
+        Constraints:
+            constraint1: [1,2] with C=2: 
+                base_interval = base_prefix[2]-base_prefix[0] = -2 - 0 = -2.
+                already_flipped = 0 -> total_current = -2.
+                d = 2 - (-2) = 4 -> t = (4+1)/2 = 5/2 = 2? -> 2. But integer: 4+1=5 -> 5/2=2 in integer division? -> t=2.
+                count_avail = available_tree.range_query(1,2) = 2 -> so we remove the two available positions in [1,2]: which are 1 and 2.
+
+            Then constraint2: [2,3] with C=-1:
+                base_interval = base_prefix[3]-base_prefix[1] = -3 - (-1) = -2.
+                already_flipped in [2,3]: at position2 we have flipped (so count=1) -> total_current = -2 + 2*1 = 0.
+                d = -1 - 0 = -1 -> skip.
+
+            Then output: ans[1]=1, ans[2]=1, ans[3]=-1 -> [1,1,-1] -> correct.
+
+ 40. Sample #2: 
+        n=3, k=2, P=[0,-1,0] -> base_prefix:
+            base_prefix[0]=0
+            base_prefix[1]=0 (because P[0]=0 -> -1? but note: P[0] is the first element -> i=1: P[0]=0 -> base_prefix[1] = -1.
+            base_prefix[2]= -1 + (-1) = -2? but wait: the second element (i=2) is prefilled by -1 -> base_prefix[2] = base_prefix[1] + (-1) = -1 -1 = -2.
+            base_prefix[3] = base_prefix[2] + (for P[2]=0 -> -1) = -3.
+
+        Constraints:
+            constraint1: [1,2] with C=2:
+                base_interval = base_prefix[2]-base_prefix[0] = -2 - 0 = -2.
+                already_flipped = 0 -> total_current = -2.
+                d = 2 - (-2) = 4 -> t=2.
+                available positions in [1,2]: 
+                    position1: free? yes -> available_set: {1, 3} (since position2 is fixed to -1 -> not available). 
+                    so available_tree: at position1:1, position2:0, position3:1 -> count_avail = 1 -> not enough -> output "Impossible".
+
+ 41. So it works.
+
+ 42. However, note: the available_tree: we only update for free positions? Yes. And we did not update for fixed positions.
+
+ 43. But note: the fixed positions are not available. So we did not add them to available_set and we did not update available_tree for them? Correct.
+
+ 44. One more corner: what if the constraint requires flipping a position that is fixed? But we never consider fixed positions because they are not in available_set and available_tree does not count them. And the deficit calculation already accounts for the fixed value.
+
+ 45. Therefore, the code is as above.
+
+ 46. But note: the Fenwick tree range_query: our Fenw::range_query(l, r) does l-1? Our implementation:
+
+        int range_query(int l, int r) {
+            return query(r) - query(l-1);
+        }
+
+        But what if l-1 is 0? then query(0)=0. So it's safe.
+
+ 47. Let me test with a small example: [1,2] for n=3: 
+        query(2) - query(0) = (tree[2]+tree[1]) - 0 -> correct.
+
+ 48. However, the Fenwick tree we implemented is 1-indexed.
+
+ 49. We'll run the code as above.
+
+ 50. But note: the base_prefix[0] is set to 0, and when a=1, we do base_prefix[0] -> valid.
+
+ 51. However, we might have a constraint with a=1? Then base_prefix[0] is used.
+
+ 52. Therefore, the code.
+
+ 53. But note: the constraints might have negative c? Then d = c - total_current might be negative? Then we skip. So that's handled.
+
+ 54. Let me test with a constraint that is already satisfied: [1,2] with c=-3: 
+        base_interval=-2, already_flipped=0 -> total_current=-2, d = -3 - (-2) = -1 -> skip.
+
+ 55. It's correct.
+
+ 56. However, note: the Fenwick tree for available_tree and flip_tree: we are updating at the position with 1 or -1. The trees are for the entire array.
+
+ 57. We'll code accordingly.
+
+ 58. One more thing: the set `available_set` is initially the free positions. Then we remove as we flip.
+
+ 59. But note: the Fenw tree for available_tree: we update only the free positions? Yes.
+
+ 60. We are ready.
+
+ 61. However, we must be cautious: the while loop for removing t positions: we are storing the iterator and then incrementing. But if we remove the last element, then it becomes available_set.end()? We break the loop condition.
+
+ 62. We test: 
+        t=1, and we have one element: 
+            it = available_set.lower_bound(a) -> points to the element.
+            we push_back(*it), then t becomes 0 -> break the loop? Then we remove that element.
+
+ 63. Correct.
+
+ 64. But note: after the while loop, the iterator `it` might be available_set.end() or beyond? We don't care because we break.
+
+ 65. We'll run the code on the samples.
+
+ 66. However, the problem: the sample input #1: 
+        Input: "3 2\n0 0 0\n1 2 2\n2 3 -1"
+
+        We have available_set = {1,2,3} initially.
+
+        For constraint1: [1,2] with c=2: 
+            base_interval = -2, already_flipped=0, d=4, t=2.
+            We remove the first two: 1 and 2.
+
+        Then constraint2: [2,3] with c=-1: 
+            base_interval = base_prefix[3]-base_prefix[1] = -3 - (-1) = -2.
+            already_flipped: we query [2,3] -> position2 was flipped (so flip_tree: at 2 we have 1) and position3 is not flipped -> total flips in [2,3]=1.
+            total_current = -2 + 2*1 = 0.
+            d = -1 - 0 = -1 -> skip.
+
+        Then output: ans[1]=1, ans[2]=1, ans[3]=-1 -> "1 1 -1"
+
+ 67. Correct.
+
+ 68. Sample #2: 
+        Input: "3 2\n0 -1 0\n1 2 2\n2 3 -1"
+
+        base_prefix: 
+            i=1: P[0]=0 -> base_prefix[1] = -1
+            i=2: P[1]=-1 -> base_prefix[2] = -1 + (-1) = -2
+            i=3: P[2]=0 -> base_prefix[3] = -2 + (-1) = -3
+
+        available_set = {1, 3} (because position2 is fixed to -1).
+
+        constraint1: [1,2] with c=2:
+            base_interval = base_prefix[2]-base_prefix[0] = -2 - 0 = -2.
+            already_flipped = 0 -> total_current = -2.
+            d = 2 - (-2) = 4 -> t=2.
+            count_avail = available_tree.range_query(1,2) = 1 (only position1 is available in [1,2]? position2 is fixed so not available) -> so we output "Impossible".
+
+ 69. Correct.
+
+ 70. One more sample: 
+        "2 1
+         0 0
+         1 2 0"
+
+        base_prefix: [0, -1, -2]
+
+        constraint: [1,2] with c=0: 
+            base_interval = -2 - 0 = -2.
+            already_flipped = 0 -> total_current = -2.
+            d = 0 - (-2) = 2 -> t= (2+1)/2 = 1.
+            available positions in [1,2]: 2 -> so we flip one position: the smallest available in [1,2] is 1? 
+            Then we set ans[1]=1, ans[2]=-1 -> sequence [1, -1] -> sum=0 -> meets constraint.
+
+        Output: "1 -1"
+
+ 71. But lexicographically smallest? We start with [-1,-1] and then we flip the smallest index (1) to 1 -> [1, -1] which is lexicographically smallest? 
+        [1, -1] vs [-1,1]: which is lexicographically smallest? 
+        First element: 1 vs -1 -> 1 is greater than -1? So [-1,1] would be lex smaller? But we flipped the leftmost? Why did we flip the leftmost?
+
+        Our algorithm: we are taking the smallest available position in [A,B] that is >=A. So we take the leftmost.
+
+        Why is that lex smallest? 
+          We start with all free positions as -1. Then we flip only when forced. And when forced, we flip the leftmost available positions. 
+          Why is that lex smallest? 
+          Consider: we want to minimize the first position? Actually, flipping a free position from -1 to 1 makes the sequence larger at that position. So to keep lex small, we want to avoid flipping as much as possible? But if we have to flip, we want to flip the leftmost? 
+          However, if we flip a leftmost position, then we set it to 1 (which is bigger than -1) and then leave the right ones as -1. Is that lex smallest? 
+          Compare: 
+            Option1: flip the leftmost: [1, -1, ...] 
+            Option2: flip a right one: [-1, 1, ...] 
+          The first element: 1 (Option1) vs -1 (Option2): which is smaller? -1 is smaller than 1. So Option2 is lex smaller? 
+
+        But wait: we are forced to meet the constraint. The constraint [1,2] must be at least 0. 
+          Option1: [1, -1] -> sum=0 -> valid.
+          Option2: [-1,1] -> sum=0 -> valid.
+
+        And Option2 is lex smaller. 
+
+        Therefore, our algorithm does not produce the lex smallest? 
+
+        What did we do? 
+          We flipped the leftmost available position? But that produces [1,-1] which is lex larger than [-1,1]. 
+
+        So we should flip the rightmost available positions? 
+
+        However, the editorial guideline says: "flip the leftmost free positions first" to leave the rightmost as -1? Why? 
+          But note: lex order: we want the sequence to be as small as possible from left to right. 
+          We start with all -1 (the smallest). Then when we have to flip, we have to set one of the positions to 1. 
+          The lex smallest sequence would be the one that has -1 as long as possible? So we want to set the rightmost free position to 1? Because if we set a rightmost free position to 1, then the left ones remain -1. 
+
+        Example: 
+          We have two free positions: [0,0] (free at index1 and index2). 
+          Constraint: [1,2] sum>=0.
+
+          Option1: flip the rightmost: [-1, 1] -> lex: [-1,1] 
+          Option2: flip the leftmost: [1, -1] -> lex: [1,-1] -> which is larger because at the first element: -1 < 1.
+
+        Therefore, we should flip the rightmost available positions? 
+
+        But wait: the constraint: we are processing by increasing B? And we are processing constraints that end at B. 
+          When we have a constraint [A, B] and we flip a position in [A, B], we want to flip the one that is as far to the right as possible? Why? 
+          Because then the left positions remain -1 for as long as possible? 
+
+        How does that affect other constraints? 
+          Consider: 
+            Constraint1: [1,2] with C=0 -> we flip the rightmost in [1,2] -> flip position2 -> then we have [-1,1].
+            Constraint2: [1,1] with C=1 -> then we need to flip position1? But position1 is free? Then we flip position1: becomes [1,1]. 
+          But if we had flipped the leftmost for constraint1: [1,-1] then constraint2 would require flipping position1 again? But it's already flipped? 
+
+        Actually, for constraint1: if we flip the leftmost (position1) then constraint2 is already satisfied? 
+            constraint2: [1,1] -> current sum=1 -> meets C=1.
+          So then we don't flip again? 
+
+        Therefore, flipping the leftmost might help satisfy constraints that start earlier? 
+
+        However, lex order: we want the leftmost to be as small as possible. 
+          We want the first position to be -1 if possible. 
+
+        So the idea: 
+          We want to avoid flipping a position until we have to. And when we have to flip, we flip the rightmost free position? 
+
+        Why? 
+          Because then the left ones remain -1? 
+
+        How to reconcile with the constraint processing? 
+          We process constraints by increasing B. For a constraint [A, B], we want to use the flips that are as far to the right as possible? 
+          This is because the constraint [A, B] is the last constraint that ends at B, and we want to leave the positions to the left (which might be used by constraints that end at a later B) as -1 for as long as possible? 
+
+        Actually, the lex smallest sequence: 
+          We want the first position to be as small as possible. The smallest value is -1. 
+          Then the second, etc.
+
+        Therefore, we want to assign -1 to the leftmost positions as long as we can. 
+
+        How? 
+          We start with all free positions set to -1. 
+          Then, when we have to meet a constraint [A, B] that requires more positive sum, we flip some free positions in the interval to 1. 
+          To keep the left positions as -1 (so that the sequence is lex small), we should flip the rightmost free positions in the interval? 
+
+        Why? 
+          Because if we flip a free position at a right index, then the left free positions remain -1, which is what we want for lex. 
+
+        Example: 
+          [0,0,0] and constraint: [1,3] with C=1.
+          We can flip one position. 
+          Option1: flip the first: [1,-1,-1] -> sum = 1-1-1 = -1 -> not enough? -> then we need to flip two: [1,1,-1] -> sum=1+1-1=1 -> valid -> lex: 1,1,-1.
+          Option2: flip the last: [-1,-1,1] -> sum=-1 -> not enough -> then flip the middle: [-1,1,1] -> sum= -1+1+1=1 -> valid -> lex: -1,1,1 -> which is lex smaller than [1,1,-1]? 
+          Compare: 
+              [ -1, 1, 1] vs [1,1,-1]: 
+              First element: -1 vs 1 -> so [-1,1,1] is lex smaller.
+
+          Therefore, we want to flip the rightmost positions? 
+
+        But wait: if we flip the rightmost, then we might not satisfy the constraint? 
+          In the example: we have to flip two. We flip the two rightmost: then we get [-1,1,1] which is valid and lex smaller.
+
+        Therefore, we should flip the rightmost available free positions in the interval [A, B]? 
+
+        How to do that? 
+          Instead of taking the first t from the lower_bound (which are the smallest), we take the last t? 
+
+          But note: we cannot take positions beyond B. 
+
+        We can: 
+          We have the set `available_set` (which is a BST, sorted by increasing). 
+          We want the largest available positions in [A, B] that are as large as possible? 
+
+          Actually, we want the t largest available positions in [A, B]? 
+
+          How? 
+            We can use:
+                auto it = available_set.upper_bound(B);
+                if (it == available_set.begin()) -> then no element in [A,B] -> impossible? 
+                else it--; and then we move backwards? 
+
+          But we need t positions. 
+
+          Alternatively, we can have a set and then use `reverse_iterator` to traverse from B down to A? 
+
+          Actually, we can use:
+
+            vector<int> to_remove;
+            auto it = available_set.upper_bound(B);
+            if (it != available_set.begin()) {
+                it--;
+                while (t > 0) {
+                    if (*it < a) break; // we break if we go below a
+                    to_remove.push_back(*it);
+                    t--;
+                    if (it == available_set.begin()) {
+                        break;
+                    } else {
+                        it--;
+                    }
+                }
+            }
+
+          Then if t>0, we don't have enough? But we already checked count_avail so we know there are at least t. 
+
+          But then we have the positions in to_remove in descending order? We don't care.
+
+          However, we must not break the set during iteration? We store the values and then remove.
+
+          But note: we are storing the values and then we break? Then we remove the stored values.
+
+          But the iterator becomes invalid? Actually, we are storing the values, so we can remove by value.
+
+          But the complexity: each removal is O(log n) and we remove t positions.
+
+        However, the total removals is at most n, so O(n log n).
+
+        But the inner while loop: we traverse at most t for each constraint? And the total t is at most n? So overall O(n).
+
+        But worst-case: we might have to traverse the entire set for each constraint? Then O(k * n) which is 100000*100000 -> 10e10 -> too slow.
+
+        We need a more efficient way to get the t largest positions? 
+
+        Alternatively, we can maintain a Fenwick tree that stores the available positions and then do a binary search for the k-th largest? But that is complex.
+
+        How about using a set and then using `std::prev` to go backwards? 
+
+        Actually, we can use:
+
+            auto it = available_set.upper_bound(B);
+            while (t--) {
+                if (it == available_set.begin()) { // then we don't have enough? }
+                it--;
+                // Now *it is the largest <= B. But we must check >=a? 
+                if (*it < a) { ... break? but we already checked count_avail, so we know there are at least t+1? Actually we are in the middle of the loop? }
+                to_remove.push_back(*it);
+            }
+
+        But we are decrementing t and we are not checking the condition for *it>=a? 
+
+        We know that the available_set has at least t positions in [a,b]. So if we start from the largest <= B, then we must have t positions in [a,b]. But note: the largest might be below a? Then we break? But we already checked count_avail? 
+
+        Actually, we should start from the largest available in [a,b]. We can do:
+
+            auto it = available_set.upper_bound(B);
+            while (t > 0) {
+                if (it == available_set.begin()) break;
+                it--;
+                if (*it < a) {
+                    // we break? but we need more flips? -> impossible? 
+                    // But we already checked that there are at least t available in [a,b] -> so this should not happen.
+                    break;
+                }
+                to_remove.push_back(*it);
+                t--;
+            }
+
+        Then if t>0, we output impossible? But we already checked count_avail, so we know there are at least t. So we can do:
+
+            We know there are at least t, so we break only if we run out of set? But then we have a bug? 
+
+        Actually, we can do:
+
+            We want the t largest available positions in [a,b]. We can use:
+
+                vector<int> to_remove;
+                auto it = available_set.end();
+                // We want to traverse backwards from B until we have t.
+                // But we can use: 
+                int count = 0;
+                auto it2 = available_set.upper_bound(B);
+                if (it2 != available_set.begin()) {
+                    it2--;
+                    while (true) {
+                        if (*it2 >= a) {
+                            to_remove.push_back(*it2);
+                            count++;
+                            if (count == t) break;
+                        }
+                        if (it2 == available_set.begin()) break;
+                        it2--;
+                    }
+                }
+                if (count < t) {
+                    // Impossible? but we checked count_avail -> should not happen.
+                    cout << "Impossible" << endl;
+                    return;
+                }
+
+        But worst-case we traverse the entire set? 
+
+        Alternatively, we can use a balanced BST that supports order statistics? 
+
+        We don't have that in STL. We can use a Fenwick tree to get the k-th largest? 
+
+        But the problem: we want the t largest positions in [a,b]? 
+
+        Alternatively, we can use a segment tree or a BIT to get the k-th largest? 
+
+        However, we want efficiency.
+
+        Another idea: maintain a data structure that can remove the largest element? 
+
+        We can use a set and then remove the largest? But then we remove the largest from the entire set? We need the largest in the interval [a,b]. 
+
+        How about:
+
+            We want to remove the largest available position in [a,b] that is not removed yet? 
+
+            We can do:
+
+                to_remove.clear();
+                for (int i = 0; i < t; i++) {
+                    // Get the largest available in [a,b]: 
+                    auto it = available_set.upper_bound(B);
+                    if (it == available_set.begin()) { // no element <= B
+                        break;
+                    }
+                    it--;
+                    if (*it < a) {
+                        break;
+                    }
+                    to_remove.push_back(*it);
+                    // But we remove it from the set? But we are storing the value and then we remove later? 
+                    // However, if we remove it immediately from the set, then the next largest is the next?
+                    // But we cannot remove it now because we are in the set? We break the set? 
+                    // We can remove it now? 
+                    available_set.erase(it);
+                    // Then we update the trees? But we are going to update the trees later? Or now? 
+                    // Actually, we update the trees and the set immediately? 
+                    available_tree.update(*it, -1);
+                    flip_tree.update(*it, 1);
+                    ans[*it] = 1;
+                }
+
+            Then if we didn't get t, then impossible? 
+
+        But then we break the grouping by constraint? 
+
+        Actually, we can update immediately. Then the next constraint for the same B will see the updated trees and set.
+
+        And the inner loop for the same constraint: we do t times.
+
+        However, we are updating the trees and the set as we go? Then the count_avail we did earlier is invalid? 
+
+        How? 
+          We did: count_avail = available_tree.range_query(a,b) -> then we remove one -> then count_avail becomes count_avail-1, but we are using the same count_avail for the entire constraint? 
+
+        But we already determined that we need t flips. Then we remove one by one. But the available_tree is updated immediately, so the next removal we do not need to check again? 
+
+        However, we already know we have at least t available, so we can remove t without updating the count_avail? 
+
+        But what if the same constraint requires multiple flips? We are removing one by one? 
+
+        Actually, we do:
+
+            for (int i=0; i<t; i++) {
+                // get the largest available in [a,b] -> we have to do it each time? 
+                // But the set is updated, so it is the next largest? 
+                // This is acceptable? 
+            }
+
+        But worst-case, each removal is O(log n) and we do t removals per constraint, and the total removals is n, so O(n log n).
+
+        Then we can do:
+
+            long long needed = t;
+            while (needed > 0) {
+                auto it = available_set.upper_bound(B);
+                if (it == available_set.begin()) {
+                    cout << "Impossible" << endl;
+                    return;
+                }
+                it--;
+                if (*it < a) {
+                    cout << "Impossible" << endl;
+                    return;
+                }
+                int pos = *it;
+                available_set.erase(it);
+                available_tree.update(pos, -1);
+                flip_tree.update(pos, 1);
+                ans[pos] = 1;
+                needed--;
+            }
+
+        But note: we have already done a range query for available_tree? But we are updating it now, so for the next constraint the available_tree is updated. 
+
+        However, we are processing one constraint. We know we need t flips, and we know there are at least t available. Then we remove t available positions. 
+
+        But the problem: the available_tree.range_query(a,b) we did earlier might become outdated? 
+          But we are removing the positions in the same constraint, and we are not using the available_tree again for this constraint? 
+
+        So it's safe.
+
+        But then the entire constraint processing for one constraint is O(t log n) which is acceptable because the total t over all constraints is <= n.
+
+        Therefore, we can change the flipping part to:
+
+            // Instead of storing in a vector to_remove and then removing later, we remove immediately one by one, and we remove the largest available position in [a,b] each time.
+
+        Steps for a constraint:
+
+            ... [after we computed t] ...
+
+            while (t > 0) {
+                auto it = available_set.upper_bound(B);   // first element > B
+                if (it == available_set.begin()) {
+                    // There is no element <= B -> impossible
+                    cout << "Impossible" << endl;
+                    return 0;
+                }
+                it--;
+                if (*it < a) {
+                    // This element is below a -> not in [a,b] -> impossible
+                    cout << "Impossible" << endl;
+                    return 0;
+                }
+                int pos = *it;
+                // Remove this position
+                available_set.erase(it);
+                available_tree.update(pos, -1);
+                flip_tree.update(pos, 1);
+                ans[pos] = 1;
+                t--;
+            }
+
+        This is simpler.
+
+        And it ensures we remove the largest available in [a,b] first? 
+
+        Actually, we remove the largest available in the entire set that is <= B? And then the next largest? 
+
+        But we do:
+
+            it = available_set.upper_bound(B) -> then it-- gives the largest available <= B.
+
+            Then we remove it. Then the next time we do the same: we get the next largest? 
+
+        So we remove the t largest available positions in [a,b].
+
+        Why is that lex smallest? 
+          By flipping the rightmost free positions, we leave the left free positions as -1. 
+          This ensures that the sequence is lex smallest: because we keep the left positions as -1 (the smallest value) for as long as possible.
+
+        Example: 
+          [0,0,0] and constraint [1,3] with c=1: 
+            We need to flip 2 positions? 
+            The largest available in [1,3] is 3 -> remove it -> then the next largest is 2 -> remove it. 
+            Then we have [-1,1,1] -> which is lex smaller than [1,1,-1] and [1,-1,1] and [-1,1,1] is the lex smallest? 
+            Actually, the sequences: 
+                Option: [-1,1,1] -> first element is -1 -> smallest possible.
+                Then the second element: in [-1,1,1] the second is 1, but we could have [ -1, -1, 1]? but that doesn't meet the constraint. 
+                Actually, we flipped two: the two largest -> positions 2 and 3 -> so we get [-1,1,1] -> which is the lex smallest.
+
+          Compare with flipping the two smallest: 
+            We would get [1,1,-1] -> which is lex larger because the first element is 1 (vs -1).
+
+        Therefore, we flip the largest available in [a,b] first.
+
+        But note: the constraints are processed by increasing B? And we remove the largest in [a,b] (which is the one with the largest index) first? 
+
+        This matches: we are processing constraints by increasing B, and we want to leave the free positions at the left (low indices) as -1 for as long as possible.
+
+ 72. Therefore, we change the flipping part to the while loop that removes the largest available position in [a,b] one by one.
+
+ 73. We'll update the code accordingly.
+
+ 74. Let's test with sample: 
+        n=3, k=1: [0,0,0] and [1,3] c=1: 
+            base_interval = -3, d=1-(-3)=4, t=2.
+            Then we remove the two largest in [1,3]: 
+                First: remove 3 -> then remove 2 -> then ans: [ -1, 1, 1] -> output: "-1 1 1" -> but we want the sequence for positions 1..n: 
+                position1: -1, position2: 1, position3: 1 -> "-1 1 1"
+
+        Lex smaller than "1 1 -1".
+
+ 75. But the sample output #1 was "1 1 -1" for a different set of constraints? 
+        Constraints: 
+            1 2 2
+            2 3 -1
+        Our algorithm for the first constraint [1,2] (c=2): 
+            base_interval = -2, d=4, t=2.
+            The largest available in [1,2]: 
+                The available_set = {1,2,3}
+                The largest in [1,2] is 2 -> remove 2 -> then the next largest in [1,2] is 1 -> remove 1.
+            Then the sequence becomes: [1,1,-1] -> which is the same as the sample.
+
+        Why did we not get the lex smaller [-1,1]? 
+          Because the constraint [1,2] requires the sum of positions1 and 2 to be at least 2. 
+          With [-1,1] the sum=0, which is not enough. 
+          So we have to flip two: [1,1] -> so we get [1,1,-1] for the entire sequence.
+
+        And then the second constraint [2,3] is satisfied? 
+          base_interval = base_prefix[3]-base_prefix[1] = -3 - (-1) = -2? 
+          But now we have flipped position2: so the sequence: 
+              position1:1, position2:1, position3:-1 -> sum for [2,3] = 1 + (-1) = 0, which is >= -1.
+
+        And [1,1,-1] is the output.
+
+        But is there a lex smaller sequence? 
+          We have to have two 1's in the first two positions? 
+          The only free positions were the first two? 
+          So we have to set both to 1 -> [1,1,-1] is the only possibility? 
+
+        But what about [1,1,1]? 
+          That is lex larger than [1,1,-1]? 
+          [1,1,-1] vs [1,1,1]: at position3: -1 < 1 -> so [1,1,-1] is lex smaller.
+
+        Therefore, our algorithm produces the sample output #1.
+
+        However, note: the sample input #1: 
+            Input: "3 2\n0 0 0\n1 2 2\n2 3 -1"
+
+        We remove for the first constraint the two largest in [1,2] -> which are 2 and 1? 
+          Actually, the set is {1,2,3}. 
+          Step1: the largest in [1,2] is 2 -> remove 2 -> set becomes {1,3}
+          Step2: the largest in [1,2] is 1 -> remove 1 -> set becomes {3}
+          Then the sequence: position1=1, position2=1, position3=-1.
+
+        That matches.
+
+ 76. Therefore, we change the flipping part to:
+
+            long long t = (d+1)/2;
+            long long count_avail = available_tree.range_query(a, b);
+            if (count_avail < t) {
+                cout << "Impossible\n";
+                return 0;
+            }
+
+            while (t--) {
+                auto it = available_set.upper_bound(b); // first element > b
+                if (it == available_set.begin()) {
+                    // This means there is no element <= b -> but we checked count_avail, so it should not happen.
+                    cout << "Impossible\n";
+                    return 0;
+                }
+                it--;
+                // Now *it is the largest available <= b.
+                if (*it < a) {
+                    // This element is below a -> but we have at least t available in [a,b] -> so this should not happen.
+                    cout << "Impossible\n";
+                    return 0;
+                }
+                int pos = *it;
+                available_set.erase(it);
+                available_tree.update(pos, -1);
+                flip_tree.update(pos, 1);
+                ans[pos] = 1;
+            }
+
+ 77. We'll run this.
+
+ 78. Note: the inner while loop runs t times per constraint. The total t over all constraints is at most the number of free positions, so O(n) and each removal O(log n) -> total O(n log n). 
+
+ 79. Let's code accordingly.
+
+ 80. We also note: the available_tree update: we do available_tree.update(pos, -1) immediately, so the next constraint sees the updated count.
+
+ 81. Final code:
+
+        #include <iostream>
+        #include <vector>
+        #include <set>
+        #include <algorithm>
+        #include <cctype>
+        #include <cmath>
+        #include <cstdio>
+        using namespace std;
+
+        class Fenw {
+            vector<int> tree;
+            int n;
+        public:
+            Fenw(int size) {
+                n = size;
+                tree.assign(n+1, 0);
+            }
+            void update(int idx, int delta) {
+                if (idx <= 0) return;
+                while (idx <= n) {
+                    tree[idx] += delta;
+                    idx += idx & -idx;
+                }
+            }
+            int query(int idx) { // returns prefix sum [1..idx]
+                if (idx <= 0) return 0;
+                int sum = 0;
+                while (idx) {
+                    sum += tree[idx];
+                    idx -= idx & -idx;
+                }
+                return sum;
+            }
+            int range_query(int l, int r) {
+                if (l > r) return 0;
+                if (l < 1) l = 1;
+                if (r > n) r = n;
+                return query(r) - query(l-1);
+            }
+        };
+
+        int main() {
+            ios_base::sync_with_stdio(false);
+            cin.tie(0);
+
+            int n, k;
+            cin >> n >> k;
+            vector<int> P(n);
+            for (int i = 0; i < n; i++) {
+                cin >> P[i];
+            }
+
+            // base_prefix: 1-indexed, base_prefix[0]=0, base_prefix[i] for i from 1 to n.
+            vector<long long> base_prefix(n+1, 0);
+            for (int i = 1; i <= n; i++) {
+                if (P[i-1] == 0) {
+                    base_prefix[i] = base_prefix[i-1] - 1;
+                } else {
+                    base_prefix[i] = base_prefix[i-1] + P[i-1];
+                }
+            }
+
+            Fenw flip_tree(n);   // to count the number of flips at each position (each flip is 1)
+            Fenw available_tree(n); // to count the available free positions (each free position is 1, then becomes 0 when flipped)
+
+            set<int> available_set;
+            vector<int> ans(n+1);   // 1-indexed: ans[1..n]
+
+            // Initialize the available_set and the trees for free positions.
+            for (int i = 1; i <= n; i++) {
+                if (P[i-1] == 0) {
+                    ans[i] = -1;
+                    available_tree.update(i, 1);
+                    available_set.insert(i);
+                } else {
+                    ans[i] = P[i-1];
+                }
+            }
+
+            // Read constraints and group by B.
+            vector<vector<pair<int, int>>> constraints_by_B(n+1); // constraints_by_B[b] = list of (a, c)
+            for (int i = 0; i < k; i++) {
+                int a, b, c;
+                cin >> a >> b >> c;
+                constraints_by_B[b].push_back(make_pair(a, c));
+            }
+
+            // For each B from 1 to n, sort the constraints by A descending.
+            for (int b = 1; b <= n; b++) {
+                if (constraints_by_B[b].size() == 0) continue;
+                sort(constraints_by_B[b].begin(), constraints_by_B[b].end(), [](const pair<int,int>& p1, const pair<int,int>& p2) {
+                    return p1.first > p2.first;   // larger A comes first
+                });
+            }
+
+            // Process each B from 1 to n in increasing order.
+            for (int b = 1; b <= n; b++) {
+                for (auto &con : constraints_by_B[b]) {
+                    int a = con.first;
+                    int c = con.second;
+                    // Compute base_interval: [a, b]
+                    long long base_interval = base_prefix[b] - base_prefix[a-1];
+                    long long already_flipped = flip_tree.range_query(a, b); // number of flips in [a,b]
+                    long long total_current = base_interval + 2 * already_flipped;
+                    long long d = c - total_current;
+
+                    if (d <= 0) {
+                        continue;
+                    }
+
+                    // t = ceil(d/2)
+                    long long t = (d+1) / 2;
+
+                    long long count_avail = available_tree.range_query(a, b);
+                    if (count_avail < t) {
+                        cout << "Impossible" << endl;
+                        return 0;
+                    }
+
+                    while (t--) {
+                        auto it = available_set.upper_bound(b);
+                        if (it == available_set.begin()) {
+                            cout << "Impossible" << endl;
+                            return 0;
+                        }
+                        it--;
+                        if (*it < a) {
+                            cout << "Impossible" << endl;
+                            return 0;
+                        }
+                        int pos = *it;
+                        available_set.erase(it);
+                        available_tree.update(pos, -1);
+                        flip_tree.update(pos, 1);
+                        ans[pos] = 1;
+                    }
+                }
+            }
+
+            for (int i = 1; i <= n; i++) {
+                if (i > 1) cout << " ";
+                cout << ans[i];
+            }
+            cout << endl;
+
+            return 0;
+        }
+
+ 82. Let's test with the sample that had two free positions and one constraint: 
+        "2 1
+         0 0
+         1 2 0"
+
+        base_prefix: [0, -1, -2]
+        Constraint: [1,2] with c=0: 
+            base_interval = base_prefix[2]-base_prefix[0] = -2.
+            already_flipped=0 -> total_current = -2.
+            d=0-(-2)=2 -> t= (2+1)/2 = 1.
+            count_avail = available_tree.range_query(1,2)=2.
+            Then we do one flip: 
+                it = available_set.upper_bound(2) -> returns available_set.end()? 
+                Then we do it-- -> points to the last element? 
+                The available_set = {1,2}. 
+                The largest <=2 is 2? 
+                So we remove 2: then the sequence becomes: [-1,1] -> sum = -1+1=0 -> satisfies the constraint.
+
+            Output: "-1 1"
+
+        But lex smallest is [-1,1]? 
+            And if we flipped position1: [1,-1] -> sum=0 -> also satisfies. 
+            But [-1,1] is lex smaller than [1,-1]? 
+                First element: -1 vs 1 -> -1 is smaller -> so [-1,1] is lex smaller.
+
+            Why did we flip position2? Because we flip the largest available in [1,2]. 
+            This leaves position1 as -1 -> which is lex smallest.
+
+        Therefore, it is correct.
+
+ 83. We hope it passes the tests.
+
+ 84. Note: the constraints might be negative? But we do (d+1)/2 only when d>0. So if d is negative, we skip.
+
+ 85. Submit the code.

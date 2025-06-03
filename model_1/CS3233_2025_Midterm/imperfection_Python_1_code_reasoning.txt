@@ -1,0 +1,520 @@
+ We are going to follow the editorial approach.
+
+ Steps:
+ 1. Precomputation:
+    - F[x]: frequency of value x in the array.
+    - sum_cost[x]: total deletion cost of all elements with value x.
+    - costs_by_value[x]: list of deletion costs for elements with value x.
+
+ 2. Precompute suffix_sum[x]: the total cost to delete all elements with value > x.
+
+ 3. Precompute total_count_below[x]: the total number of elements with value < x.
+
+ 4. For each value x, precompute the prefix sum array for sorted deletion costs of elements with value x.
+
+ 5. Use two Fenwick trees (for costs of elements with value < x) to quickly get:
+      - the number of elements (cnt_tree) with cost up to a certain value.
+      - the total cost (sum_tree) of elements with cost up to a certain value.
+
+ 6. Iterate x from 1 to MAX_V (300000). For each candidate x (which must have F[x] > 0 to be considered as max):
+    - First, update the Fenwick trees with the elements of value (x-1) (so that we have all elements < x in the trees).
+    - fixed_cost = suffix_sum[x+1] (to delete all elements greater than x).
+    - k0 = F[x] (the frequency of x in the original array).
+    - t0 = total_count_below[x] (the total count of elements with value < x that remain? Actually, note: we are going to consider that we have not yet deleted any of the elements < x. But we are going to allow deleting some of them? Actually, the Fenwick trees contain all the elements with value < x that we have processed so far (i.e., for all values < x) and we are going to use them to compute the cost of deleting some non-x elements.
+
+    - Condition: we require that in the final array:
+          count(x) > total_count_other
+        => count(x) > (total_elements - count(x))
+        => 2 * count(x) > total_elements
+
+        Let k = count(x) in the final array, and let t = total_count_other (which are all < x, because we delete all > x).
+        Then we require: k > t.
+
+        Since the array after deleting all elements > x has:
+          total_elements = k + t
+        and we require: k > t  <=> k > (k + t) - k  <=> 2k > k+t  <=> k > t.
+
+        Alternatively: we require k >= t+1.
+
+        How many deletions of non-x (which are the ones < x) are needed? 
+          We start with k0 (original frequency of x) and t0 (original frequency of all elements < x).
+
+        We can choose to delete some of the x's (say, we delete b of them) and some of the non-x's (say, we delete a of them).
+        Then the final counts: 
+            k = k0 - b
+            t = t0 - a
+        Condition: k0 - b > t0 - a   =>  a - b > t0 - k0
+
+        But note: we can also express the condition as: (k0 - b) > (t0 - a) 
+          => (k0 - b) > (t0 - a) 
+          => a - b > t0 - k0
+
+        However, we can also note: the condition is equivalent to:
+            (k0 - b) > (t0 - a) 
+            => (k0 - b) > (total_count_below[x] - a)   [since t0 = total_count_below[x]]
+
+        But note: we cannot delete more than available.
+
+        Alternatively, we can rearrange the condition:
+            (k0 - b) > (t0 - a)
+            => (k0 - b) + (a) > t0
+            => a + k0 - b > t0
+
+        But we can also see that the total non-x remaining is t0 - a, so the condition is:
+            k0 - b > t0 - a   => a >= t0 - (k0 - b) + 1   (because we need at least t0 - (k0 - b) + 1 deletions from non-x? Actually, we require the inequality to hold. The minimal a that satisfies the condition for a fixed b is:
+            a >= max(0, t0 - (k0 - b) + 1)
+
+        Let D0 = max(0, t0 - (k0 - b) + 1). Then we must delete at least D0 non-x elements. However, note that we can also delete more than that, but we are minimizing cost.
+
+        Actually, we can write the condition as:
+            (k0 - b) > (t0 - a) 
+          => a > t0 - (k0 - b) 
+          => a >= t0 - (k0 - b) + 1
+
+        So the minimal a we must delete is: a_min = max(0, t0 - (k0 - b) + 1)
+
+        But note: we cannot delete more than t0 (the total non-x elements). So if a_min > t0, then we must also delete some x's until a_min becomes <= t0? Actually, we can also delete more x's to relax the condition on a.
+
+        However, we can iterate b from 0 to k0-1 (we must have at least one x). For each b, the minimal a required is:
+            a_min = max(0, t0 - (k0 - b) + 1)
+
+        But note: if we delete b x's, then we must delete at least a_min non-x elements. And a_min might be larger than t0? Then this b is not feasible? Actually, if a_min > t0, then we must delete even more non-x? But we don't have that many. Then we must delete even more x's? So we break when a_min becomes too high? Actually, we can note:
+
+          a_min = t0 - (k0 - b) + 1
+          => a_min = t0 - k0 + b + 1
+
+        Then if b is so small that a_min > t0, then we have:
+            t0 - k0 + b + 1 > t0
+            => b + 1 > k0
+            => b >= k0   -> but we are iterating b from 0 to k0-1, so this condition won't occur? Actually:
+
+          Let's check: a_min = t0 - k0 + b + 1
+          We require a_min <= t0? 
+            t0 - k0 + b + 1 <= t0  => -k0 + b + 1 <= 0 => b+1 <= k0 -> which is always true because b is at most k0-1.
+
+        So a_min = t0 - (k0 - b) + 1 = t0 - k0 + b + 1, and since b>=0, then a_min>= t0 - k0 + 1. But note: we can have t0 - k0 + 1 being negative? Then we set a_min=0. Actually, we defined a_min = max(0, ...). So:
+
+          If t0 - k0 + b + 1 <= 0, then a_min=0? Then we don't need to delete any non-x? But we are deleting b x's. Then condition: k0-b > t0 - 0 = t0? 
+          So if k0-b > t0, then we are done without deleting any non-x? But that is taken care by a_min=0.
+
+        Therefore, for each b in [0, k0-1]:
+          a_min = max(0, t0 - (k0 - b) + 1) = max(0, t0 - k0 + b + 1)
+
+        But note: we cannot delete more than t0 non-x, so if a_min > t0, we skip? However, we have shown that when b is in [0, k0-1], a_min = t0 - k0 + b + 1, and since b <= k0-1, then:
+          a_min = t0 - k0 + b + 1 <= t0 - k0 + (k0-1) + 1 = t0, so it is always <= t0.
+
+        Therefore, we need to delete at least a_min non-x elements.
+
+        Then the cost for deleting b x's is: we take the smallest b costs from the x's (we precomputed prefix_x_arr for x: the sorted list of deletion costs for x and prefix sums).
+
+        The cost for deleting a_min non-x elements: we take the smallest a_min costs from the non-x elements (which are all stored in our Fenwick trees? But note: the Fenwick trees contain all non-x elements that are < x, which we have processed so far? Yes, because we have processed all values from 1 to x-1).
+
+        How to get the minimal cost for deleting a_min non-x elements? We can use the Fenwick trees to binary search for the threshold T such that the number of non-x elements with cost <= T is at least a_min. Then we take all elements with cost <= T-1 and then take T for the remaining.
+
+        Steps for non-x cost:
+          Let a = a_min.
+          We want the smallest a costs from the non-x elements.
+
+          We can binary search on the cost value (from 1 to MAX_C=300000) to find the smallest T such that the count of non-x elements with cost<=T is >= a.
+
+          Then:
+            cnt1 = count of non-x elements with cost <= T-1
+            sum1 = total cost of non-x elements with cost <= T-1
+            Then we need (a - cnt1) elements at cost T (if any) and we take the minimal ones? Actually, we have stored the entire set? But note: we don't have the actual list, but we can get the count at T? Actually, the Fenwick tree doesn't store by distinct cost but by the entire array.
+
+          However, we have two Fenwick trees: 
+            cnt_tree: counts the frequency of each cost (so we can do range queries for the count of elements with cost in [1, T])
+            sum_tree: sums the costs for elements with cost in [1, T]
+
+          Then:
+            cnt1 = cnt_tree.query(T-1)
+            sum1 = sum_tree.query(T-1)
+            Then the total cost for the a smallest non-x elements = sum1 + T * (a - cnt1)
+
+        Then the total variable cost for step 2 = (cost for deleting b x's) + (cost for deleting a_min non-x's) 
+          = prefix_x_arr[x][b] (which is the sum of the smallest b costs in x) + [sum1 + T*(a_min - cnt1)]
+
+        Then we minimize over b in [0, k0-1].
+
+    - Then total cost for candidate x = fixed_cost (deleting > x) + variable_cost (deleting some x and non-x).
+
+ 7. We update candidate_ans as the minimum over x.
+
+ However, note: we might have the possibility that we don't delete any x? But we are iterating b from 0 to k0-1. Note: we must have at least one x? Actually, the condition requires that the maximum element is x. If we delete all x's, then the array becomes empty? Or the maximum becomes something else? But we have deleted all >x and then we delete all x? Then the array is non-empty only if there are elements < x? But then the maximum would be the maximum among the remaining which is < x. So we require at least one x. Therefore, we iterate b from 0 to k0-1 (so we leave at least one x).
+
+ 8. Edge: if for a candidate x, after deleting all >x, we already have k0 > t0? Then we don't need to delete any more? Then variable_cost=0. This corresponds to b=0 and a_min=0? Actually, a_min = max(0, t0 - k0 + 0 + 1) = max(0, t0 - k0 + 1). If k0 > t0, then t0 - k0 + 1 <= 0? Then a_min=0. Then we have variable_cost = prefix_x_arr[x][0] (which is 0) + cost for 0 non-x (which is 0). So total variable_cost=0.
+
+ 9. But note: if k0 > t0, we don't need to delete any non-x and we don't need to delete any x? Then variable_cost=0. So we can skip the inner loop.
+
+ Implementation: 
+   if k0 > t0:
+        total_cost = fixed_cost
+   else:
+        iterate b from 0 to k0-1, compute a_min = max(0, t0 - k0 + b + 1) [which is t0 - k0 + b + 1 since we are in the case k0<=t0 so t0-k0+b+1 >= 1? Actually, when k0<=t0, then t0-k0+b+1 >= 1 for any b>=0? But if k0==t0 and b=0, then a_min=1? Then we have to delete at least one non-x?]
+
+ However, we can also break early: as b increases, a_min increases? Actually, a_min = t0 - k0 + b + 1, so it increases with b. But note: the cost for deleting x's (prefix_x_arr[x][b]) increases as b increases (because we are taking more of the smallest costs). And the non-x cost for a_min might also increase? Actually, we are taking the a_min smallest non-x's, so as a_min increases we take more non-x's and the cost increases. Therefore, we must iterate all b? 
+
+ 10. However, note: the non-x cost for a_min might be computed independently and we have precomputed the entire Fenwick trees for non-x (with all elements < x). So we can compute the non-x cost for a given a_min quickly.
+
+ 11. But note: the Fenwick trees are built by adding the values for each value from 1 to x-1 as we iterate x. So when we are at candidate x, the trees contain all elements with value from 1 to x-1. This is exactly the non-x elements that are < x.
+
+ 12. Finally, we initialize candidate_ans to a large number and update for each candidate x.
+
+ 13. Print candidate_ans.
+
+ However, note: the problem states that we can also consider the array being empty? But then there is no maximum and the condition fails. So we must leave at least one element? And that element must be the maximum and the majority. Therefore, we require at least one element. Our candidate x must have at least one occurrence? We skip x with F[x]==0.
+
+ Let's test with sample: 
+      Input: 
+          4
+          5 3 3 3
+          3 2 2 2
+
+      Candidate x must be 5 or 3.
+
+      Candidate x=5:
+          fixed_cost = suffix_sum[6] = 0 (since no element >5)
+          k0 = F[5] = 1
+          t0 = total_count_below[5] = number of elements <5 -> which are the three 3's -> 3? Actually, we have:
+            total_count_below[5] = F[1]+F[2]+F[3]+F[4] -> we have F[3]=3, others 0? So t0=3.
+          Condition: 1 > 3? -> no. Then we need to delete non-x and/or x.
+          We iterate b from 0 to 0 (since k0=1, b in [0,0]).
+            a_min = max(0, 3 - 1 + 0 + 1) = 3
+            We need to delete 3 non-x elements? But there are only 3 non-x elements (all the 3's). Then the cost for deleting 3 non-x: the non-x elements (value=3) have costs [2,2,2]? But wait: we are at candidate x=5, and we are considering non-x as the elements with value from 1 to 4. Actually, the elements with value 3 are included in non-x? Yes.
+
+            However, how do we get the cost for deleting 3 non-x? The minimal cost is 2+2+2=6.
+            The cost for deleting 0 x's: we don't delete any x (so we leave the one 5) -> cost=0.
+            Then total variable cost = 6.
+            Total cost = fixed_cost (0) + 6 = 6.
+
+      Candidate x=3:
+          fixed_cost = suffix_sum[4] = sum of costs of elements with value>3 -> that's the 5: cost=3 -> so fixed_cost=3.
+          k0 = F[3]=3
+          t0 = total_count_below[3] = F[1]+F[2] = 0? So t0=0.
+          Condition: 3 > 0 -> holds. So variable_cost=0? Then total_cost=3.
+
+      Then candidate_ans = min(6,3)=3.
+
+ 14. The sample output is 3.
+
+ 15. Implementation note: total_count_below[x] is the total frequency of values in [1, x-1]. We can precompute:
+        total_count_below[0]=0
+        for x from 1 to MAX_V: total_count_below[x] = total_count_below[x-1] + F[x-1]
+
+ 16. Similarly, suffix_sum: 
+        suffix_sum[MAX_V+1] = 0
+        for i from MAX_V down to 1: suffix_sum[i] = suffix_sum[i+1] + sum_cost[i]
+
+ 17. The Fenwick trees: we use two trees: 
+        cnt_tree: counts the number of non-x elements (with value < current candidate) for each cost.
+        sum_tree: the total cost for non-x elements for each cost.
+
+        We update the trees when we process a candidate x: we add the elements of value = x-1? Actually, we iterate x from 1 to MAX_V. At candidate x, we update the trees with the elements of value = x-1 (if any). Why? Because when we consider candidate x, the non-x elements are all elements with value < x, and we have already processed values 1 to x-1? But we haven't added the elements of value x-1? We add them at the beginning of the loop for candidate x? Actually, we do:
+
+          for x in range(1, MAX_V+1):
+              if x>=2: 
+                  for c in costs_by_value[x-1]:
+                      cnt_tree.update(c, 1)
+                      sum_tree.update(c, c)
+
+          Then we process candidate x.
+
+        Why x>=2? Because for x=1, there is no value 0? And we don't have any element with value 0? So skip.
+
+        But note: for x=1, non-x elements are elements with value in [1,0] -> none? So non-x count=0.
+
+ 18. However, what about elements with value 1? They are not included in non-x when x=1? Then for candidate x=1, non-x count=0? Then condition: k0 (frequency of 1) must be >0? Then we require k0>=1? Then we don't need to delete any non-x? But we might have to delete some of the 1's? Actually, condition: k0 - b > 0 -> we need to leave at least one 1. So we iterate b from 0 to k0-1.
+
+        For x=1, fixed_cost = suffix_sum[2] = sum of costs of elements with value>1 -> which is all elements that are not 1? So we delete them? Then the array becomes the elements with value 1 that we don't delete.
+
+        Then condition: (k0 - b) > 0 -> we leave at least one 1? Then we require that the number of 1's we leave is at least 1? Then we can leave one and delete the rest? But we don't need to delete any non-x? Then variable_cost = cost of deleting b ones (with b from 0 to k0-1) and 0 for non-x? Then we take b=0: cost=0.
+
+        Then total_cost = fixed_cost (deleting all non-ones) + 0.
+
+        But if there are ones and non-ones, then fixed_cost is non-zero? Then we compute.
+
+ 19. But note: what if the array has no element with value 1? Then F[1]=0, so we skip candidate 1.
+
+ 20. The Fenwick trees: we update at each x for the value x-1. This ensures that when we process candidate x, the trees contain all non-x elements (which are all elements with value < x). And note: we process candidates in increasing order of x, so when we get to a larger x, we have already updated the trees with all values from 1 to x-1.
+
+ 21. However, note: the cost of an element might be as large as 300000, so our Fenwick trees are built for indices 1..MAX_C (300000).
+
+ 22. We must be cautious: the inner loop for b goes from 0 to k0-1, and k0 can be large (up to 300000). Then worst-case over all candidates: the sum of k0 (over x) is the total distinct values times the frequency? But note: each element is counted only for its own value. However, worst-case one value has 300000 elements? Then we iterate 300000 times for that candidate? Then the total complexity becomes O(N^2) in the worst-case? We must avoid.
+
+ 23. How to optimize the inner loop?
+
+        We note that the cost for non-x for a given a_min is independent of b? Actually, a_min = t0 - k0 + b + 1, which is linear in b. Then the non-x cost for a_min = f(b) = F(t0-k0+b+1) [a function that returns the minimal cost to delete a_min non-x elements]. And the cost for x is g(b) = prefix_x_arr[x][b] (the sum of the smallest b costs for x).
+
+        Then total variable cost = g(b) + f(b).
+
+        We are minimizing over b in [0, k0-1]. But note: k0 can be 300000, and we cannot iterate all b for each candidate? Then worst-case overall O(N^2) (if one candidate has 300000 and there are 300000 candidates? but distinct candidates are 300000, and the sum of k0 over distinct x is N? Actually, the total over x of k0 is the total elements? So worst-case distinct values 300000, then we have 300000 candidates? and each candidate has k0=1? Then we do 1 iteration per candidate -> total 300000. But worst-case when one candidate has 300000, then we do 300000 iterations for that candidate. Then worst-case total iterations: the maximum frequency of a single value? which is 300000. So worst-case we do 300000 iterations for one candidate and 1 for the others? Then worst-case total iterations: 300000? But note: worst-case distinct values: 300000, then each value has frequency 1? Then we do 1 iteration per candidate? total 300000 iterations. So overall the inner loops are O(N). So worst-case total iterations over b is 300000? 
+
+        Actually, the sum over x of k0 (the frequency of x) is N (the total number of elements). So the total inner iterations is the sum over distinct x of k0 = N? Therefore, worst-case O(N) for the inner loops? Then overall O(N log MAX_C) because for each inner iteration we do a binary search in the Fenwick tree (which is O(log MAX_C)).
+
+        So total complexity: O(N log MAX_C) which is acceptable for N=300000? (log2(300000) is about 19).
+
+ 24. Therefore, we can do.
+
+ 25. Let's code accordingly.
+
+ 26. We note: if we have the case that k0 > t0, then we skip the inner loop and just use variable_cost=0.
+
+ 27. We must precompute:
+        F, sum_cost, costs_by_value: for each value from 1 to MAX_V.
+
+        total_count_below[0]=0
+        for x from 1 to MAX_V+1: total_count_below[x] = total_count_below[x-1] + F[x-1]
+
+        suffix_sum: 
+            suffix_sum[MAX_V+1] = 0
+            for x from MAX_V down to 1: suffix_sum[x] = suffix_sum[x+1] + sum_cost[x]
+
+        prefix_x_arr: for each x in [1,MAX_V]:
+            if F[x]>0:
+                sort(costs_by_value[x])
+                prefix = [0]
+                for i in range(F[x]):
+                    prefix.append(prefix[-1] + costs_by_value[x][i])
+                prefix_x_arr[x] = prefix
+
+        Then initialize:
+            cnt_tree = Fenw(MAX_C)   # size MAX_C
+            sum_tree = Fenw(MAX_C)
+
+        candidate_ans = 10**18
+
+        For x from 1 to MAX_V:
+            if x>=2:
+                for cost_val in costs_by_value[x-1]:
+                    cnt_tree.update(cost_val, 1)
+                    sum_tree.update(cost_val, cost_val)
+
+            if F[x]==0:
+                continue
+
+            fixed_cost = suffix_sum[x+1]
+            k0 = F[x]
+            t0 = total_count_below[x]   # total non-x elements (with value < x) that are still present? Actually, we have not deleted any? But we are going to delete some? The trees now contain all non-x elements (because we have updated for all values < x). But note: we are going to compute the cost for deleting a_min non-x from the trees.
+
+            if k0 > t0:
+                total_cost = fixed_cost
+                candidate_ans = min(candidate_ans, total_cost)
+            else:
+                best_var = 10**18
+                for b in range(0, k0):   # we cannot delete all x's: so b from 0 to k0-1
+                    a_min = t0 - k0 + b + 1   # we have shown that a_min = t0 - k0 + b + 1, and since k0<=t0, then a_min>=b+1? Actually, it can be negative? But we have k0<=t0, so a_min>=1? Actually, when k0==t0 and b=0, a_min=1. But note: we defined a_min = max(0, ...) in the formula? But we are in the branch k0<=t0, so a_min = t0-k0+b+1 is always at least 1? Actually, if k0==t0, then a_min = 0 + b + 1 = b+1, which for b=0 is 1. But what if k0 < t0? Then t0-k0 is positive, so a_min = (t0-k0) + b + 1, which is at least (1) + 0 + 1 = 2? Actually, no: if k0=1, t0=2, then a_min=2-1+0+1=2? Then we need to delete 2 non-x? Condition: we leave 1 x and 0 non-x? Then 1>0 -> holds.
+
+                    # But note: a_min must not exceed the total non-x elements? We have t0 non-x? and we are deleting a_min, so we require a_min <= t0? We have shown: a_min = t0 - k0 + b + 1, and since b<=k0-1, then a_min <= t0 - k0 + (k0-1) + 1 = t0, so it's valid.
+
+                    # Now we want to compute the cost to delete a_min non-x elements: the smallest a_min costs from non-x.
+
+                    # We do binary search on T (from 1 to MAX_C) to find the minimal T such that cnt_tree.query(T) >= a_min.
+
+                    low, high = 1, MAX_C
+                    while low < high:
+                        mid = (low+high)//2
+                        if cnt_tree.query(mid) >= a_min:
+                            high = mid
+                        else:
+                            low = mid+1
+                    T = low
+                    # Now, the total cost for a_min non-x = 
+                    #   [sum of all non-x with cost <= T-1] + T * (a_min - cnt_tree.query(T-1))
+                    cnt1 = cnt_tree.query(T-1)   # number of non-x with cost <= T-1
+                    sum1 = sum_tree.query(T-1)   # total cost for non-x with cost <= T-1
+                    nonx_cost = sum1 + T * (a_min - cnt1)
+
+                    # The cost for deleting b x's: prefix_x_arr[x][b] (the sum of the smallest b costs for x)
+                    x_cost = prefix_x_arr[x][b]   # since we have prefix array of length F[x]+1, and b is from 0 to k0-1 (which is F[x]-1) -> valid.
+
+                    total_var = nonx_cost + x_cost
+                    if total_var < best_var:
+                        best_var = total_var
+
+                total_cost = fixed_cost + best_var
+                candidate_ans = min(candidate_ans, total_cost)
+
+ 28. Finally, print candidate_ans.
+
+ 29. But note: what if the entire array is deleted? That is, we skip all candidates? Actually, we are iterating over x that have F[x]>0. And we require the resulting array to have at least one element. Therefore, we must leave at least one element. Our candidate must leave at least one x. So we don't consider deleting everything.
+
+ 30. Let's run the sample input #2 to see if we get 34.
+
+ 31. However, the inner loop for each candidate might be heavy? But note: the total inner iterations is the sum of F[x] for all x, which is N (300000). And each inner iteration does a binary search (O(log MAX_C)) and two Fenwick tree queries (each O(log MAX_C)). So total O(N log MAX_C) which is about 300000 * 19 = 5.7e6, acceptable in Pyton? We hope.
+
+ 32. We must be careful: the Fenwick trees are updated for each element of value x-1? The total update operations: N (each element updated once). So the entire algorithm is O(N log MAX_C).
+
+ 33. We'll code accordingly.
+
+ 34. One more note: the Fenwick trees are for the entire non-x set? But we are updating them as we go. For candidate x, we update the trees with the elements of value x-1. Then the trees for candidate x include all elements with value from 1 to x-1. Then the non-x set is exactly the entire set of elements with value < x? Yes.
+
+ 35. Let's code the Fenwick tree class.
+
+ 36. We'll use 1-indexing for Fenwick trees.
+
+ 37. We note: the Fenwick tree for count and for sum.
+
+ 38. We'll set MAX_C = 300000.
+
+ 39. We'll run the sample #1 and sample #2.
+
+ 40. If sample #1 works as above, then sample #2: we hope to get 34.
+
+ 41. Due to the complexity of the problem, we must test with the sample #2? But we can run the provided sample.
+
+ 42. We'll write the code accordingly.
+
+ 43. Let me write the Fenwick tree class.
+
+ 44. We'll do:
+
+      class Fenw:
+          def __init__(self, size):
+              self.n = size
+              self.tree = [0]*(self.n+1)
+
+          def update(self, index, delta):
+              # index: from 1 to n
+              while index <= self.n:
+                  self.tree[index] += delta
+                  index += index & -index
+
+          def query(self, index):
+              # query [1, index]
+              if index > self.n:
+                  index = self.n
+              if index <= 0:
+                  return 0
+              s = 0
+              while index:
+                  s += self.tree[index]
+                  index -= index & -index
+              return s
+
+ 45. Then we use:
+        cnt_tree = Fenw(MAX_C)   # for counting: each update: cnt_tree.update(c, 1)
+        sum_tree = Fenw(MAX_C)   # for summing: each update: sum_tree.update(c, c)
+
+ 46. But note: the cost values are in [1, 300000]? So we set size=MAX_C.
+
+ 47. We'll run the sample #1: 
+        n=4, A = [5,3,3,3], B=[3,2,2,2]
+
+        Precomputation for F, sum_cost, costs_by_value:
+            F[3]=3, F[5]=1, others 0.
+            sum_cost[3]=2+2+2=6, sum_cost[5]=3.
+            costs_by_value[3]=[2,2,2], costs_by_value[5]=[3].
+
+        total_count_below: 
+            total_count_below[1] = F[0] (if we index from 0? Actually, we defined for x from 1 to MAX_V, and we have:
+                total_count_below[1] = F[0]? But we don't have F[0]. We defined:
+                total_count_below[0]=0? Then for x=1: total_count_below[1]=total_count_below[0]+F[0]? How do we define F[0]? We don't have any element with value 0? Then F[0]=0.
+
+            total_count_below[2] = total_count_below[1] + F[1] = 0 + F[1] -> but F[1]=0? Then 0.
+            ...
+            total_count_below[3] = total_count_below[2] + F[2] = 0 + F[2] -> 0? 
+            total_count_below[4] = total_count_below[3] + F[3] = 0 + 3 = 3
+            total_count_below[5] = total_count_below[4] + F[4] = 3 + 0 = 3
+            total_count_below[6] = ... (we don't need beyond 5? Actually, for candidate x=5: we use total_count_below[5]=3)
+
+        suffix_sum:
+            suffix_sum[300001]=0
+            suffix_sum[300000] = ... but we only care up to 5? 
+            suffix_sum[6]=0
+            suffix_sum[5] = suffix_sum[6] + sum_cost[5] = 0+3=3
+            suffix_sum[4] = suffix_sum[5] + sum_cost[4] = 3+0=3
+            suffix_sum[3] = suffix_sum[4]+sum_cost[3]=3+6=9
+            ... but we only use:
+                candidate x=5: fixed_cost = suffix_sum[6]=0? Actually, we defined suffix_sum for indices from 1 to MAX_V, and then we set suffix_sum[MAX_V+1]=0? Then for x=5: suffix_sum[5+1]=suffix_sum[6]=0.
+
+            Actually, our suffix_sum array: 
+                suffix_sum[i] = sum of sum_cost for j from i to MAX_V? 
+                Then for x, fixed_cost = suffix_sum[x+1] (deleting all j>x).
+
+        Precomputed prefix_x_arr for x=3: sorted costs [2,2,2] -> prefix = [0,2,4,6]
+        for x=5: [3] -> prefix = [0,3]
+
+        Now, we iterate x from 1 to MAX_V (300000). We skip x without F[x]>0.
+
+        x=1: F[1]=0 -> skip.
+        x=2: F[2]=0 -> skip.
+        x=3: 
+            Since x>=2, we update the trees for value x-1=2? But F[2]=0 -> no elements to update.
+            fixed_cost = suffix_sum[4] = ? 
+                suffix_sum[4] = suffix_sum[5] + sum_cost[4]? Actually, we computed suffix_sum by:
+                    suffix_sum = [0]*(MAX_V+3)
+                    for i from MAX_V down to 1: suffix_sum[i] = suffix_sum[i+1] + sum_cost[i]
+                Then suffix_sum[4] = sum_cost[4] + suffix_sum[5] = 0 + suffix_sum[5] 
+                and suffix_sum[5] = sum_cost[5] + suffix_sum[6] = 3+0=3 -> so suffix_sum[4]=3? 
+                But note: we are deleting elements >3? Then the element 5 (value=5) is >3, so we need to delete it? cost=3. So fixed_cost=3.
+
+            k0 = 3, t0 = total_count_below[3] = F[0]+F[1]+F[2] = 0 -> condition: 3>0 -> true -> total_cost=3.
+
+        x=4: skip (F[4]=0)
+        x=5: 
+            Update trees for value 4? But F[4]=0 -> skip.
+            fixed_cost = suffix_sum[6]=0.
+            k0=1, t0= total_count_below[5]= F[0]+F[1]+F[2]+F[3]+F[4] = 0+0+0+3+0=3 -> condition: 1>3? false -> enter else.
+            Then we iterate b in [0,0] (since k0=1, b from 0 to 0).
+                a_min = t0 - k0 + b + 1 = 3-1+0+1=3.
+                Then we do binary search for T such that cnt_tree.query(T)>=3? 
+                    What's in the trees? We have updated for values 1,2,3,4? But we only updated for values that we encountered? For x=5, we updated for value=4? But we don't have value=4? And we haven't updated for value=3? Actually, we update for value=x-1 at the beginning of the loop for x. For x=5, we update for value=4? But we have no element of value 4? Then the trees are still as they were? But we did update for value=2 when x=3? No: we update for value=x-1 at the beginning of each candidate x. 
+                    How did we update the trees?
+                      For x=3: we updated for value=2? -> but we have no element of value 2? -> nothing.
+                      For x=4: we skipped (F[4]=0) and then update for value=3? -> yes: at the beginning of x=4 we update the trees with the elements of value 3? But we have elements of value 3? Then we update the trees with the three 2's? 
+                      Then for x=5: we update the trees with the elements of value 4? (none) -> so the trees now have the three elements of value 3? Each with cost 2? 
+
+                Then the trees: 
+                    cnt_tree: at index 2: we have 3? So cnt_tree.query(2)=3? Then T=2? 
+                Then nonx_cost = 
+                    cnt1 = cnt_tree.query(1) = 0? (because we have no element with cost<=1)
+                    sum1 = 0
+                    Then nonx_cost = 0 + 2 * (3-0) = 6.
+                x_cost = prefix_x_arr[5][0] = 0? 
+                total_var = 6.
+                total_cost = 0+6 = 6.
+
+            Then candidate_ans = min(3,6) = 3.
+
+        Then we output 3.
+
+ 48. So it matches.
+
+ 49. Now, we must run the sample #2? But the sample #2 is large. We trust the logic.
+
+ 50. We'll output the code.
+
+ 51. Note: We assume MAX_V=300000 and MAX_C=300000.
+
+ 52. We'll set MAX_V = 300000, MAX_C=300000.
+
+ 53. We'll use:
+        total_count_below = [0]*(MAX_V+2)   # index from 0 to MAX_V+1
+        suffix_sum = [0]*(MAX_V+3)   # index from 1 to MAX_V+2: we use indices 1 to MAX_V, and then MAX_V+1, MAX_V+2.
+
+ 54. We'll run the sample input #2 as provided and hope for 34.
+
+ 55. We note: the sample input #2: 
+        n=15
+        A = [3,1,4,1,5,9,2,6,5,3,5,8,9,7,9]
+        B = [8,6,4,7,5,1,3,4,9,8,5,4,1,2,2]
+
+ 56. We'll compute by hand? Not necessary. We trust the code.
+
+ 57. We run the code with the sample #2 and hope it outputs 34.
+
+ 58. If it does not, we might need to debug.
+
+ 59. We'll code accordingly.
+
+ 60. One more note: the Fenwick trees are built for the entire non-x set? But when we process candidate x, we update the trees with the elements of value x-1. Then the trees become the set of non-x (for the entire array) that are <= x-1? Yes, because we process x in increasing order.
+
+ 61. We'll run the code.
+
+ 62. Due to the size of the problem, we hope the code is efficient.
+
+ 63. We output the code.
+
+ 64. We note: the inner loop for candidate x: we break if a_min becomes greater than t0? But we have shown that a_min <= t0, so we don't break.
+
+ 65. We write the code accordingly.

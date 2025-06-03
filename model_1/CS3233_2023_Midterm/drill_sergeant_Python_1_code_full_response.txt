@@ -1,0 +1,229 @@
+To solve this problem, we need to dynamically maintain a sorted line of cat recruits and efficiently compute the sum of their discontentment after each insertion or removal operation. The discontentment of each cat depends on its adjacent cats in the line and predefined dislike relationships. The challenge is to handle up to 300,000 operations efficiently, especially since the total number of cats can be as large as \(10^9\), but only a subset (at most 300,000) is active at any time.
+
+### Approach
+1. **Data Structures**:
+   - **Treap (Balanced BST)**: This data structure helps maintain the current line of cats in sorted order, allowing \(O(\log N)\) time for insertions, deletions, and neighbor queries on average.
+   - **Linked List Dictionaries**: These dictionaries (`left_neighbor` and `right_neighbor`) store the immediate left and right neighbors of each cat in the line, enabling \(O(1)\) access during discontentment calculation.
+   - **Dislike Set**: A set of tuples stores pairs of cats that dislike each other for \(O(1)\) average time checks.
+
+2. **Operations**:
+   - **Insertion**:
+     1. Find the predecessor and successor of the new cat in the current set using the Treap.
+     2. Update the linked list dictionaries to reflect the new neighbors.
+     3. Adjust the total discontentment by subtracting the contributions of the affected neighbors (predecessor and successor).
+     4. Insert the new cat into the Treap.
+     5. Recalculate and add the discontentment of the new cat and its affected neighbors.
+   - **Removal**:
+     1. Retrieve the immediate neighbors of the cat to be removed from the linked list dictionaries.
+     2. Adjust the total discontentment by subtracting the contributions of the cat and its neighbors.
+     3. Update the linked list dictionaries to connect the neighbors directly.
+     4. Remove the cat from the Treap.
+     5. Recalculate and add the discontentment of the now adjacent neighbors.
+
+3. **Discontentment Calculation**:
+   - For each cat, determine its immediate left and right neighbors using the linked list dictionaries.
+   - Check the dislike relationships with these neighbors.
+   - The discontentment value is determined based on whether the cat dislikes its left neighbor, right neighbor, both, or neither.
+
+### Solution Code
+```python
+import sys
+import random
+
+sys.setrecursionlimit(500000)
+
+class Node:
+    __slots__ = ('key', 'priority', 'left', 'right')
+    def __init__(self, key):
+        self.key = key
+        self.priority = random.random()
+        self.left = None
+        self.right = None
+
+def split(node, key):
+    if node is None:
+        return (None, None)
+    if node.key <= key:
+        l, r = split(node.right, key)
+        node.right = l
+        return (node, r)
+    else:
+        l, r = split(node.left, key)
+        node.left = r
+        return (l, node)
+
+def merge(left, right):
+    if left is None:
+        return right
+    if right is None:
+        return left
+    if left.priority > right.priority:
+        left.right = merge(left.right, right)
+        return left
+    else:
+        right.left = merge(left, right.left)
+        return right
+
+def insert_into_treap(root, key):
+    l, r = split(root, key-1)
+    new_node = Node(key)
+    return merge(merge(l, new_node), r)
+
+def delete_from_treap(root, key):
+    l, r = split(root, key-1)
+    m, r = split(r, key)
+    return merge(l, r)
+
+def iterative_predecessor(root, key):
+    cur = root
+    candidate = None
+    while cur:
+        if cur.key < key:
+            candidate = cur.key
+            cur = cur.right
+        else:
+            cur = cur.left
+    return candidate
+
+def iterative_successor(root, key):
+    cur = root
+    candidate = None
+    while cur:
+        if cur.key > key:
+            candidate = cur.key
+            cur = cur.left
+        else:
+            cur = cur.right
+    return candidate
+
+def main():
+    data = sys.stdin.read().split()
+    it = iter(data)
+    n = int(next(it)); m = int(next(it))
+    dislike_set = set()
+    for _ in range(m):
+        x = int(next(it)); y = int(next(it))
+        if x > y:
+            x, y = y, x
+        dislike_set.add((x, y))
+    
+    q = int(next(it))
+    queries = []
+    for _ in range(q):
+        d = int(next(it)); z = int(next(it))
+        queries.append((d, z))
+    
+    total_discontent = 0
+    root = None
+    left_neighbor = {}
+    right_neighbor = {}
+    
+    def get_dc(x):
+        p_prev = left_neighbor.get(x, None)
+        p_next = right_neighbor.get(x, None)
+        if p_prev is not None and p_next is not None:
+            a = (min(x, p_prev), max(x, p_prev))
+            b = (min(x, p_next), max(x, p_next))
+            d_prev = a in dislike_set
+            d_next = b in dislike_set
+            if d_prev and d_next:
+                return 3233
+            elif d_prev:
+                return 323
+            elif d_next:
+                return 32
+            else:
+                return 3
+        elif p_prev is not None:
+            a = (min(x, p_prev), max(x, p_prev))
+            d_prev = a in dislike_set
+            if d_prev:
+                return 323
+            else:
+                return 3
+        elif p_next is not None:
+            b = (min(x, p_next), max(x, p_next))
+            d_next = b in dislike_set
+            if d_next:
+                return 32
+            else:
+                return 3
+        else:
+            return 3
+    
+    out_lines = []
+    for d, z in queries:
+        if d == 1:
+            p = iterative_predecessor(root, z) if root is not None else None
+            s = iterative_successor(root, z) if root is not None else None
+            if p is not None:
+                total_discontent -= get_dc(p)
+            if s is not None:
+                total_discontent -= get_dc(s)
+            left_neighbor[z] = p
+            right_neighbor[z] = s
+            if p is not None:
+                right_neighbor[p] = z
+            if s is not None:
+                left_neighbor[s] = z
+            root = insert_into_treap(root, z)
+            dc_p = get_dc(p) if p is not None else 0
+            dc_z = get_dc(z)
+            dc_s = get_dc(s) if s is not None else 0
+            total_discontent += dc_p + dc_z + dc_s
+        else:
+            p = left_neighbor.get(z, None)
+            s = right_neighbor.get(z, None)
+            to_remove = 0
+            if p is not None:
+                to_remove += get_dc(p)
+            to_remove += get_dc(z)
+            if s is not None:
+                to_remove += get_dc(s)
+            total_discontent -= to_remove
+            if p is not None:
+                right_neighbor[p] = s
+            if s is not None:
+                left_neighbor[s] = p
+            root = delete_from_treap(root, z)
+            to_add = 0
+            if p is not None:
+                to_add += get_dc(p)
+            if s is not None:
+                to_add += get_dc(s)
+            total_discontent += to_add
+        out_lines.append(str(total_discontent))
+    
+    sys.stdout.write("\n".join(out_lines))
+
+if __name__ == '__main__':
+    main()
+```
+
+### Explanation
+1. **Initialization**:
+   - Read the number of cats \(n\) and dislike pairs \(m\).
+   - Store dislike pairs as tuples (ensuring \(x < y\)) in a set for quick lookups.
+   - Read the number of queries \(q\).
+
+2. **Data Structures**:
+   - **Treap**: Maintains the sorted order of cats in the line, supporting efficient insertion, deletion, and neighbor queries.
+   - **Linked List Dictionaries (`left_neighbor`, `right_neighbor`)**: Track immediate neighbors of each cat for \(O(1)\) access during discontentment calculation.
+
+3. **Query Processing**:
+   - **Insertion**:
+     - Find the predecessor and successor of the new cat in the current line.
+     - Update neighbor pointers in the linked list dictionaries.
+     - Adjust the total discontentment by recalculating contributions of the affected cats (predecessor, new cat, successor).
+   - **Removal**:
+     - Retrieve the immediate neighbors of the cat to be removed.
+     - Adjust the total discontentment by removing contributions of the affected cats (predecessor, cat to remove, successor).
+     - Update neighbor pointers to bypass the removed cat.
+     - Recalculate the discontentment of the now adjacent neighbors.
+
+4. **Discontentment Calculation**:
+   - For each cat, determine its neighbors using the linked list dictionaries.
+   - Check dislike relationships with neighbors.
+   - Compute discontentment based on whether the cat dislikes its left neighbor, right neighbor, both, or neither.
+
+This approach efficiently handles dynamic updates to the line of cats and computes the total discontentment after each operation in logarithmic time on average, leveraging the Treap for sorted order maintenance and the linked list dictionaries for quick neighbor access.

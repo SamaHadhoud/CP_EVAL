@@ -1,0 +1,237 @@
+To solve this problem, we need to determine if there exists a permutation of employees such that exactly K employees work when they arrive at the office in that order. The decision of an employee to work depends on the number of their subordinates already present and working when they arrive. 
+
+### Approach
+1. **Problem Analysis**:
+   - Each employee will work if, upon their arrival, the number of their subordinates (direct or indirect) already present and working is at most their tolerance level \(A_i\).
+   - The goal is to find a permutation of employees such that exactly K employees work.
+
+2. **Key Insight**:
+   - **Min and Max Possible Working Employees**: For each subtree rooted at an employee, we can compute the minimum and maximum number of employees that can work. The minimum is derived by arranging employees to minimize working counts (bottom-up), and the maximum is derived by arranging employees to maximize working counts (top-down).
+
+3. **Dynamic Calculation**:
+   - **Leaf Nodes**: For a leaf node, the min and max working employees are 1 (since they have no subordinates and always work).
+   - **Non-Leaf Nodes**: For a node \(u\) with children, compute:
+     - \(L\) = sum of min working employees of all children.
+     - \(R\) = sum of max working employees of all children.
+     - **Min Working Employees for \(u\)**: If \(L \geq A[u] + 1\), then \(min_u = L\) (arrange \(u\) last to avoid working). Otherwise, \(min_u = L + 1\) (arrange \(u\) first to work).
+     - **Max Working Employees for \(u\)**: Always \(max_u = R + 1\) (arrange \(u\) first to work).
+
+4. **Check Feasibility**:
+   - If \(K\) is not within the range \([min_1, max_1]\) (for the root), output \(-1\).
+
+5. **Reconstruction**:
+   - **Option Handling**:
+     - **Option 1 (u first)**: Output \(u\) first, then recursively process children to achieve \(K - 1\) working employees.
+     - **Option 2 (u last)**: Process children first to achieve \(T\) working employees, then output \(u\). Depending on \(T\), \(u\) may or may not work:
+       - If \(T \leq A[u]\), \(u\) works (total \(T + 1\)).
+       - If \(T \geq A[u] + 1\), \(u\) does not work (total \(T\)).
+
+### Solution Code
+```cpp
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <stack>
+#include <algorithm>
+using namespace std;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int N, K;
+    cin >> N >> K;
+    vector<int> A(N+1);
+    for (int i=1; i<=N; i++) {
+        cin >> A[i];
+    }
+    vector<vector<int>> children(N+1);
+    for (int i=2; i<=N; i++) {
+        int p;
+        cin >> p;
+        children[p].push_back(i);
+    }
+
+    vector<int> min_node(N+1, 0);
+    vector<int> max_node(N+1, 0);
+    stack<pair<int, int>> dfs_stack;
+    vector<int> visited(N+1, 0);
+    vector<int> postorder;
+    dfs_stack.push({1, 0});
+    while (!dfs_stack.empty()) {
+        int u = dfs_stack.top().first;
+        int state = dfs_stack.top().second;
+        dfs_stack.pop();
+        if (state == 0) {
+            dfs_stack.push({u, 1});
+            for (int v : children[u]) {
+                dfs_stack.push({v, 0});
+            }
+        } else {
+            postorder.push_back(u);
+        }
+    }
+    reverse(postorder.begin(), postorder.end());
+
+    for (int u : postorder) {
+        if (children[u].empty()) {
+            min_node[u] = 1;
+            max_node[u] = 1;
+        } else {
+            long long L = 0;
+            long long R = 0;
+            for (int v : children[u]) {
+                L += min_node[v];
+                R += max_node[v];
+            }
+            if (L >= A[u] + 1) {
+                min_node[u] = L;
+            } else {
+                min_node[u] = L + 1;
+            }
+            max_node[u] = R + 1;
+        }
+    }
+
+    if (K < min_node[1] || K > max_node[1]) {
+        cout << -1 << endl;
+        return 0;
+    }
+
+    vector<int> type(N+1, -1);
+    vector<long long> k_val(N+1, 0);
+    k_val[1] = K;
+
+    queue<int> q;
+    q.push(1);
+
+    while (!q.empty()) {
+        int u = q.front(); q.pop();
+        long long L = 0, R = 0;
+        for (int v : children[u]) {
+            L += min_node[v];
+            R += max_node[v];
+        }
+
+        if (children[u].empty()) {
+            if (k_val[u]-1 >= 0 && k_val[u]-1 <= 0) {
+                type[u] = 0;
+            } else if (k_val[u] >= max(0LL, (long long)A[u]+1) && k_val[u] <= 0) {
+                type[u] = 1;
+            } else {
+                type[u] = 0;
+            }
+            continue;
+        }
+
+        if (k_val[u]-1 >= L && k_val[u]-1 <= R) {
+            type[u] = 0;
+            long long T = k_val[u] - 1;
+            vector<pair<long long, int>> list;
+            for (int v : children[u]) {
+                list.push_back({max_node[v] - min_node[v], v});
+            }
+            sort(list.begin(), list.end(), greater<pair<long long, int>>());
+            long long rem = T - L;
+            for (auto& p : list) {
+                int v = p.second;
+                long long add = min(rem, (long long)(max_node[v] - min_node[v]));
+                k_val[v] = min_node[v] + add;
+                rem -= add;
+                q.push(v);
+            }
+        } else if (k_val[u]-1 >= L && k_val[u]-1 <= min(R, (long long)A[u])) {
+            type[u] = 1;
+            long long T = k_val[u] - 1;
+            vector<pair<long long, int>> list;
+            for (int v : children[u]) {
+                list.push_back({max_node[v] - min_node[v], v});
+            }
+            sort(list.begin(), list.end(), greater<pair<long long, int>>());
+            long long rem = T - L;
+            for (auto& p : list) {
+                int v = p.second;
+                long long add = min(rem, (long long)(max_node[v] - min_node[v]));
+                k_val[v] = min_node[v] + add;
+                rem -= add;
+                q.push(v);
+            }
+        } else if (k_val[u] >= max(L, (long long)A[u]+1) && k_val[u] <= R) {
+            type[u] = 1;
+            long long T = k_val[u];
+            vector<pair<long long, int>> list;
+            for (int v : children[u]) {
+                list.push_back({max_node[v] - min_node[v], v});
+            }
+            sort(list.begin(), list.end(), greater<pair<long long, int>>());
+            long long rem = T - L;
+            for (auto& p : list) {
+                int v = p.second;
+                long long add = min(rem, (long long)(max_node[v] - min_node[v]));
+                k_val[v] = min_node[v] + add;
+                rem -= add;
+                q.push(v);
+            }
+        } else {
+            type[u] = 0;
+            long long T = k_val[u] - 1;
+            vector<pair<long long, int>> list;
+            for (int v : children[u]) {
+                list.push_back({max_node[v] - min_node[v], v});
+            }
+            sort(list.begin(), list.end(), greater<pair<long long, int>>());
+            long long rem = T - L;
+            for (auto& p : list) {
+                int v = p.second;
+                long long add = min(rem, (long long)(max_node[v] - min_node[v]));
+                k_val[v] = min_node[v] + add;
+                rem -= add;
+                q.push(v);
+            }
+        }
+    }
+
+    stack<pair<int, int>> output_stack;
+    output_stack.push({1, 0});
+    vector<int> result;
+
+    while (!output_stack.empty()) {
+        int u = output_stack.top().first;
+        int state = output_stack.top().second;
+        output_stack.pop();
+
+        if (state == 0) {
+            if (type[u] == 0) {
+                result.push_back(u);
+                vector<int>& c = children[u];
+                for (auto it = c.rbegin(); it != c.rend(); ++it) {
+                    output_stack.push({*it, 0});
+                }
+            } else {
+                output_stack.push({u, 1});
+                vector<int>& c = children[u];
+                for (auto it = c.rbegin(); it != c.rend(); ++it) {
+                    output_stack.push({*it, 0});
+                }
+            }
+        } else {
+            result.push_back(u);
+        }
+    }
+
+    for (int i=0; i<result.size(); i++) {
+        if (i>0) cout << " ";
+        cout << result[i];
+    }
+    cout << endl;
+
+    return 0;
+}
+```
+
+### Explanation
+1. **Problem Analysis**: The problem involves arranging employees in an order such that exactly K employees work. An employee works if the number of their subordinates already present and working is at most their tolerance level \(A_i\).
+2. **Tree Processing**: We process the tree from leaves to the root (postorder) to compute the min and max possible working employees for each subtree.
+3. **Feasibility Check**: After computing min and max for the root, we check if K lies within this range. If not, it's impossible, and we output -1.
+4. **Reconstruction**: Using BFS, we determine the type of arrangement (Option 1 or Option 2) for each node to achieve the target K. We then construct the permutation by traversing the tree, outputting nodes based on their arrangement type.
+5. **Output**: The permutation is built by processing nodes in the determined order, ensuring exactly K employees work as required. The solution efficiently handles large inputs with O(N log N) complexity due to sorting operations.
