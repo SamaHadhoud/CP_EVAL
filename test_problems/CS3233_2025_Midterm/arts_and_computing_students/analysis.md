@@ -11,7 +11,7 @@ $$
 \right.
 $$
 
-A solution exists if $$ \mathtt{dp}[\#\text{ students}] \le N $$, and we can backtrack to find the construction.
+A solution exists if $\mathtt{dp}[\#\text{ students}] \le N$, and we can backtrack to find the construction.
 
 - **Greedy**: Notice that if we have a computing student at the beginning / end of the array or we have two consecutive computing students, then their seating arrangements are fixed. (For example, if we have ACCA as a substring, we know that the pairs must be AC and CA.) We first split the string whenever we see **ACCA**. For the remaining chunks without two consecutive computing students, we can greedily seat them using $$\left\lfloor \frac{\#\text{students}}{2} \right\rfloor$$ pairs (if we have more computing students than arts students, then this is clearly impossible). It is easy to see that this greedy strategy minimizes the number of pairs needed to seat all students.
 
