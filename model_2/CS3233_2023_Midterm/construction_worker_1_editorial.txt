@@ -1,0 +1,221 @@
+Restatement
+
+- There are n companies. Company i offers a job on days t = x_i + k·T (k ≥ 0). If SoCCat starts it that day, it occupies the next l_i days (finishes at the end of day t + l_i − 1), and pays p_i when done. SoCCat can do only one job at a time, and must start a job on the day it is offered.
+- From day 0 (free) we need, for q scenarios, the maximum total payment SoCCat can receive strictly before day z_j (i.e., all completed jobs must finish by day z_j − 1, equivalently, their start day + l_i ≤ z_j).
+
+Key ideas
+
+1) Only “day modulo T” matters
+
+- Because each job is offered every T days at a fixed residue (day-of-week) x_i, the environment is completely determined by the current day modulo T.
+- From any free day t (with residue r = t mod T), SoCCat can choose to:
+  - wait to any future day; in particular, to the next occurrence of a residue s, which takes Δ(r, s) = (s − r) mod T days; and then
+  - start any job that is offered at residue s.
+
+This means jobs can be chained in any order; the only overhead is the inter-job waiting Δ between “end residue” of the previous job and the “start residue” of the next job.
+
+2) State compression: residues and “end residues”
+
+- If a job starts at residue s and lasts l, it ends at residue e = (s + l) mod T. Between this job and the next, the waiting time to align with a next start residue s′ is Δ(e, s′).
+- Therefore the only dynamic state we need to remember between jobs is the current residue r (the day modulo T at which SoCCat is free again).
+
+3) Inverting the problem: minimal time to reach a given profit
+
+Let g(P) be the minimal day by which SoCCat can earn at least P (sum of p_i’s), starting from day 0 (free).
+
+- If we knew g, then the answer to a query z is: the largest P with g(P) ≤ z.
+- Because p_i ≤ 5, progressing profit by one step is cheap from a DP perspective. It’s much more tractable to step in profit (P = 0, 1, 2, …) than to step in time (time can be up to 1e11).
+
+Define D_P[r] = minimal day on which SoCCat can be free at residue r having earned exactly P.
+
+- Base: D_0[r] = r (just wait r days to get to residue r).
+- Transition P → P + p (for a job j with start residue s, length l, profit p, end residue e = (s + l) mod T):
+  - First, stand ready at the next s: among all residues r we might be at (with P already earned), the earliest day to be at s is:
+    A_P[s] = min_r { D_P[r] + Δ(r, s) }.
+  - Then do the job: finish at day A_P[s] + l, and be free at residue e. Update:
+    D_{P + p}[e] = min( D_{P + p}[e], A_P[s] + l ).
+
+Efficiently computing A_P[s] for all s
+
+We need A_P[s] for many s quickly. The key identity is:
+
+- Let Δ(r, s) = (s − r) mod T.
+- Split the minimization over r ≤ s and r > s:
+
+  A_P[s] = s + min( min_{r ≤ s} (D_P[r] − r) , min_{r > s} (D_P[r] − r + T) ).
+
+Thus, if we precompute:
+- A[r] = D_P[r] − r,
+- prefix minima of A,
+- suffix minima of A[r] + T,
+
+then each A_P[s] is computable in O(1). One O(T) pass gives us all A_P[s].
+
+4) Dominance: shrink the job set
+
+Many companies may offer at the same residue s. For the same s, the only effect of a job choice on the subsequent DP update is:
+- its profit p,
+- its end residue e = (s + l) mod T,
+- and its length l.
+
+If two jobs have the same s, same e, same p, keeping only the one with minimal l is always safe (the longer one is never better). Preprocess each residue s:
+- Bucket its jobs by (e, p),
+- Keep only the smallest length in each bucket.
+This can drastically reduce the transitions you execute at every profit layer.
+
+5) Eventual linearity in P (periodicity)
+
+Let K = gcd of all profits p_i present after deduplication.
+
+A fundamental property of such “profit-layered” shortest path systems with constant transitions:
+- The vector sequence {D_P} is ultimately periodic with period K: there exist P0 and a constant C such that, for all P ≥ P0 and all residues r,
+  D_{P + K}[r] = D_P[r] + C.
+- Consequently, g(P) = min_r D_P[r] also satisfies g(P + K) = g(P) + C for all P ≥ P0.
+- The ratio K/C is the optimal long-run profit rate (maximum mean profit per day), obtained by repeating some cycle of jobs.
+
+We do not need to precompute that cycle: it suffices to detect the periodicity by observing when D_{P + K}[·] − D_P[·] becomes constant (the same scalar for all residues r). Once that happens, it stays true forever (closure under our linear min-plus operations), and we can extrapolate g.
+
+Algorithm
+
+Preprocessing
+- Read input.
+- For each start residue s = x_i, compute end residue e_i = (s + l_i) mod T.
+- Deduplicate: For each (s, e, p) keep minimal l. Let M be the number of such kept triples (M ≤ n, often much smaller).
+- Let S_active be the set of residues s that have at least one job (|S_active| ≤ min(T, n)).
+- Let K = gcd of all profits p present (K ∈ {1, 2, 3, 4, 5}).
+
+Core DP in profit space
+- Maintain D layers modulo K to save memory: we store K arrays of length T (64-bit), one per profit residue mod K.
+- Initialize D_0[r] = r, and D_q[r] = +∞ for q ≠ 0.
+- Also maintain g(P) = min_r D_P[r] (vector g for all computed P).
+- For P = 0, 1, 2, …:
+  1) Take the current layer D_P[·]. Build A[r] = D_P[r] − r.
+     - Compute prefix minima of A.
+     - Compute suffix minima of A[r] + T.
+  2) For each s ∈ S_active:
+     - A_P[s] = s + min( prefix_min_A_up_to(s), suffix_min_(A+T)_from(s+1) ).
+  3) For each kept job (s, e, p, l):
+     - Let nxt = (P + p). Update:
+       D_{nxt}[e] = min( D_{nxt}[e], A_P[s] + l ).
+  4) Record g(P) = min_r D_P[r].
+  5) Period test (once P ≥ K):
+     - Compute δ[r] = D_{P}[r] − D_{P−K}[r].
+     - If δ[r] is the same scalar C for all r, then periodicity has started at P−K (call this P0), with period K and increment C. Stop the DP here.
+
+Answering queries
+- We now have:
+  - g(P) for P = 0..(P0 + K − 1),
+  - and the fact that for all t ≥ 0 and for any t0 ∈ [0..K−1]:
+    g(P0 + t0 + t·K) = g(P0 + t0) + t·C.
+- For a query z:
+  - If z ≤ g(P0 + K − 1), answer is the largest P in [0..P0 + K − 1] with g(P) ≤ z (binary search on this small array).
+  - Otherwise:
+    - Let q = floor((z − g(P0)) / C), baseProfit = P0 + q·K.
+    - The “base” time consumed is g(P0) + q·C. With the leftover L = z − (g(P0) + q·C), we can possibly add t ∈ [0..K−1] extra profit:
+      - Find the largest t with g(P0 + t) ≤ g(P0) + L.
+    - Answer: baseProfit + t.
+- Note K ≤ 5, so the leftover scan is O(K) per query; the initial part uses a small binary search.
+
+Why this is correct
+
+- The DP exactly encodes the earliest possible finish time for a given profit P reaching each residue r:
+  - From any free residue r (at time D_P[r]) the earliest day we can start any job offered at residue s is D_P[r] + Δ(r, s); minimizing over r gives A_P[s].
+  - Taking a job (s, l, p) then finishes at time A_P[s] + l and lands at residue e = (s + l) mod T.
+  - We thus set D_{P+p}[e] accordingly. Because we keep minima and use only the earliest starts, this is optimal.
+- Deduplication by (s, e, p) is safe: if two jobs land at the same (e, p) starting from the same s, the one with larger l can never beat the one with smaller l in any transition.
+- The O(1) A_P[s] formula follows from splitting Δ(r, s) cases:
+  - For r ≤ s: Δ = s − r,
+  - For r > s: Δ = s − r + T.
+  So A_P[s] = s + min( min_{r ≤ s}(D_P[r] − r), min_{r > s}(D_P[r] − r + T) ).
+- Eventual periodicity:
+  - Let K = gcd of all profits available. Consider the transformation T that maps D_P to the “best next-layer vectors” D_{P+p} via the min-plus updates above. T is translation-invariant in the sense that T(D + const) = T(D) + const.
+  - Once at some P we find D_{P+K} = D_P + C (componentwise, with the same C for all residues), it follows by induction that D_{P + tK} = D_P + tC for all t ≥ 0: apply the same transitions K profit units later; the A-values all shift by +C; all updates shift by +C; minima preserve this shift.
+  - Taking minima over r yields g(P + tK) = g(P) + tC as claimed. This expresses the long-run behavior: add K more profit costs a fixed additional C days.
+
+Complexity and limits
+
+- Preprocessing:
+  - Deduplication: O(n).
+  - Memory O(M) to store kept triples plus O(T) arrays.
+- Each DP layer P:
+  - Build prefix/suffix minima: O(T).
+  - Compute A_P[s] only for s ∈ S_active: O(|S_active|).
+  - Process all kept job triples: O(M).
+  - Total per layer: O(T + M). With T ≤ 2·10^4 and M ≤ n ≤ 10^5, this is about 1.2·10^5 primitive updates per layer.
+- How many layers until periodicity? Empirically and by the structure here (bounded inter-job wait ≤ T − 1, small p_i ≤ 5), the difference D_{P+K} − D_P stabilizes very quickly—typically within O(T) to a small multiple thereof (think a few × T). In practice, with careful implementation, this easily fits in time.
+- Query answering: O(log(P0 + K)) per query for the early region and O(1) amortized per query for the tail because K ≤ 5.
+
+Tips for implementation
+
+- Use 64-bit integers; set INF to something like 9e18.
+- Keep K layers in a ring buffer indexed by P mod K to limit memory to about K·T ≲ 1e5 numbers.
+- For deduplication:
+  - For each residue s, build a map keyed by (e, p) to the minimal l.
+  - Store kept triples as a flat list (s, e, p, l) and a list of active s residues.
+- Period detection:
+  - Once P ≥ K, compute δ[r] = D_P[r] − D_{P−K}[r].
+  - If all δ[r] equal the same C, stop; set P0 = P − K and period parameters K, C.
+  - Record g values up to P0 + K − 1.
+
+Walkthrough of the sample
+
+T = 10
+- Company 1: s = 0, l = 5, p = 1 → e = 5
+- Company 2: s = 3, l = 16, p = 4 → e = 9
+
+Deduplicate: nothing to merge.
+
+The DP quickly reveals that repeating company 2 every two offers (start at days 3, 23, 43, …) gives time per profit 20/4 = 5 days per unit profit (i.e., 0.2 per day). In the tail, g(P + 1) grows by 5 days. Around the queries:
+- z = 1000: P = 200 fits (200 · 5 = 1000),
+- z = 1005: still 200 from repeats, plus one company-1 job at day 1000 → 201,
+- z = 3233: 161 repeats of company 2 (≈ 644) plus a company-1 fit → 645.
+
+Why this handles all cases
+
+- Any feasible schedule can be represented as a sequence: wait to some start residue s, take a job (s, l, p), repeat. Our DP takes exactly the earliest such starts via A_P[s] and updates the end residues correctly.
+- By deduplication we never discard a job that could be optimal for any P because for fixed (s, e, p) only the smallest l matters.
+- Eventual periodicity is guaranteed by the linearity of our min-plus operator and the presence of a gcd period K on the profit dimension. We detect it and then exploit it to answer very large z in O(1) per query.
+
+Pseudocode (high level)
+
+- Build per-s buckets; in each bucket keep minimal l per (e, p); collect triples (s, e, p, l); S_active = {s with at least one triple}; K = gcd of all p.
+- Initialize arrays D[0..K-1][0..T-1] with INF; D[0][r] = r for all r.
+- g = empty list.
+
+- For P = 0, 1, 2, …:
+  - cur = P % K
+  - Build A[r] = D[cur][r] − r; prefix_min_A, suffix_min_AplusT.
+  - For all s in S_active:
+      A_P[s] = s + min(prefix_min_A[s], suffix_min_AplusT[s+1])
+  - Clear next layers that we will write to (those (P+p) % K).
+  - For (s, e, p, l) in triples:
+      nxt = (P + p) % K
+      D[nxt][e] = min(D[nxt][e], A_P[s] + l)
+  - g.push(min_r D[cur][r])
+  - If P ≥ K:
+      Check δ[r] = D[cur][r] − D[(P − K) % K][r] is constant C across r.
+      If yes: P0 = P − K; stop the loop.
+
+- For each query z:
+  - If z ≤ g[P0 + K − 1]: binary search P in [0..P0+K−1] to maximize P with g[P] ≤ z.
+  - Else:
+      q = (z − g[P0]) / C
+      baseP = P0 + q·K
+      leftover = z − (g[P0] + q·C)
+      Add t ∈ [0..K−1] maximal such that g[P0 + t] ≤ g[P0] + leftover
+      Answer = baseP + t.
+
+Complexities
+- Time: O( (T + M) × P_stop ) to find periodicity, plus O(q·(log P_stop + K)) to answer q queries (K ≤ 5).
+- Memory: O(T·K + M).
+
+This approach respects both the time and memory limits:
+- T ≤ 2e4, M ≤ n ≤ 1e5 → per layer around 1.2e5 simple operations.
+- Small profits p ≤ 5 and bounded inter-job wait ≤ T − 1 make P_stop modest in practice (on the order of a few·T), and K ≤ 5 yields O(1) post-periodic answering.
+
+Intuition recap
+
+- Switch “maximize profit before time” to “minimize time for given profit”.
+- The only state you need is the current day modulo T. The earliest day to stand on any start residue s is a fast O(1) query per s via prefix/suffix minima.
+- Deduplicate jobs by (start, end, profit) keeping the shortest duration.
+- The DP in profit space becomes ultimately linear with stride K and slope C; detect this once and then answer arbitrarily large queries instantly.

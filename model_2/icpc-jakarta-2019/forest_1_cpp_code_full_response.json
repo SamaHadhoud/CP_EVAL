@@ -1,0 +1,31 @@
+{
+  "custom_id": "experiment/gpt-5-2025-08-07/icpc-jakarta-2019/forest_1_solution.cpp",
+  "response": {
+    "body": {
+      "output": [
+        {
+          "id": "rs_68d7f172354881939562cfa7586dd0d307c7ffc25e091b86",
+          "summary": [],
+          "type": "reasoning",
+          "content": null,
+          "encrypted_content": null,
+          "status": null
+        },
+        {
+          "id": "msg_68d7f26c849c8193a209dc50181934af07c7ffc25e091b86",
+          "content": [
+            {
+              "annotations": [],
+              "text": "```cpp\n#include <bits/stdc++.h>\nusing namespace std;\n\nstruct H {\n    uint64_t a, b;\n    bool operator==(const H& o) const { return a == o.a && b == o.b; }\n    bool operator<(const H& o) const { return a < o.a || (a == o.a && b < o.b); }\n};\n\nstatic inline uint64_t splitmix64(uint64_t x) {\n    x += 0x9e3779b97f4a7c15ULL;\n    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;\n    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;\n    return x ^ (x >> 31);\n}\n\nstruct Canonicalizer {\n    const vector<vector<int>>& g;\n    vector<char>* inComp; // pointer to mask of current component\n\n    Canonicalizer(const vector<vector<int>>& graph) : g(graph), inComp(nullptr) {}\n\n    void setMask(vector<char>* mask) { inComp = mask; }\n\n    H combineList(const vector<H>& ch) const {\n        uint64_t A = 0x6a09e667f3bcc909ULL; // sqrt(2)\n        uint64_t B = 0xbb67ae8584caa73bULL; // sqrt(3)\n        A ^= splitmix64((uint64_t)ch.size() + 0x9e3779b97f4a7c15ULL);\n        B ^= splitmix64((uint64_t)ch.size() * 0x100000001b3ULL + 0x243f6a8885a308d3ULL);\n        for (const auto& h : ch) {\n            uint64_t v1 = h.a + 0x9e3779b97f4a7c15ULL;\n            uint64_t v2 = h.b + 0x243f6a8885a308d3ULL;\n            A = splitmix64(A ^ v1);\n            A = splitmix64(A ^ v2);\n            B = splitmix64(B ^ v2);\n            B = splitmix64(B ^ v1);\n        }\n        A = splitmix64(A ^ 0xA5A5A5A5A5A5A5A5ULL);\n        B = splitmix64(B ^ 0x5A5A5A5A5A5A5A5AULL);\n        return {A, B};\n    }\n\n    H encodeRooted(int x, int p) const {\n        vector<H> child;\n        child.reserve(g[x].size());\n        for (int y : g[x]) {\n            if (y == p) continue;\n            if ((*inComp)[y]) {\n                child.push_back(encodeRooted(y, x));\n            }\n        }\n        sort(child.begin(), child.end());\n        return combineList(child);\n    }\n};\n\nH canonical_component(const vector<int>& comp,\n                      vector<char>& in_comp,\n                      vector<int>& deg,\n                      vector<char>& removed,\n                      Canonicalizer& iso) {\n    // mark component nodes\n    for (int v : comp) {\n        in_comp[v] = 1;\n        removed[v] = 0;\n        deg[v] = 0;\n    }\n    // compute degrees within component\n    for (int v : comp) {\n        for (int w : iso.g[v]) if (in_comp[w]) deg[v]++;\n    }\n    // find centers by leaf trimming\n    queue<int> q;\n    for (int v : comp) if (deg[v] <= 1) q.push(v);\n    int rem = (int)comp.size();\n    while (rem > 2 && !q.empty()) {\n        int v = q.front(); q.pop();\n        if (removed[v]) continue;\n        removed[v] = 1;\n        rem--;\n        for (int w : iso.g[v]) {\n            if (in_comp[w] && !removed[w]) {\n                deg[w]--;\n                if (deg[w] == 1) q.push(w);\n            }\n        }\n    }\n    vector<int> centers;\n    centers.reserve(2);\n    for (int v : comp) if (!removed[v]) centers.push_back(v);\n\n    iso.setMask(&in_comp);\n    H res;\n    if (centers.size() == 1) {\n        res = iso.encodeRooted(centers[0], 0);\n    } else {\n        H h1 = iso.encodeRooted(centers[0], centers[1]);\n        H h2 = iso.encodeRooted(centers[1], centers[0]);\n        if (h2 < h1) swap(h1, h2);\n        vector<H> pairv = {h1, h2};\n        res = iso.combineList(pairv);\n    }\n\n    // unmark component nodes\n    for (int v : comp) in_comp[v] = 0;\n    return res;\n}\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int N;\n    if (!(cin >> N)) return 0;\n    vector<vector<int>> g(N + 1);\n    for (int i = 0; i < N - 1; ++i) {\n        int a, b; cin >> a >> b;\n        g[a].push_back(b);\n        g[b].push_back(a);\n    }\n    for (int i = 1; i <= N; ++i) sort(g[i].begin(), g[i].end());\n\n    Canonicalizer iso(g);\n    vector<char> visited(N + 1, 0), in_comp(N + 1, 0), removed(N + 1, 0);\n    vector<int> deg(N + 1, 0);\n\n    int ans = -1;\n    for (int u = 1; u <= N; ++u) {\n        if ((int)g[u].size() < 2) continue;\n        fill(visited.begin(), visited.end(), 0);\n\n        vector<H> encs;\n        encs.reserve(g[u].size());\n        for (int v0 : g[u]) {\n            if (visited[v0]) continue;\n            // BFS to collect component ignoring u\n            vector<int> comp;\n            comp.reserve(N);\n            queue<int> q;\n            visited[v0] = 1;\n            q.push(v0);\n            comp.push_back(v0);\n            while (!q.empty()) {\n                int x = q.front(); q.pop();\n                for (int y : g[x]) {\n                    if (y == u) continue;\n                    if (!visited[y]) {\n                        visited[y] = 1;\n                        q.push(y);\n                        comp.push_back(y);\n                    }\n                }\n            }\n            // Compute unrooted canonical encoding of this component\n            H h = canonical_component(comp, in_comp, deg, removed, iso);\n            encs.push_back(h);\n        }\n        bool ok = true;\n        for (size_t i = 1; i < encs.size(); ++i) {\n            if (!(encs[i] == encs[0])) { ok = false; break; }\n        }\n        if (ok) ans = max<int>(ans, (int)encs.size());\n    }\n\n    cout << ans << '\\n';\n    return 0;\n}\n```",
+              "type": "output_text",
+              "logprobs": []
+            }
+          ],
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ]
+    }
+  }
+}

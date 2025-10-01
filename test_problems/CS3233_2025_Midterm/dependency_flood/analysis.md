@@ -3,7 +3,7 @@ For simplicity, we will use graph theory terminology instead of the definitions 
 Let $f_i$ ($1 \leq i \leq N$) be the maximum path length ending at vertex $i$, and let $b_i$ ($1 \leq i \leq N$) be the maximum path length starting from vertex $i$. The values of $f_i$ satisfy the following recurrence relation, where $E$ denotes the set of edges:
 
 $$
-f_i = \left\lbrace
+f_i = \left\{
 \begin{array}{ll}
 1 + \max_{(j, i) \in E} f_j & \exists (j, i) \in E \\
 0 & \text{otherwise}

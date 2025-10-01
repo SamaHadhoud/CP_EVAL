@@ -1,0 +1,31 @@
+{
+  "custom_id": "experiment/gpt-5-2025-08-07/icpc-jakarta-2018/war_1_solution.cpp",
+  "response": {
+    "body": {
+      "output": [
+        {
+          "id": "rs_68d92e010d348196af78ceefb052527a0e98055883ad473e",
+          "summary": [],
+          "type": "reasoning",
+          "content": null,
+          "encrypted_content": null,
+          "status": null
+        },
+        {
+          "id": "msg_68d92f591cb48196982bd9f618f8e7fb0e98055883ad473e",
+          "content": [
+            {
+              "annotations": [],
+              "text": "```cpp\n#include <bits/stdc++.h>\nusing namespace std;\n\nstruct Point { long long x, y; };\nstruct Vec { long long x, y; };\nstruct Wall { long long x1, x2, y; int lid, rid; };\nstruct Interval {\n    long double L, R;\n    int lid, rid;\n};\nstatic const long double EPS = 1e-12L;\n\ninline Vec make_vec(const Point& a, const Point& b) { return {a.x - b.x, a.y - b.y}; }\ninline Vec neg_vec(const Vec& v) { return {-v.x, -v.y}; }\n\n// Sort by polar angle in [0, 2π): upper half-plane first (y>0 or y==0 & x>=0), then by CCW.\ninline int half(const Vec& v) { return (v.y > 0 || (v.y == 0 && v.x >= 0)) ? 0 : 1; }\ninline bool angleLess(const Vec& a, const Vec& b) {\n    int ha = half(a), hb = half(b);\n    if (ha != hb) return ha < hb;\n    __int128 cross = (__int128)a.x * b.y - (__int128)a.y * b.x;\n    if (cross != 0) return cross > 0; // a before b if a->b is CCW\n    return false; // same angle\n}\n\ninline long long count_inclusive_range(const vector<Vec>& arr, const Vec& low, const Vec& high) {\n    if (arr.empty()) return 0;\n    bool wrap = !angleLess(low, high);\n    auto l = lower_bound(arr.begin(), arr.end(), low, angleLess);\n    auto r = upper_bound(arr.begin(), arr.end(), high, angleLess);\n    if (!wrap) return (long long)(r - l);\n    return (long long)((arr.end() - l) + (r - arr.begin()));\n}\n\ninline long long count_open_range(const vector<Vec>& arr, const Vec& low, const Vec& high) {\n    if (arr.empty()) return 0;\n    bool wrap = !angleLess(low, high);\n    auto l = upper_bound(arr.begin(), arr.end(), low, angleLess);   // exclude =low\n    auto r = lower_bound(arr.begin(), arr.end(), high, angleLess);  // exclude =high\n    if (!wrap) return (long long)(r - l);\n    return (long long)((arr.end() - l) + (r - arr.begin()));\n}\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    \n    int N, M, Q;\n    if (!(cin >> N >> M >> Q)) return 0;\n    vector<Point> A(N);\n    for (int i = 0; i < N; ++i) cin >> A[i].x >> A[i].y;\n    vector<Wall> W(M);\n    vector<Point> E(2 * M);\n    for (int j = 0; j < M; ++j) {\n        cin >> W[j].x1 >> W[j].x2 >> W[j].y;\n        W[j].lid = 2 * j;\n        W[j].rid = 2 * j + 1;\n        E[W[j].lid] = {W[j].x1, W[j].y};\n        E[W[j].rid] = {W[j].x2, W[j].y};\n    }\n\n    // Per-endpoint direction lists: right endpoints use inclusive (<=), left endpoints use strict (<)\n    vector<vector<Vec>> rights(2 * M), lefts(2 * M);\n\n    // Build intervals per artillery, merge, then add contributions to endpoints\n    for (int i = 0; i < N; ++i) {\n        vector<Interval> v;\n        v.reserve(M);\n        for (int j = 0; j < M; ++j) {\n            if (A[i].y <= W[j].y) continue; // this wall never blocks this artillery\n            long double denom = (long double)A[i].y - (long double)W[j].y; // > 0\n            long double L = ((long double)W[j].x1 * (long double)A[i].y - (long double)W[j].y * (long double)A[i].x) / denom;\n            long double R = ((long double)W[j].x2 * (long double)A[i].y - (long double)W[j].y * (long double)A[i].x) / denom;\n            // since x1 < x2 and denom > 0, L < R\n            v.push_back({L, R, W[j].lid, W[j].rid});\n        }\n        if (v.empty()) continue;\n        sort(v.begin(), v.end(), [](const Interval& a, const Interval& b){\n            if (fabsl(a.L - b.L) > EPS) return a.L < b.L;\n            return a.R < b.R;\n        });\n        long double curL = v[0].L, curR = v[0].R;\n        int eL = v[0].lid, eR = v[0].rid;\n        for (size_t t = 1; t < v.size(); ++t) {\n            if (v[t].L <= curR + EPS) {\n                if (v[t].R > curR + EPS) {\n                    curR = v[t].R;\n                    eR = v[t].rid;\n                }\n            } else {\n                // emit merged [curL, curR] with endpoints eL (left) and eR (right)\n                Vec vL = make_vec(A[i], E[eL]); // vector from endpoint to artillery\n                Vec vR = make_vec(A[i], E[eR]);\n                lefts[eL].push_back(vL);\n                rights[eR].push_back(vR);\n                curL = v[t].L; curR = v[t].R; eL = v[t].lid; eR = v[t].rid;\n            }\n        }\n        Vec vL = make_vec(A[i], E[eL]);\n        Vec vR = make_vec(A[i], E[eR]);\n        lefts[eL].push_back(vL);\n        rights[eR].push_back(vR);\n    }\n\n    // Sort direction lists by angle\n    for (int e = 0; e < 2 * M; ++e) {\n        sort(rights[e].begin(), rights[e].end(), angleLess);\n        sort(lefts[e].begin(), lefts[e].end(), angleLess);\n    }\n\n    // Process queries\n    for (int qi = 0; qi < Q; ++qi) {\n        Point w;\n        cin >> w.x >> w.y;\n        long long blocked = 0;\n        for (int e = 0; e < 2 * M; ++e) {\n            Vec D = make_vec(w, E[e]);   // from endpoint E to watchtower w\n            Vec low = neg_vec(D);        // angle(w|E)+π\n            // Rights: inclusive [low, D]\n            blocked += count_inclusive_range(rights[e], low, D);\n            // Lefts: open (low, D)\n            blocked -= count_open_range(lefts[e], low, D);\n        }\n        long long visible = (long long)N - blocked;\n        if (visible < 0) visible = 0; // safety\n        cout << visible << '\\n';\n    }\n    return 0;\n}\n```",
+              "type": "output_text",
+              "logprobs": []
+            }
+          ],
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "custom_id": "experiment/gpt-5-2025-08-07/icpc-jakarta-2017/permutation_1_solution.cpp",
+  "response": {
+    "body": {
+      "output": [
+        {
+          "id": "rs_68d7a634d8848196b63331e3e378c2fb0aca50451ea7a53d",
+          "summary": [],
+          "type": "reasoning",
+          "content": null,
+          "encrypted_content": null,
+          "status": null
+        },
+        {
+          "id": "msg_68d7a6c7c4108196a9e49bf30d176b2c0aca50451ea7a53d",
+          "content": [
+            {
+              "annotations": [],
+              "text": "```cpp\n#include <bits/stdc++.h>\nusing namespace std;\n\nusing int64 = long long;\n\n// Extended GCD for modular inverse\nstatic inline int64 modinv(int64 a, int64 mod) {\n    if (mod == 1) return 0;\n    int64 b = mod, u = 1, v = 0;\n    while (b) {\n        int64 t = a / b;\n        a -= t * b; swap(a, b);\n        u -= t * v; swap(u, v);\n    }\n    // now a = gcd(original a, mod) = 1\n    u %= mod;\n    if (u < 0) u += mod;\n    return u;\n}\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int N;\n    int Q;\n    if (!(cin >> N >> Q)) return 0;\n\n    vector<int> P(N + 1);\n    for (int i = 1; i <= N; ++i) cin >> P[i];\n\n    // Cycle decomposition\n    vector<int> vis(N + 1, 0);\n    vector<vector<int>> cycles;\n    vector<int> cid(N + 1, -1), posInCycle(N + 1, -1), clen(N + 1, 0);\n    for (int i = 1; i <= N; ++i) {\n        if (!vis[i]) {\n            vector<int> cyc;\n            int cur = i;\n            while (!vis[cur]) {\n                vis[cur] = 1;\n                cyc.push_back(cur);\n                cur = P[cur];\n            }\n            int id = (int)cycles.size();\n            cycles.push_back(cyc);\n            int c = (int)cyc.size();\n            for (int p = 0; p < c; ++p) {\n                int v = cyc[p];\n                cid[v] = id;\n                posInCycle[v] = p;\n                clen[v] = c;\n            }\n        }\n    }\n\n    // Precompute L_j, d_j, m_j\n    vector<int64> L(N + 1, 0), d(N + 1, 0), m(N + 1, 0);\n    L[0] = 1;\n    for (int j = 1; j <= N; ++j) {\n        int c = clen[j];\n        int64 g = std::gcd(L[j - 1], (int64)c);\n        d[j] = g;\n        // L[j] = lcm(L[j-1], c) = L[j-1] / g * c\n        L[j] = (L[j - 1] / g) * c;\n        m[j] = c / g;\n    }\n    int64 orderL = L[N]; // this is M - 1\n\n    // B_j = L / L_j\n    vector<int64> B(N + 1, 0);\n    for (int j = 1; j <= N; ++j) {\n        B[j] = orderL / L[j];\n    }\n\n    // Precompute inverses inv_j of (L_{j-1}/d_j) modulo (c_j/d_j)\n    vector<int64> inv(N + 1, 0);\n    for (int j = 1; j <= N; ++j) {\n        int c = clen[j];\n        int64 g = d[j];\n        int64 nprime = c / g;\n        int64 mprime = L[j - 1] / g;\n        if (nprime == 1) inv[j] = 0;\n        else inv[j] = modinv(mprime % nprime, nprime);\n    }\n\n    // Precompute ord_j: for each j, r0 in [0..d_j-1], store ordering of t in [0..m_j-1]\n    // Flattened as ord[j][r0 * m[j] + z] = tindex\n    vector<vector<int>> ord(N + 1);\n    for (int j = 1; j <= N; ++j) {\n        int c = clen[j];\n        int g = (int)d[j];\n        int mm = (int)m[j];\n        ord[j].assign(c, 0); // size = d * m = c\n        int cycId = cid[j];\n        int p = posInCycle[j];\n        const auto &cyc = cycles[cycId];\n\n        for (int r0 = 0; r0 < g; ++r0) {\n            vector<pair<int,int>> vec; // (value, t)\n            vec.reserve(mm);\n            for (int t = 0; t < mm; ++t) {\n                int s = r0 + t * g; // residue modulo c\n                int val = cyc[(p + s) % c]; // value (P^s)_j\n                vec.emplace_back(val, t);\n            }\n            sort(vec.begin(), vec.end());\n            for (int z = 0; z < mm; ++z) {\n                ord[j][r0 * mm + z] = vec[z].second;\n            }\n        }\n    }\n\n    // Answer queries\n    // For each K: compute z_j via mixed-radix with weights B[j], then reconstruct r using CRT\n    while (Q--) {\n        int64 K;\n        cin >> K;\n        int64 rem = K - 1;\n\n        int64 r = 0; // residue modulo L_{j-1}, starts at 0 (P^0)\n        for (int j = 1; j <= N; ++j) {\n            int64 z = B[j] ? (rem / B[j]) : 0; // z in [0..m[j]-1]\n            if (B[j]) rem %= B[j];\n\n            int64 g = d[j];\n            int c = clen[j];\n            int mm = (int)m[j];\n            int64 r0_small = (g ? (r % g) : 0);\n            int tindex = ord[j][(int)(r0_small * mm + z)];\n            int64 s = r0_small + g * tindex; // residue modulo c\n\n            int64 mprev = L[j - 1];\n            int64 Lj = L[j];\n\n            int64 nprime = c / g;\n            if (nprime != 1) {\n                int64 diff = s - r;           // divisible by g\n                int64 diff_q = diff / g;      // may be negative\n                int64 t = ( (__int128)((diff_q % nprime + nprime) % nprime) * inv[j]) % nprime;\n                r = r + mprev * t;\n                if (r >= Lj) r %= Lj;\n            } else {\n                // unique merge\n                if (r >= Lj) r %= Lj;\n            }\n        }\n\n        // Map 0 -> L (i.e., P^0 == P^L), otherwise r itself\n        if (r == 0) cout << orderL << '\\n';\n        else cout << r << '\\n';\n    }\n\n    return 0;\n}\n```",
+              "type": "output_text",
+              "logprobs": []
+            }
+          ],
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ]
+    }
+  }
+}

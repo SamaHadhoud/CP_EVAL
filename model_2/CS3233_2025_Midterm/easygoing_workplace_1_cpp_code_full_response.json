@@ -1,0 +1,31 @@
+{
+  "custom_id": "experiment/gpt-5-2025-08-07/CS3233_2025_Midterm/easygoing_workplace_1_solution.cpp",
+  "response": {
+    "body": {
+      "output": [
+        {
+          "id": "rs_68d7c381bfb081978cc092b66caecd4302ced51d8813dfa0",
+          "summary": [],
+          "type": "reasoning",
+          "content": null,
+          "encrypted_content": null,
+          "status": null
+        },
+        {
+          "id": "msg_68d7c445c9b88197a0d0ff62cc0c6c9f02ced51d8813dfa0",
+          "content": [
+            {
+              "annotations": [],
+              "text": "```cpp\n#include <bits/stdc++.h>\nusing namespace std;\n\n// Iterative DSU for \"next free\" positions on 1..N+1\nstruct NextFree {\n    int n;\n    vector<int> p;\n    NextFree(int n=0): n(n), p(n+2) {\n        for (int i = 1; i <= n+1; ++i) p[i] = i;\n    }\n    inline int find(int x) {\n        int r = x;\n        while (p[r] != r) r = p[r];\n        while (p[x] != x) { int nx = p[x]; p[x] = r; x = nx; }\n        return r;\n    }\n    inline void remove_pos(int pos) { // mark pos as used\n        int r = find(pos);\n        p[r] = find(r + 1);\n    }\n};\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    int N, K;\n    if (!(cin >> N >> K)) return 0;\n\n    vector<int> A(N + 1);\n    for (int i = 1; i <= N; ++i) cin >> A[i];\n\n    vector<vector<int>> ch(N + 1);\n    for (int i = 2; i <= N; ++i) {\n        int b; cin >> b;\n        ch[b].push_back(i);\n    }\n\n    // Euler tour (preorder) + postorder without recursion\n    vector<int> tin(N + 1), tout(N + 1), ord(N + 1), post;\n    post.reserve(N);\n    int timer = 0;\n    vector<pair<int,int>> st;\n    st.reserve(N);\n    st.emplace_back(1, 0);\n    while (!st.empty()) {\n        auto &top = st.back();\n        int v = top.first;\n        int &i = top.second;\n        if (i == 0) {\n            tin[v] = ++timer;\n            ord[timer] = v;\n        }\n        if (i < (int)ch[v].size()) {\n            int u = ch[v][i++];\n            st.emplace_back(u, 0);\n        } else {\n            tout[v] = timer;\n            post.push_back(v);\n            st.pop_back();\n        }\n    }\n\n    // DP bottom-up\n    vector<int> dp(N + 1), sz(N + 1), needExtra(N + 1, 0);\n    vector<char> choose(N + 1, 0);\n\n    for (int idx = 0; idx < (int)post.size(); ++idx) {\n        int v = post[idx];\n        long long sum = 0;\n        int szv = 1;\n        for (int u : ch[v]) {\n            sum += dp[u];\n            szv += sz[u];\n        }\n        sz[v] = szv;\n        int desc = szv - 1;\n        int av1 = A[v] + 1;\n\n        if (av1 > desc) {\n            choose[v] = 1;\n            dp[v] = (int)(1 + sum);\n            needExtra[v] = 0;\n        } else {\n            int cost1 = (int)(1 + sum);\n            int cost2 = max((int)sum, av1);\n            if (cost1 <= cost2) {\n                choose[v] = 1;\n                dp[v] = cost1;\n                needExtra[v] = 0;\n            } else {\n                choose[v] = 0;\n                dp[v] = cost2;\n                needExtra[v] = max(0, av1 - (int)sum);\n            }\n        }\n    }\n\n    int L = dp[1];\n    if (K < L) {\n        cout << -1 << '\\n';\n        return 0;\n    }\n\n    // Build minimal set S using DSU next-free over Euler positions\n    NextFree dsu(N);\n    vector<char> selected(N + 1, 0);\n\n    st.clear();\n    st.emplace_back(1, 0);\n    while (!st.empty()) {\n        auto &top = st.back();\n        int v = top.first;\n        int &i = top.second;\n\n        if (i == 0) {\n            // entry event\n            if (choose[v]) {\n                if (!selected[v]) {\n                    selected[v] = 1;\n                    int root = dsu.find(tin[v]); // should be tin[v]\n                    if (root == tin[v]) dsu.remove_pos(root);\n                }\n            }\n        }\n        if (i < (int)ch[v].size()) {\n            int u = ch[v][i++];\n            st.emplace_back(u, 0);\n        } else {\n            // exit event\n            if (!choose[v]) {\n                int need = needExtra[v];\n                int cur = dsu.find(tin[v] + 1);\n                while (need > 0) {\n                    // DP ensures cur <= tout[v]\n                    int node = ord[cur];\n                    selected[node] = 1;\n                    dsu.remove_pos(cur);\n                    --need;\n                    cur = dsu.find(cur); // next free >= cur\n                }\n            }\n            st.pop_back();\n        }\n    }\n\n    // Add any K - L additional nodes arbitrarily\n    int toAdd = K - L;\n    while (toAdd > 0) {\n        int pos = dsu.find(1);\n        if (pos > N) break; // should not happen if toAdd <= remaining\n        int node = ord[pos];\n        selected[node] = 1;\n        dsu.remove_pos(pos);\n        --toAdd;\n    }\n\n    // Output: selected first in preorder, then the rest\n    bool first = true;\n    for (int i = 1; i <= N; ++i) {\n        int v = ord[i];\n        if (selected[v]) {\n            if (!first) cout << ' ';\n            first = false;\n            cout << v;\n        }\n    }\n    for (int i = 1; i <= N; ++i) {\n        int v = ord[i];\n        if (!selected[v]) {\n            if (!first) cout << ' ';\n            first = false;\n            cout << v;\n        }\n    }\n    cout << '\\n';\n    return 0;\n}\n```",
+              "type": "output_text",
+              "logprobs": []
+            }
+          ],
+          "role": "assistant",
+          "status": "completed",
+          "type": "message"
+        }
+      ]
+    }
+  }
+}
